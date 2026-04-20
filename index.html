@@ -1714,7 +1714,7 @@ function renderRankingTabCharts(mode){
   let title2 = '排行对比';
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('store_ranking.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店排行.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
     setActiveGlow('#rankingsStoreCard');
     rows = results.storeRank.slice(0, 10);
     labels = rows.map(x => x.store);
@@ -1722,7 +1722,7 @@ function renderRankingTabCharts(mode){
     title1 = '门店业绩趋势';
     title2 = '门店业绩对比';
   } else if (mode === 'salesperson'){
-    setDownloadTarget('salesperson_ranking.xlsx', [{ name:'导购排行', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('导购排行.xlsx', [{ name:'导购排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     labels = rows.map(x => x.salesperson);
@@ -1730,7 +1730,7 @@ function renderRankingTabCharts(mode){
     title1 = '导购业绩趋势';
     title2 = '导购业绩对比';
   } else if (mode === 'product'){
-    setDownloadTarget('product_ranking.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
+    setDownloadTarget('商品排行.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#rankingsProductCard');
     rows = results.productRank.slice(0, 10);
     labels = rows.map(x => x.product);
@@ -1738,7 +1738,7 @@ function renderRankingTabCharts(mode){
     title1 = '商品销量趋势';
     title2 = '商品销量对比';
   } else if (mode === 'ticket'){
-    setDownloadTarget('average_ticket_ranking.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
+    setDownloadTarget('客单价排行.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
     labels = rows.map(x => x.salesperson);
@@ -1931,7 +1931,7 @@ function renderMembersTabCharts(mode){
   const ticketVals = chartRowsForHover.map(x => x.avg_ticket);
   const repurchaseVals = chartRowsForHover.map(x => x.repurchase_times);
 
-  setDownloadTarget('member_spend_ranking.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
+  setDownloadTarget('会员消费排行.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
   setActiveGlow('#memberRankingCard');
   let leftTitle = '会员消费趋势';
   let rightTitle = '会员消费 Top 排行';
@@ -2142,7 +2142,7 @@ function renderSleepingTabCharts(mode){
   let chartRowsForHover = [];
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('sleeping_members_by_store.xlsx', [{ name:'按门店沉睡会员统计', rows: results.sleepByStore || [] }]);
+    setDownloadTarget('按门店沉睡会员统计.xlsx', [{ name:'按门店沉睡会员统计', rows: results.sleepByStore || [] }]);
     setActiveGlow('#sleepByStoreCard');
     storeFullForTable = results.sleepByStore || [];
     chartRowsForHover = storeFullForTable.slice(0,10);
@@ -2154,7 +2154,7 @@ function renderSleepingTabCharts(mode){
     leftTitle = '按门店沉睡会员统计';
     rightTitle = '沉睡会员历史消费';
   } else if (mode === 'list'){
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: getFilteredSleepList() || results.sleepList || [] }]);
+    setDownloadTarget('沉睡会员唤醒名单.xlsx', [{ name:'沉睡会员唤醒名单', rows: getFilteredSleepList() || results.sleepList || [] }]);
     setActiveGlow('#sleepWakeListCard');
     listFullForTable = getFilteredSleepList(results) || [];
     chartRowsForHover = listFullForTable.slice(0,10);
@@ -2672,7 +2672,7 @@ function updateDashboardCharts(mode){
     const repurchaseSheetRows = REPURCHASE_BUCKET_ORDER.map(k => ({ order_bucket: k, member_count: Number(repurchaseByBucket[k]) || 0 }));
     const repPalette = getChartPalette(repurchaseLabels.length);
 
-    setDownloadTarget('dashboard_results.xlsx', [{ name: useDaily ? '每日销售' : '月度销售', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
+    setDownloadTarget('总览分析结果.xlsx', [{ name: useDaily ? '每日销售' : '月度销售', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
     clearActiveGlows();
     appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
       type:'doughnut',
@@ -2755,7 +2755,7 @@ function updateDashboardCharts(mode){
     rows = results.storeRank.slice(0, 10);
     labelKey = 'store';
     valueKey = 'performance';
-    setDownloadTarget('top_stores.xlsx', [{ name:'Top Stores', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店前10排行.xlsx', [{ name:'门店前10排行', rows: results.storeRank || [] }]);
     setActiveGlow('#topStoresCard');
   } else if (mode === 'salespeople'){
     leftBaseTitle = '导购 Top 10 业绩';
@@ -2765,7 +2765,7 @@ function updateDashboardCharts(mode){
     rows = results.salespersonRank.slice(0, 10);
     labelKey = 'salesperson';
     valueKey = 'performance';
-    setDownloadTarget('top_salespeople.xlsx', [{ name:'Top Salespeople', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('导购前10排行.xlsx', [{ name:'导购前10排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#topSalespeopleCard');
   } else if (mode === 'products'){
     leftBaseTitle = '商品 Top 10 销量';
@@ -2775,7 +2775,7 @@ function updateDashboardCharts(mode){
     rows = results.productRank.slice(0, 10);
     labelKey = 'product';
     valueKey = 'sales_amount';
-    setDownloadTarget('top_products.xlsx', [{ name:'Top Products', rows: results.productRank || [] }]);
+    setDownloadTarget('商品前10排行.xlsx', [{ name:'商品前10排行', rows: results.productRank || [] }]);
     setActiveGlow('#topProductsCard');
   }
   if (appState.dashboardShareSelection.mode !== mode) appState.dashboardShareSelection = { mode, index: null };
@@ -2880,7 +2880,7 @@ function refreshSleepingTable(sourceResults){
   const filtered = getFilteredSleepList(sourceResults);
   renderTable('sleepListTable', filtered, {total_spend:fmtCurrency, order_count:fmtInt, avg_ticket:fmtCurrency, repurchase_times:fmtInt, sleep_days:fmtInt}, true);
   if (document.querySelector('.tab.active')?.dataset.tab === 'sleeping') {
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: filtered || [] }]);
+    setDownloadTarget('沉睡会员唤醒名单.xlsx', [{ name:'沉睡会员唤醒名单', rows: filtered || [] }]);
   }
 }
 
@@ -2926,7 +2926,7 @@ function renderResults(results, mappings){
   updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
 
   const exportTrend = getDashboardTrendPresentation(getActiveResults());
-  setDownloadTarget('dashboard_results.xlsx', [
+  setDownloadTarget('总览分析结果.xlsx', [
     { name: exportTrend.useDaily ? '每日销售' : '月度销售', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
     { name:'复购结构', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
   ]);
@@ -2939,6 +2939,58 @@ async function downloadWorkbook(filename, sheets){
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sales Analysis App';
   wb.created = new Date();
+  const EXCEL_HEADER_ZH = {
+    source_file: '来源文件',
+    included_rows: '纳入行数',
+    order_count: '订单数',
+    q_sum: 'Q列金额合计',
+    negative_rows: '负数行数',
+    negative_sum: '负数金额合计',
+    file: '文件',
+    store: '门店',
+    salesperson: '导购',
+    product: '商品',
+    amount: '金额',
+    qty: '数量',
+    member_id: '会员编号',
+    member_key: '会员标识',
+    member_name: '会员姓名',
+    phone: '手机号',
+    date: '消费日期',
+    order_no: '订单号',
+    performance: '业绩',
+    sales_amount: '销售额',
+    sales_qty: '销量',
+    sales_orders: '销售订单数',
+    total_sales: '销售总额',
+    avg_ticket: '客单价',
+    total_spend: '累计消费',
+    repurchase_times: '复购次数',
+    last_purchase_date: '最后消费日期',
+    latest_store: '最近消费门店',
+    latest_salesperson: '最近服务导购',
+    sleep_days: '沉睡天数',
+    priority: '会员等级',
+    risk_level: '风险等级',
+    contact_channel: '联系渠道',
+    favorite_product: '偏好商品',
+    suggested_script: '建议话术',
+    last_store: '最近消费门店',
+    last_salesperson: '最近服务导购',
+    recent_product: '最近消费商品',
+    sleeping_members: '沉睡会员数',
+    historical_spend: '历史消费额',
+    metric: '指标',
+    value: '数值',
+    year_month: '年月',
+    day: '日期',
+    store_count: '门店数',
+    order_bucket: '订单分层',
+    member_count: '会员数'
+  };
+  function excelHeaderName(key){
+    return EXCEL_HEADER_ZH[key] || key;
+  }
 
   function columnLetter(n){
     let s = '';
@@ -2961,7 +3013,8 @@ async function downloadWorkbook(filename, sheets){
       return;
     }
 
-    const headers = Object.keys(rows[0]);
+    const keys = Object.keys(rows[0]);
+    const headers = keys.map(excelHeaderName);
     ws.addRow(headers);
 
     const headerRow = ws.getRow(1);
@@ -2982,8 +3035,8 @@ async function downloadWorkbook(filename, sheets){
     });
 
     rows.forEach(row => {
-      ws.addRow(headers.map(h => {
-        const v = row[h];
+      ws.addRow(keys.map(k => {
+        const v = row[k];
         return v instanceof Date ? ymd(v) : v;
       }));
     });
@@ -2993,9 +3046,10 @@ async function downloadWorkbook(filename, sheets){
       to: columnLetter(headers.length) + '1'
     };
 
-    ws.columns = headers.map(h => {
-      const values = [h, ...rows.map(r => {
-        const v = r[h];
+    ws.columns = keys.map((k, idx) => {
+      const displayHeader = headers[idx];
+      const values = [displayHeader, ...rows.map(r => {
+        const v = r[k];
         return v instanceof Date ? ymd(v) : String(v ?? '');
       })];
       const maxLen = Math.min(30, Math.max(12, ...values.map(v => String(v).length)));
@@ -3080,7 +3134,7 @@ document.querySelectorAll('.tab').forEach(tab => {
       renderSleepingTabCharts(appState.sleepingMode || 'store');
       refreshSleepingTable(getActiveResults());
     } else if (tab.dataset.tab === 'validation') {
-      setDownloadTarget('validation.xlsx', [
+      setDownloadTarget('数据校验结果.xlsx', [
         { name:'文件校验', rows: appState.results?.results?.fileCheck || [] },
         { name:'识别后的列映射', rows: appState.results?.mappings || [] }
       ]);
