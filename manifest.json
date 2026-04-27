@@ -1,0 +1,25 @@
+{
+  "name": "销售分析助手",
+  "short_name": "销售分析",
+  "description": "面向中文用户的本地 Excel 销售分析、会员复购和沉睡会员唤醒工具。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#02030f",
+  "theme_color": "#08142f",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
