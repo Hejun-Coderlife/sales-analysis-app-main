@@ -3,17 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#08142f" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="销售分析助手" />
-  <title>销售分析助手</title>
+  <title>销售分析应用</title>
   <link rel="icon" type="image/png" href="./favicon.png" />
-  <link rel="manifest" href="./manifest.json" />
-  <script src="./assets/vendor/xlsx.full.min.js"></script>
-  <script src="./assets/vendor/chart.umd.js"></script>
-  <script src="./assets/vendor/chartjs-plugin-datalabels.min.js"></script>
-  <script src="./assets/vendor/exceljs.min.js"></script>
-  <script src="./assets/vendor/three.r128.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
     :root{
       --bg:#161d31; --card:#ffffff; --text:#111827; --muted:#667085;
@@ -21,7 +17,7 @@
       --glow:#606292;
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;background:#02030f;min-height:100vh;color:var(--text);position:relative;overflow-x:hidden}
+    body{margin:0;font-family:Arial, sans-serif;background:#02030f;min-height:100vh;color:var(--text);position:relative;overflow-x:hidden}
 
     /* ============================================================
        ANIMATED GALAXY + SCIENTIFIC DESIGN BACKGROUND
@@ -393,11 +389,6 @@ input[type="date"], select.control-select{
       border:1px solid #7690f3;border-radius:12px;padding:10px 12px;background:#ffffff;color:var(--text);min-width:120px;box-shadow:0 0 12px rgba(105,105,159,.18)
     }
     input[type="file"]{padding:8px 0}
-    .file-picker-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .file-input-hidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-    .file-trigger{min-height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #7690f3;border-radius:10px;padding:8px 12px;background:#f8fbff;color:#102047;font-weight:700;cursor:pointer;box-shadow:0 0 12px rgba(105,105,159,.16)}
-    .file-trigger:hover{filter:brightness(1.03)}
-    .file-summary{font-size:13px;color:#53607a}
     button{border:1px solid #007a31;background:linear-gradient(180deg, #00963d, #007a31);color:#fff;padding:11px 16px;border-radius:12px;cursor:pointer;font-weight:600;box-shadow:0 0 18px rgba(105,105,159,.34)}
     button,.filter-trigger{transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
     button:hover,.filter-trigger:hover{transform:translateY(-1px);filter:brightness(1.08);box-shadow:0 6px 18px rgba(0,0,0,.18),0 0 18px rgba(105,105,159,.35)}
@@ -493,6 +484,9 @@ input[type="date"], select.control-select{
     .hidden{display:none}
     #resultArea{width:100%;margin:0 auto}
     .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef3ff;color:#2342ad;font-size:12px;font-weight:700;box-shadow:0 0 8px rgba(118,144,243,.16)}
+    .mini-name-scroll{margin-left:2px;min-width:0;flex:1;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none}
+    .mini-name-scroll::-webkit-scrollbar{display:none}
+    .mini-name-scroll-track{display:inline-block;padding-right:12px}
     .ok{color:var(--good)}
     .warn{color:var(--warn)}
     
@@ -671,9 +665,9 @@ input[type="date"], select.control-select{
 </script>
 
 <div class="wrap">
-  <h1>销售分析助手</h1>
-  <p>上传一个或多个 Excel 文件，销售表现、会员复购和沉睡会员分析都会在浏览器本地完成。</p>
-  <p class="small">内置规则：支持 Q 列金额逻辑、保留负数、自动识别文本金额，并生成沉睡会员唤醒清单。</p>
+  <h1>销售分析应用</h1>
+  <p>请用 Chrome 打开此文件，上传一个或多个 Excel 文件，分析会完全在浏览器中完成。</p>
+  <p class="small">内置规则：使用 <b>Q 列金额逻辑</b>，保留负数，将文本金额转换为真实数字，并生成沉睡会员分析。</p>
 
   
   
@@ -682,12 +676,8 @@ input[type="date"], select.control-select{
       <div class="control-left">
         <div class="upload-box">
           <label for="files">上传 Excel 文件（.xls / .xlsx）</label>
-          <div class="file-picker-row">
-            <input id="files" class="file-input-hidden" type="file" accept=".xls,.xlsx" multiple />
-            <label for="files" class="file-trigger">选择文件</label>
-            <span id="fileSummary" class="file-summary">未选择文件</span>
-          </div>
-          <div class="small">可一次选择多个文件，点击分析后数据不会离开本机浏览器。</div>
+          <input id="files" type="file" accept=".xls,.xlsx" multiple />
+          <div class="small">上传一个或多个文件后，可直接在浏览器中运行分析。</div>
         </div>
 
         <div class="button-group">
@@ -695,7 +685,7 @@ input[type="date"], select.control-select{
             <div class="analyze-spinner" aria-hidden="true"></div>
             <button id="analyzeBtn" class="btn">开始分析</button>
           </div>
-          <button id="downloadSleepXlsxBtn" class="light btn">下载报表</button>
+          <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
         </div>
 
         <div class="status-row">
@@ -707,7 +697,7 @@ input[type="date"], select.control-select{
 <div class="field-grid">
           
 <div class="col control-field" data-control="dashboardDateRange" style="grid-column: span 2;">
-  <label>统计时间</label>
+  <label>评估时间</label>
   <div class="filter-dropdown" id="dashboardDateDropdown">
     <button type="button" class="filter-trigger" id="dashboardDateTrigger">
       <span class="range-trigger-text" id="dashboardDateTriggerText">选择日期范围</span>
@@ -746,14 +736,14 @@ input[type="date"], select.control-select{
               </div>
             </div>
             <div class="col">
-              <label>导购</label>
+              <label>销售员</label>
               <div class="filter-dropdown" id="dashboardSalespersonDropdown">
                 <button type="button" class="filter-trigger" id="dashboardSalespersonTrigger">
-                  <span id="dashboardSalespersonTriggerText">全部导购</span>
+                  <span id="dashboardSalespersonTriggerText">全部销售员</span>
                   <span class="filter-caret">▾</span>
                 </button>
                 <div class="filter-menu hidden" id="dashboardSalespersonMenu">
-                  <input id="dashboardSalespersonSearch" class="store-search-input" type="text" placeholder="搜索导购" />
+                  <input id="dashboardSalespersonSearch" class="store-search-input" type="text" placeholder="搜索销售员" />
                   <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSalespeopleBtn">完成</button></div>
                   <div id="dashboardSalespersonOptions" class="store-options"></div>
                 </div>
@@ -780,26 +770,26 @@ input[type="date"], select.control-select{
             <input id="sleepDays" type="number" value="90" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinOrders">
-            <label for="sleepMinOrders">最低会员订单数</label>
+            <label for="sleepMinOrders">会员最低订单数</label>
             <input id="sleepMinOrders" type="number" value="2" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinAmount">
-            <label for="sleepMinAmount">最低会员消费额</label>
+            <label for="sleepMinAmount">会员最低消费</label>
             <input id="sleepMinAmount" type="number" value="1000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="aclassMinAmount">
-            <label for="aclassMinAmount">A 类会员最低消费额</label>
+            <label for="aclassMinAmount">A 类最低消费</label>
             <input id="aclassMinAmount" type="number" value="3000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="filterSalesperson">
-            <label>按导购筛选</label>
+            <label>按销售员筛选</label>
             <div class="filter-dropdown" id="sleepSalespersonDropdown">
               <button type="button" class="filter-trigger" id="sleepSalespersonTrigger">
-                <span id="sleepSalespersonTriggerText">全部导购</span>
+                <span id="sleepSalespersonTriggerText">全部销售员</span>
                 <span class="filter-caret">▾</span>
               </button>
               <div class="filter-menu hidden" id="sleepSalespersonMenu">
-                <input id="sleepSalespersonSearch" class="store-search-input" type="text" placeholder="搜索导购" />
+                <input id="sleepSalespersonSearch" class="store-search-input" type="text" placeholder="搜索销售员" />
                 <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSleepSalespersonBtn">完成</button></div>
                 <div id="sleepSalespersonOptions" class="store-options"></div>
               </div>
@@ -812,53 +802,53 @@ input[type="date"], select.control-select{
 
   <div id="resultArea" class="hidden">
     <div class="grid grid-4" style="margin-top:16px">
-      <div class="card kpi"><div class="label">销售总额</div><div class="value" id="kpiSales">-</div></div>
-      <div class="card kpi"><div class="label">订单总数</div><div class="value" id="kpiOrders">-</div></div>
+      <div class="card kpi"><div class="label">总销售额</div><div class="value" id="kpiSales">-</div></div>
+      <div class="card kpi"><div class="label">总订单数</div><div class="value" id="kpiOrders">-</div></div>
       <div class="card kpi"><div class="label">会员登记率</div><div class="value" id="kpiReg">-</div></div>
       <div class="card kpi"><div class="label">复购率</div><div class="value" id="kpiRep">-</div></div>
       <div class="card kpi"><div class="label">平均复购次数</div><div class="value" id="kpiRepTimes">-</div></div>
-      <div class="card kpi"><div class="label">沉睡会员数</div><div class="value" id="kpiSleep">-</div></div>
+      <div class="card kpi"><div class="label">沉睡会员</div><div class="value" id="kpiSleep">-</div></div>
       <div class="card kpi"><div class="label">A 类沉睡会员</div><div class="value" id="kpiASleep">-</div></div>
       <div class="card kpi"><div class="label">已加载文件</div><div class="value" id="kpiFiles">-</div></div>
     </div>
 
     <div class="tabs" style="margin-top:16px">
-      <div class="tab active" data-tab="dashboard">经营看板</div>
-      <div class="tab" data-tab="rankings">排行榜</div>
-      <div class="tab" data-tab="members">会员分析</div>
+      <div class="tab active" data-tab="dashboard">看板</div>
+      <div class="tab" data-tab="rankings">排行</div>
+      <div class="tab" data-tab="members">会员</div>
       <div class="tab" data-tab="sleeping">沉睡会员</div>
-      <div class="tab" data-tab="validation">数据校验</div>
+      <div class="tab" data-tab="validation">校验</div>
     </div>
 
     <div id="dashboard" class="tab-panel">
       <div class="grid grid-2">
         <div class="card">
           <div class="section-title chart-title-lock">月度销售趋势</div>
-          <div class="small">点击下方卡片切换图表；双击上方图表卡片可重置。</div>
+          <div class="small">点击下方卡片切换图表。双击顶部图表卡片可重置。</div>
           <canvas id="monthlyChart"></canvas>
         </div>
         <div class="card">
           <div class="section-title chart-title-lock">复购结构</div>
-          <div class="small">右侧图表会跟随左侧图表同步变化。</div>
+          <div class="small">右侧图表会随左侧图表同步变化。</div>
           <canvas id="repurchaseChart"></canvas>
         </div>
       </div>
       <div class="dashboard-lower">
         <div class="dashboard-lower-left">
           <div class="card" id="topStoresCard" style="cursor:pointer">
-            <div class="section-title">门店销售 TOP</div>
-            <div class="small">点击后更新上方两张图表</div>
+            <div class="section-title">门店排行</div>
+            <div class="small">点击更新两个图表</div>
             <div id="topStores" style="max-height:420px;overflow:auto"></div>
           </div>
           <div class="card" id="topSalespeopleCard" style="cursor:pointer">
-            <div class="section-title">导购销售 TOP</div>
-            <div class="small">点击后更新上方两张图表</div>
+            <div class="section-title">销售员排行</div>
+            <div class="small">点击更新两个图表</div>
             <div id="topSalespeople" style="max-height:420px;overflow:auto"></div>
           </div>
         </div>
         <div class="card" id="topProductsCard" style="cursor:pointer">
-          <div class="section-title">商品销售 TOP</div>
-          <div class="small">点击后更新上方两张图表</div>
+          <div class="section-title">商品排行</div>
+          <div class="small">点击更新两个图表</div>
           <div id="topProducts" style="max-height:420px;overflow:auto"></div>
         </div>
       </div>
@@ -879,32 +869,32 @@ input[type="date"], select.control-select{
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-top:16px;align-items:start;overflow-x:auto;padding:6px 6px 10px">
         <div class="card" id="rankingsStoreCard" style="cursor:pointer;min-width:320px">
           <div class="section-title">门店业绩排行</div>
-          <div class="small">点击后更新上方两张图表</div>
+          <div class="small">点击更新上方两个图表</div>
           <div id="rankingsStoreMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsSalespersonCard" style="cursor:pointer;min-width:320px">
-          <div class="section-title">导购业绩排行</div>
-          <div class="small">点击后更新上方两张图表</div>
+          <div class="section-title">销售员业绩排行</div>
+          <div class="small">点击更新上方两个图表</div>
           <div id="rankingsSalespersonMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsProductCard" style="cursor:pointer;min-width:320px">
           <div class="section-title">商品排行</div>
-          <div class="small">点击后更新上方两张图表</div>
+          <div class="small">点击更新上方两个图表</div>
           <div id="rankingsProductMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsTicketCard" style="cursor:pointer;min-width:320px">
           <div class="section-title">客单价排行</div>
-          <div class="small">点击后更新上方两张图表</div>
+          <div class="small">点击更新上方两个图表</div>
           <div id="rankingsTicketMini" style="max-height:360px;overflow:auto"></div>
         </div>
       </div>
 
       <div class="card" id="storeRankingCard" style="margin-top:16px">
-        <div class="section-title" id="storeRankingTitle" style="cursor:pointer">门店业绩排行</div><div class="small">点击下方标题可切换上方两张图表。</div>
+        <div class="section-title" id="storeRankingTitle" style="cursor:pointer">门店业绩排行</div><div class="small">点击下方标题可切换上方两个图表。</div>
         <div class="table-wrap" id="storeRankTable"></div>
       </div>
       <div class="card" id="salespersonRankingCard" style="margin-top:16px">
-        <div class="section-title" id="salespersonRankingTitle" style="cursor:pointer">导购业绩排行</div>
+        <div class="section-title" id="salespersonRankingTitle" style="cursor:pointer">销售员业绩排行</div>
         <div class="table-wrap" id="salesRankTable"></div>
       </div>
       <div class="card" id="productRankingCard" style="margin-top:16px">
@@ -924,12 +914,12 @@ input[type="date"], select.control-select{
           <canvas id="membersLineChart"></canvas>
         </div>
         <div class="card">
-          <div class="section-title">会员消费 TOP</div>
+          <div class="section-title">会员消费排行</div>
           <canvas id="membersBarChart"></canvas>
         </div>
       </div>
       <div class="card" id="memberRankingCard" style="margin-top:16px">
-        <div class="section-title" id="memberRankingTitle" style="cursor:pointer">会员消费排行</div><div class="small">点击标题可用会员排行刷新上方两张图表。</div>
+        <div class="section-title" id="memberRankingTitle" style="cursor:pointer">会员消费排行</div><div class="small">点击此标题，可按会员排行刷新上方两个图表。</div>
         <div class="table-wrap" id="memberRankTable"></div>
       </div>
     </div>
@@ -948,12 +938,12 @@ input[type="date"], select.control-select{
       <div class="sleep-row" style="margin-top:16px">
         <div class="card sleep-card" id="sleepWakeListCard" style="cursor:pointer">
           <div class="section-title" id="sleepWakeListTitle" style="cursor:pointer">沉睡会员唤醒清单</div>
-          <div class="small">点击卡片更新上方图表；表格内可滚动查看更多。</div>
+          <div class="small">点击此卡片更新上方两个图表。可在表格内滚动查看更多。</div>
           <div class="table-wrap" id="sleepListTable"></div>
         </div>
         <div class="card sleep-card" id="sleepByStoreCard" style="cursor:pointer">
           <div class="section-title" id="sleepByStoreTitle" style="cursor:pointer">按门店统计沉睡会员</div>
-          <div class="small">点击卡片更新上方图表。</div>
+          <div class="small">点击此卡片更新上方两个图表。</div>
           <div class="table-wrap" id="sleepByStoreTable"></div>
         </div>
       </div>
@@ -969,7 +959,7 @@ input[type="date"], select.control-select{
         <div class="table-wrap" id="fileCheckTable"></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="section-title">识别到的字段映射</div>
+        <div class="section-title">识别到的列映射</div>
         <div class="table-wrap" id="mappingTable"></div>
       </div>
     </div>
@@ -982,8 +972,8 @@ input[type="date"], select.control-select{
     <div id="earth-canvas"></div>
   </div>
   <div class="earth-caption">
-    GLOBAL NETWORK
-    <span class="earth-hint">DRAG TO ROTATE · SCROLL TO ZOOM</span>
+    Global Network
+    <span class="earth-hint">Drag to rotate · Scroll to zoom</span>
   </div>
 </section>
 
@@ -1009,78 +999,79 @@ const HEADER_CANDIDATES = {
   order_no: ['单号','订单号','销售单号','流水号','Order No','Order ID'],
 };
 
-const UI_TEXT = {
-  allStores: '全部门店',
-  allSalespeople: '全部导购',
-  allProducts: '全部商品',
-  noMatchingStores: '没有匹配的门店',
-  noMatchingSalespeople: '没有匹配的导购',
-  noMatchingProducts: '没有匹配的商品',
-  selectDateRange: '选择日期范围',
-  noData: '暂无数据。',
-  no: '序号',
-  hover: '悬停',
-  members: '会员数',
-  amount: '金额'
-};
-
 const FIELD_LABELS = {
-  source_file: '来源文件',
   file: '文件',
-  included_rows: '有效行数',
-  order_count: '订单数',
-  q_sum: '金额合计',
-  negative_rows: '负数行数',
-  negative_sum: '负数金额',
   store: '门店',
-  salesperson: '导购',
+  salesperson: '销售员',
   product: '商品',
   performance: '业绩',
   sales_amount: '销售额',
   sales_qty: '销售数量',
   sales_orders: '销售订单数',
-  total_sales: '销售总额',
+  total_sales: '总销售额',
+  order_count: '订单数',
   avg_ticket: '客单价',
   member_key: '会员标识',
+  member_id: '会员编号',
   member_name: '会员姓名',
-  total_spend: '历史消费额',
-  last_purchase_date: '最后消费日期',
   phone: '手机号',
+  total_spend: '累计消费',
+  last_purchase_date: '最近消费日期',
   latest_store: '最近门店',
-  latest_salesperson: '最近导购',
+  latest_salesperson: '最近销售员',
   repurchase_times: '复购次数',
   sleep_days: '沉睡天数',
-  last_store: '最近消费门店',
-  last_salesperson: '最近服务导购',
-  recent_product: '最近购买商品',
+  last_store: '最近门店',
+  last_salesperson: '最近销售员',
+  recent_product: '最近商品',
   favorite_product: '偏好商品',
   priority: '优先级',
   risk_level: '风险等级',
-  contact_channel: '建议触达方式',
+  contact_channel: '触达方式',
   suggested_script: '建议话术',
   sleeping_members: '沉睡会员数',
-  historical_spend: '历史消费额',
+  historical_spend: '历史消费',
   metric: '指标',
   value: '数值',
-  year_month: '月份',
-  day: '日期',
-  store_count: '门店数',
-  order_bucket: '复购区间',
-  member_count: '会员数',
+  source_file: '来源文件',
+  included_rows: '纳入行数',
+  q_sum: 'Q 列金额合计',
+  negative_rows: '负数行数',
+  negative_sum: '负数金额合计',
   amount: '金额',
   qty: '数量',
-  member_id: '会员编号',
   date: '日期',
-  order_no: '订单号'
+  order_no: '订单号',
+  is_member_order: '是否会员订单',
+  year_month: '年月',
+  order_key: '订单键',
+  day: '日期',
+  store_count: '门店数',
+  order_bucket: '订单次数区间',
+  member_count: '会员数'
 };
 
-const TABLE_LABEL_OVERRIDES = {
-  sleepByStoreTable: { last_store: '门店' }
+const SHEET_LABELS = {
+  'Store Ranking': '门店排行',
+  'Salesperson Ranking': '销售员排行',
+  'Product Ranking': '商品排行',
+  'Average Ticket Ranking': '客单价排行',
+  'Member Spend Ranking': '会员消费排行',
+  'Sleeping Members by Store': '按门店统计沉睡会员',
+  'Sleeping Member Wake-up List': '沉睡会员唤醒清单',
+  'Daily Sales': '每日销售',
+  'Monthly Sales': '月度销售',
+  'Repurchase Structure': '复购结构',
+  'Top Stores': '门店排行',
+  'Top Salespeople': '销售员排行',
+  'Top Products': '商品排行',
+  'File Validation': '文件校验',
+  'Resolved Column Mapping': '识别到的列映射'
 };
 
-function labelFor(field, contextId){
-  return TABLE_LABEL_OVERRIDES[contextId]?.[field] || FIELD_LABELS[field] || field;
-}
+function displayColumnName(key){ return FIELD_LABELS[key] || key; }
+function displaySheetName(name){ return SHEET_LABELS[name] || name; }
+function hoverSuffix(label){ return '（悬停：' + label + '）'; }
 
 Chart.register(ChartDataLabels);
 
@@ -1365,14 +1356,14 @@ function groupBy(array, keyFn){
 }
 function sum(arr, key){ return arr.reduce((a,b)=>a+(Number(b[key])||0),0); }
 function uniqueCount(arr, key){ return new Set(arr.map(x=>x[key])).size; }
-function fmtCurrency(n){ const sign = n < 0 ? '-' : ''; return sign + '¥' + Math.abs(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2}); }
-function fmtInt(n){ return (n || 0).toLocaleString('zh-CN'); }
+function fmtCurrency(n){ const sign = n < 0 ? '-' : ''; return sign + '¥' + Math.abs(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtInt(n){ return (n || 0).toLocaleString(); }
 function fmtPct(n){ return ((n || 0) * 100).toFixed(1) + '%'; }
 function shortNumber(n){
   const num = Number(n || 0);
   if (Math.abs(num) >= 100000000) return (num/100000000).toFixed(2) + '亿';
   if (Math.abs(num) >= 10000) return (num/10000).toFixed(1) + '万';
-  return num.toLocaleString('zh-CN');
+  return num.toLocaleString();
 }
 function ymd(date){
   if (!date) return '';
@@ -1508,8 +1499,8 @@ function analyze(cleaned, cfg){
     const contact_channel = priority === 'A' ? '电话 + 1 对 1 微信' : (m.order_count >= 3 ? '1 对 1 微信 + 优惠券' : '短信 / 群发微信');
     const favorite_product = favProductMap.get(key) || '';
     const suggested_script = favorite_product
-      ? '您常买的“' + favorite_product + '”现在有会员专属权益，要不要帮您预留一份？'
-      : '我们为老会员准备了回店权益，本周要不要帮您预约一个到店时间？';
+      ? '我们为您常买的商品“' + favorite_product + '”保留了一份会员专属优惠，需要帮您预留吗？'
+      : '我们为老会员准备了一份回店福利，本周需要帮您预留到店名额吗？';
     return { ...m, sleep_days, last_store:recent?.store || m.latest_store || '', last_salesperson:recent?.salesperson || m.latest_salesperson || '', recent_product:recent?.product || '', favorite_product, priority, risk_level, contact_channel, suggested_script };
   }).filter(m => m.order_count >= cfg.sleepMinOrders && m.total_spend >= cfg.sleepMinAmount && m.sleep_days >= cfg.sleepDays)
     .sort((a,b)=>(a.priority.localeCompare(b.priority))||(b.total_spend-a.total_spend)||(b.sleep_days-a.sleep_days));
@@ -1524,7 +1515,7 @@ function analyze(cleaned, cfg){
 
   const bucketCounter = {};
   for (const m of memberRank){
-    const bucket = m.order_count === 1 ? '1 单' : m.order_count === 2 ? '2 单' : m.order_count === 3 ? '3 单' : m.order_count <= 5 ? '4-5 单' : '6 单以上';
+    const bucket = m.order_count === 1 ? '1单' : m.order_count === 2 ? '2单' : m.order_count === 3 ? '3单' : m.order_count <= 5 ? '4-5单' : '6单以上';
     bucketCounter[bucket] = (bucketCounter[bucket] || 0) + 1;
   }
   const repurchaseDistribution = Object.entries(bucketCounter).map(([order_bucket, member_count]) => ({order_bucket, member_count}));
@@ -1538,7 +1529,7 @@ function analyze(cleaned, cfg){
   const repRate = memberRank.length ? memberRank.filter(x=>x.order_count>=2).length / memberRank.length : 0;
   const avgRepTimes = memberRank.filter(x=>x.order_count>=2).length ? memberRank.filter(x=>x.order_count>=2).reduce((a,b)=>a+b.repurchase_times,0) / memberRank.filter(x=>x.order_count>=2).length : 0;
 
-  const sleepByStore = [...groupBy(sleepList, x => x.last_store || '未知门店').entries()].map(([last_store, items]) => ({
+  const sleepByStore = [...groupBy(sleepList, x => x.last_store || '未知').entries()].map(([last_store, items]) => ({
     last_store, sleeping_members:items.length, historical_spend:items.reduce((a,b)=>a+b.total_spend,0)
   })).sort((a,b)=>b.sleeping_members-a.sleeping_members);
 
@@ -1560,9 +1551,9 @@ function analyze(cleaned, cfg){
     sleepSummary: [
       { metric:'分析截止日期', value: ymd(analysisDate) },
       { metric:'沉睡会员数', value: sleepList.length },
-      { metric:'沉睡会员历史消费额', value: sleepList.reduce((a,b)=>a+b.total_spend,0) },
+      { metric:'沉睡会员历史消费', value: sleepList.reduce((a,b)=>a+b.total_spend,0) },
       { metric:'A 类会员数', value: sleepList.filter(x=>x.priority==='A').length },
-      { metric:'A 类会员历史消费额', value: sleepList.filter(x=>x.priority==='A').reduce((a,b)=>a+b.total_spend,0) },
+      { metric:'A 类历史消费', value: sleepList.filter(x=>x.priority==='A').reduce((a,b)=>a+b.total_spend,0) },
       { metric:'B 类会员数', value: sleepList.filter(x=>x.priority==='B').length },
       { metric:'C 类会员数', value: sleepList.filter(x=>x.priority==='C').length }
     ]
@@ -1570,10 +1561,10 @@ function analyze(cleaned, cfg){
 }
 function renderTable(containerId, rows, formatters = {}, addIndex = false){
   const el = document.getElementById(containerId);
-  if (!rows || !rows.length){ el.innerHTML = '<p class="small" style="padding:12px">' + UI_TEXT.noData + '</p>'; return; }
+  if (!rows || !rows.length){ el.innerHTML = '<p class="small" style="padding:12px">暂无数据。</p>'; return; }
   const cols = Object.keys(rows[0]);
-  let headerCells = addIndex ? '<th style="width:70px">' + UI_TEXT.no + '</th>' : '';
-  headerCells += cols.map(c => '<th>' + labelFor(c, containerId) + '</th>').join('');
+  let headerCells = addIndex ? '<th style="width:70px">序号</th>' : '';
+  headerCells += cols.map(c => '<th>' + displayColumnName(c) + '</th>').join('');
   let html = '<table><thead><tr>' + headerCells + '</tr></thead><tbody>';
   rows.forEach((row, idx) => {
     let rowHtml = addIndex ? '<td>' + (idx + 1) + '</td>' : '';
@@ -1588,15 +1579,59 @@ function renderTable(containerId, rows, formatters = {}, addIndex = false){
   html += '</tbody></table>';
   el.innerHTML = html;
 }
-function renderMiniList(elId, rows, keyField, valueField, formatter, rankBase = 0){
+function renderMiniList(elId, rows, keyField, valueField, formatter, rankBase = 0, options = {}){
   const el = document.getElementById(elId);
-  if (!rows.length){ el.innerHTML = '<p class="small">' + UI_TEXT.noData + '</p>'; return; }
-  const rowStyle = 'display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)';
+  if (!rows.length){ el.innerHTML = '<p class="small">暂无数据。</p>'; return; }
+  const showBelowAveragePercent = !!options.showBelowAveragePercent;
+  const enableNameScroll = !!options.enableNameScroll;
+  const sideMetricField = options.sideMetricField || '';
+  const sideMetricFormatter = typeof options.sideMetricFormatter === 'function' ? options.sideMetricFormatter : (v) => String(v ?? '');
+  const sideMetricLabel = options.sideMetricLabel ? String(options.sideMetricLabel) : '';
+  const averageRows = Array.isArray(options.averageRows) && options.averageRows.length ? options.averageRows : rows;
+  const avgValues = averageRows
+    .map(r => Number(r?.[valueField]))
+    .filter(v => Number.isFinite(v));
+  const averageValue = avgValues.length ? (avgValues.reduce((sum, v) => sum + v, 0) / avgValues.length) : null;
+  const hasAverage = Number.isFinite(averageValue);
+  const rowStyle = 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)';
   const nameStyle = 'margin-left:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
   const listHtml = rows.map((r,i) =>
-    '<div style="' + rowStyle + '">' +
-    '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1"><span class="pill">#' + (rankBase + i + 1) + '</span><span style="' + nameStyle + '" title="' + String(r[keyField] ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '">' + r[keyField] + '</span></div>' +
-    '<div style="font-weight:700;flex-shrink:0">' + formatter(r[valueField]) + '</div></div>'
+    (() => {
+      const valueNum = Number(r?.[valueField]);
+      const isBelowAverage = showBelowAveragePercent && hasAverage && Number.isFinite(valueNum) && valueNum < averageValue;
+      const diffPercent = (showBelowAveragePercent && hasAverage && Number.isFinite(valueNum) && averageValue !== 0)
+        ? (((valueNum - averageValue) / Math.abs(averageValue)) * 100)
+        : null;
+      const diffPercentText = Number.isFinite(diffPercent)
+        ? ((diffPercent >= 0 ? '+' : '') + diffPercent.toFixed(1) + '%')
+        : '';
+      const nameTitle = escapeHtml(r[keyField]);
+      const nameText = escapeHtml(r[keyField]);
+      const nameCell = enableNameScroll
+        ? ('<div class="mini-name-scroll" title="' + nameTitle + '"><span class="mini-name-scroll-track">' + nameText + '</span></div>')
+        : ('<span style="' + nameStyle + '" title="' + nameTitle + '">' + nameText + '</span>');
+      const valueColorStyle = isBelowAverage ? ';color:#f87171' : '';
+      const percentColorStyle = isBelowAverage ? ';color:#f87171' : ';color:#7a7e84';
+      const deltaCell = showBelowAveragePercent
+        ? ('<div style="min-width:52px;text-align:right;font-size:12px;font-weight:600;flex-shrink:0' + percentColorStyle + '">' + diffPercentText + '</div>')
+        : '';
+      const sideMetricRaw = sideMetricField ? r?.[sideMetricField] : null;
+      const sideMetricCell = sideMetricField
+        ? ('<div style="min-width:84px;text-align:right;font-size:12px;font-weight:600;flex-shrink:0;color:#7a7e84">' + escapeHtml(sideMetricLabel + sideMetricFormatter(sideMetricRaw)) + '</div>')
+        : '';
+      return '<div style="' + rowStyle + '">' +
+        '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1"><span class="pill">#' + (rankBase + i + 1) + '</span>' + nameCell + '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0">' +
+        sideMetricCell +
+        deltaCell +
+        '<div style="font-weight:700;text-align:right' + valueColorStyle + '">' + formatter(r[valueField]) + '</div>' +
+        '</div></div>';
+    })()
   ).join('');
   el.innerHTML = listHtml;
 }
@@ -1682,7 +1717,7 @@ function selectedSleepingSalesperson(){
 function updateSleepingSalespersonSelectedText(){
   const el = document.getElementById('sleepSalespersonTriggerText');
   if (!el) return;
-  el.textContent = selectedSleepingSalesperson() || UI_TEXT.allSalespeople;
+  el.textContent = selectedSleepingSalesperson() || '全部销售员';
 }
 function populateSleepingSalespersonOptions(){
   const wrap = document.getElementById('sleepSalespersonOptions');
@@ -1698,7 +1733,7 @@ function populateSleepingSalespersonOptions(){
     const checked = name === selected;
     return '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>' + UI_TEXT.allSalespeople + '</span></label>' + (optionsHtml || '<div class="small">' + UI_TEXT.noMatchingSalespeople + '</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">没有匹配的销售员</div>');
   wrap.querySelectorAll('input[name="sleepSalespersonFilter"]').forEach(input => {
     input.addEventListener('change', () => {
       appState.selectedSleepingSalesperson = normalizeText(input.value);
@@ -1713,8 +1748,8 @@ function updateDashboardSalespersonSelectedText(){
   const el = document.getElementById('dashboardSalespersonTriggerText');
   if (!el) return;
   const selected = selectedDashboardSalespeople();
-  if (!selected.length) { el.textContent = UI_TEXT.allSalespeople; return; }
-  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 位导购';
+  if (!selected.length) { el.textContent = '全部销售员'; return; }
+  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 位销售员';
 }
 function selectedDashboardProducts(){
   return [...appState.selectedProducts];
@@ -1723,7 +1758,7 @@ function updateDashboardProductSelectedText(){
   const el = document.getElementById('dashboardProductTriggerText');
   if (!el) return;
   const selected = selectedDashboardProducts();
-  if (!selected.length) { el.textContent = UI_TEXT.allProducts; return; }
+  if (!selected.length) { el.textContent = '全部商品'; return; }
   el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 个商品';
 }
 function populateDashboardProductOptions(){
@@ -1741,7 +1776,7 @@ function populateDashboardProductOptions(){
   const allowed = new Set(products);
   appState.selectedProducts = new Set([...prev].filter(p => allowed.has(p)));
   const filtered = products.filter(p => appState.selectedProducts.has(p) || !search || p.toLowerCase().includes(search));
-  // With search text, "All products" selects/deselects only rows matching that search.
+  // 有搜索词时，“全部商品”只选择或取消当前搜索匹配项。
   const searchScopeAll = search
     ? products.filter(p => p.toLowerCase().includes(search))
     : products;
@@ -1749,7 +1784,7 @@ function populateDashboardProductOptions(){
     const checked = appState.selectedProducts.has(prod);
     return '<label class="store-option"><input type="checkbox" value="' + prod.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + prod + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>' + UI_TEXT.allProducts + '</span></label>' + (optionsHtml || '<div class="small">' + UI_TEXT.noMatchingProducts + '</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>全部商品</span></label>' + (optionsHtml || '<div class="small">没有匹配的商品</div>');
   const allOpt = document.getElementById('dashboardProductAllOption');
   function syncProductAllCheckbox(){
     if (!allOpt) return;
@@ -1813,7 +1848,7 @@ function populateDashboardSalespersonOptions(){
     const checked = appState.selectedSalespeople.has(name);
     return '<label class="store-option"><input type="checkbox" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>' + UI_TEXT.allSalespeople + '</span></label>' + (optionsHtml || '<div class="small">' + UI_TEXT.noMatchingSalespeople + '</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">没有匹配的销售员</div>');
   const allOpt = document.getElementById('dashboardSalespeopleAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedSalespeople.size === names.length && names.length > 0;
@@ -1852,7 +1887,7 @@ function updateDashboardStoreSelectedText(){
   const el = document.getElementById('dashboardStoreTriggerText');
   if (!el) return;
   const selected = selectedDashboardStores();
-  if (!selected.length) { el.textContent = UI_TEXT.allStores; return; }
+  if (!selected.length) { el.textContent = '全部门店'; return; }
   el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 家门店';
 }
 function populateDashboardStoreOptions(){
@@ -1867,7 +1902,7 @@ function populateDashboardStoreOptions(){
     const checked = appState.selectedStores.has(store);
     return '<label class="store-option"><input type="checkbox" value="' + store.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + store + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>' + UI_TEXT.allStores + '</span></label>' + (optionsHtml || '<div class="small">' + UI_TEXT.noMatchingStores + '</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>全部门店</span></label>' + (optionsHtml || '<div class="small">没有匹配的门店</div>');
   const allOpt = document.getElementById('dashboardStoreAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedStores.size === stores.length && stores.length > 0;
@@ -1911,7 +1946,7 @@ function updateDateRangeTriggerText(){
   if (s && e) el.textContent = `${s} ~ ${e}`;
   else if (s) el.textContent = `${s} ~`;
   else if (e) el.textContent = `~ ${e}`;
-  else el.textContent = UI_TEXT.selectDateRange;
+  else el.textContent = '选择日期范围';
 }
 function showOverlayLight(show){
   let ov = document.getElementById('overlayLight');
@@ -2168,7 +2203,7 @@ function renderRankingTabCharts(mode){
   let title2 = '排行对比';
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('门店业绩排行.xlsx', [{ name:'门店业绩排行', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店排行.xlsx', [{ name:'Store Ranking', rows: results.storeRank || [] }]);
     setActiveGlow('#rankingsStoreCard');
     rows = results.storeRank.slice(0, 10);
     miniRows = results.storeRank || [];
@@ -2177,16 +2212,16 @@ function renderRankingTabCharts(mode){
     title1 = '门店业绩趋势';
     title2 = '门店业绩对比';
   } else if (mode === 'salesperson'){
-    setDownloadTarget('导购业绩排行.xlsx', [{ name:'导购业绩排行', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('销售员排行.xlsx', [{ name:'Salesperson Ranking', rows: results.salespersonRank || [] }]);
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     miniRows = results.salespersonRank || [];
     labels = rows.map(x => x.salesperson);
     values = rows.map(x => x.performance);
-    title1 = '导购业绩趋势';
-    title2 = '导购业绩对比';
+    title1 = '销售员业绩趋势';
+    title2 = '销售员业绩对比';
   } else if (mode === 'product'){
-    setDownloadTarget('商品销售排行.xlsx', [{ name:'商品销售排行', rows: results.productRank || [] }]);
+    setDownloadTarget('商品排行.xlsx', [{ name:'Product Ranking', rows: results.productRank || [] }]);
     setActiveGlow('#rankingsProductCard');
     rows = results.productRank.slice(0, 10);
     miniRows = rows;
@@ -2195,7 +2230,7 @@ function renderRankingTabCharts(mode){
     title1 = '商品销售趋势';
     title2 = '商品销售对比';
   } else if (mode === 'ticket'){
-    setDownloadTarget('客单价排行.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
+    setDownloadTarget('客单价排行.xlsx', [{ name:'Average Ticket Ranking', rows: results.ticketRank || [] }]);
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
     miniRows = rows;
@@ -2264,8 +2299,8 @@ function renderRankingTabCharts(mode){
     rightChart.data.datasets[0].hoverOffset = 12;
     rightChart.data.datasets[0].hoverBackgroundColor = hoverBackgroundColorsFrom(values.map((_, i) => basePalette.bg[i]));
 
-    if (leftTitle) leftTitle.textContent = idx != null ? (title1 + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : title1;
-    if (rightTitle) rightTitle.textContent = idx != null ? (title2 + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : title2;
+    if (leftTitle) leftTitle.textContent = idx != null ? (title1 + hoverSuffix(labels[idx])) : title1;
+    if (rightTitle) rightTitle.textContent = idx != null ? (title2 + hoverSuffix(labels[idx])) : title2;
     if (miniConfig) {
       const miniRowsForHover = idx != null && miniRows[idx] ? [miniRows[idx]] : miniRows;
       renderMiniList(miniConfig.elId, miniRowsForHover, miniConfig.keyField, miniConfig.valueField, fmtCurrency, idx != null ? idx : 0);
@@ -2389,14 +2424,14 @@ function renderMembersTabCharts(mode){
   const ticketVals = chartRowsForHover.map(x => x.avg_ticket);
   const repurchaseVals = chartRowsForHover.map(x => x.repurchase_times);
 
-  setDownloadTarget('会员消费排行.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
+  setDownloadTarget('会员消费排行.xlsx', [{ name:'Member Spend Ranking', rows: results.memberRank || [] }]);
   setActiveGlow('#memberRankingCard');
   let leftTitle = '会员消费趋势';
-  let rightTitle = '会员消费 TOP';
+  let rightTitle = '会员消费排行';
   let leftData = spendVals;
   let rightData = spendVals;
-  let leftLabel = '会员消费额';
-  let rightLabel = '会员消费 TOP';
+  let leftLabel = '会员消费';
+  let rightLabel = '会员消费排行';
 
   if (mode === 'ticket'){
     leftTitle = '会员客单价趋势';
@@ -2474,8 +2509,8 @@ function renderMembersTabCharts(mode){
     rightChart.data.datasets[0].borderWidth = 0;
     rightChart.data.datasets[0].hoverOffset = 12;
     rightChart.data.datasets[0].hoverBackgroundColor = hoverBackgroundColorsFrom(rightData.map((_, i) => memberPalette.bg[i]));
-    if (leftTitleEl) leftTitleEl.textContent = idx != null ? (leftTitle + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : leftTitle;
-    if (rightTitleEl) rightTitleEl.textContent = idx != null ? (rightTitle + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : rightTitle;
+    if (leftTitleEl) leftTitleEl.textContent = idx != null ? (leftTitle + hoverSuffix(labels[idx])) : leftTitle;
+    if (rightTitleEl) rightTitleEl.textContent = idx != null ? (rightTitle + hoverSuffix(labels[idx])) : rightTitle;
     leftChart.update('none');
     rightChart.update('none');
     if (idx != null) {
@@ -2600,7 +2635,7 @@ function renderSleepingTabCharts(mode){
   let chartRowsForHover = [];
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('按门店统计沉睡会员.xlsx', [{ name:'按门店统计沉睡会员', rows: results.sleepByStore || [] }]);
+    setDownloadTarget('按门店统计沉睡会员.xlsx', [{ name:'Sleeping Members by Store', rows: results.sleepByStore || [] }]);
     setActiveGlow('#sleepByStoreCard');
     storeFullForTable = results.sleepByStore || [];
     chartRowsForHover = storeFullForTable.slice(0,10);
@@ -2608,18 +2643,18 @@ function renderSleepingTabCharts(mode){
     leftData = chartRowsForHover.map(x=>x.sleeping_members);
     rightData = chartRowsForHover.map(x=>x.historical_spend);
     leftLabel = '沉睡会员数';
-    rightLabel = '历史消费额';
+    rightLabel = '历史消费';
     leftTitle = '按门店统计沉睡会员';
-    rightTitle = '沉睡会员历史消费额';
+    rightTitle = '沉睡会员历史消费';
   } else if (mode === 'list'){
-    setDownloadTarget('沉睡会员唤醒清单.xlsx', [{ name:'沉睡会员唤醒清单', rows: getFilteredSleepList() || results.sleepList || [] }]);
+    setDownloadTarget('沉睡会员唤醒清单.xlsx', [{ name:'Sleeping Member Wake-up List', rows: getFilteredSleepList() || results.sleepList || [] }]);
     setActiveGlow('#sleepWakeListCard');
     listFullForTable = getFilteredSleepList(results) || [];
     chartRowsForHover = listFullForTable.slice(0,10);
     labels = chartRowsForHover.map(x=>x.member_name || x.member_key);
     leftData = chartRowsForHover.map(x=>x.total_spend);
     rightData = chartRowsForHover.map(x=>x.sleep_days);
-    leftLabel = '沉睡会员消费额';
+    leftLabel = '沉睡会员消费';
     rightLabel = '沉睡天数';
     leftTitle = '沉睡会员唤醒清单';
     rightTitle = '沉睡会员沉睡天数';
@@ -2687,8 +2722,8 @@ function renderSleepingTabCharts(mode){
     rightChart.data.datasets[0].borderWidth = 0;
     rightChart.data.datasets[0].hoverOffset = 12;
     rightChart.data.datasets[0].hoverBackgroundColor = hoverBackgroundColorsFrom(rightData.map((_, i) => sleepingPalette.bg[i]));
-    if (leftTitleEl) leftTitleEl.textContent = idx != null ? (leftTitle + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : leftTitle;
-    if (rightTitleEl) rightTitleEl.textContent = idx != null ? (rightTitle + '（' + UI_TEXT.hover + '：' + labels[idx] + '）') : rightTitle;
+    if (leftTitleEl) leftTitleEl.textContent = idx != null ? (leftTitle + hoverSuffix(labels[idx])) : leftTitle;
+    if (rightTitleEl) rightTitleEl.textContent = idx != null ? (rightTitle + hoverSuffix(labels[idx])) : rightTitle;
     leftChart.update('none');
     rightChart.update('none');
     if (idx != null) {
@@ -2817,9 +2852,14 @@ function getActiveResults(){
 function renderAllTablesFromResults(results){
   if (!results) return;
 
-  renderMiniList('topStores', results.storeRank || [], 'store', 'performance', fmtCurrency);
-  renderMiniList('topSalespeople', results.salespersonRank || [], 'salesperson', 'performance', fmtCurrency);
-  renderMiniList('topProducts', results.productRank || [], 'product', 'sales_amount', fmtCurrency);
+  renderMiniList('topStores', results.storeRank || [], 'store', 'performance', fmtCurrency, 0, { showBelowAveragePercent: true });
+  renderMiniList('topSalespeople', results.salespersonRank || [], 'salesperson', 'performance', fmtCurrency, 0, { showBelowAveragePercent: true });
+  renderMiniList('topProducts', results.productRank || [], 'product', 'sales_amount', fmtCurrency, 0, {
+    enableNameScroll: true,
+    sideMetricField: 'sales_qty',
+    sideMetricFormatter: fmtInt,
+    sideMetricLabel: '数量 '
+  });
 
   renderMiniList('rankingsStoreMini', results.storeRank || [], 'store', 'performance', fmtCurrency);
   renderMiniList('rankingsSalespersonMini', results.salespersonRank || [], 'salesperson', 'performance', fmtCurrency);
@@ -2958,8 +2998,8 @@ function applyDashboardShareSelection(rows, labelKey, valueKey, leftTitleEl, bas
       rightChart.data.datasets[0].hoverBackgroundColor = hoverBackgroundColorsFrom(rows.map((_, i) => palette.bg[i]));
     }
   }
-  if (leftTitleEl) leftTitleEl.textContent = hoverIdx != null && rows[hoverIdx] ? (baseTitle + '（' + UI_TEXT.hover + '：' + rows[hoverIdx][labelKey] + '）') : baseTitle;
-  if (rightTitleEl) rightTitleEl.textContent = hoverIdx != null && rows[hoverIdx] ? (rightBaseTitle + '（' + UI_TEXT.hover + '：' + rows[hoverIdx][labelKey] + '）') : rightBaseTitle;
+  if (leftTitleEl) leftTitleEl.textContent = hoverIdx != null && rows[hoverIdx] ? (baseTitle + hoverSuffix(rows[hoverIdx][labelKey])) : baseTitle;
+  if (rightTitleEl) rightTitleEl.textContent = hoverIdx != null && rows[hoverIdx] ? (rightBaseTitle + hoverSuffix(rows[hoverIdx][labelKey])) : rightBaseTitle;
 
   leftChart.update('none');
   if (rightChart) rightChart.update('none');
@@ -2996,9 +3036,14 @@ function applyDashboardShareSelection(rows, labelKey, valueKey, leftTitleEl, bas
 
   const mode = appState.dashboardShareSelection?.mode;
   const miniConfig = {
-    stores: { elId:'topStores', keyField:'store', valueField:'performance' },
-    salespeople: { elId:'topSalespeople', keyField:'salesperson', valueField:'performance' },
-    products: { elId:'topProducts', keyField:'product', valueField:'sales_amount' }
+    stores: { elId:'topStores', keyField:'store', valueField:'performance', options:{ showBelowAveragePercent:true } },
+    salespeople: { elId:'topSalespeople', keyField:'salesperson', valueField:'performance', options:{ showBelowAveragePercent:true } },
+    products: {
+      elId:'topProducts',
+      keyField:'product',
+      valueField:'sales_amount',
+      options:{ enableNameScroll:true, sideMetricField:'sales_qty', sideMetricFormatter:fmtInt, sideMetricLabel:'数量 ' }
+    }
   }[mode];
   if (miniConfig) {
     const filteredResults = getActiveResults();
@@ -3007,7 +3052,15 @@ function applyDashboardShareSelection(rows, labelKey, valueKey, leftTitleEl, bas
     else if (mode === 'salespeople') fullListForMini = filteredResults?.salespersonRank || [];
     else if (mode === 'products') fullListForMini = filteredResults?.productRank || [];
     const pickedRows = hoverIdx != null && fullListForMini[hoverIdx] != null ? [fullListForMini[hoverIdx]] : fullListForMini;
-    renderMiniList(miniConfig.elId, pickedRows, miniConfig.keyField, miniConfig.valueField, fmtCurrency, hoverIdx != null ? hoverIdx : 0);
+    renderMiniList(
+      miniConfig.elId,
+      pickedRows,
+      miniConfig.keyField,
+      miniConfig.valueField,
+      fmtCurrency,
+      hoverIdx != null ? hoverIdx : 0,
+      miniConfig.options ? { ...miniConfig.options, averageRows: fullListForMini } : {}
+    );
   }
 }
 
@@ -3026,7 +3079,7 @@ function updateDashboardCharts(mode){
     appState.dashboardShareHoverSource = '';
     const trend = getDashboardTrendPresentation(results);
     const { useDaily, rows: trendRows, daySpan, labelKey } = trend;
-    leftTitle.textContent = useDaily ? '日销售趋势' : '月度销售趋势';
+    leftTitle.textContent = useDaily ? '每日销售趋势' : '月度销售趋势';
     rightTitle.textContent = '复购结构';
 
     const xTickOpts = useDaily && daySpan != null && daySpan > 7
@@ -3123,14 +3176,14 @@ function updateDashboardCharts(mode){
       }
     });
 
-    const REPURCHASE_BUCKET_ORDER = ['6 单以上', '4-5 单', '3 单', '2 单', '1 单'];
+    const REPURCHASE_BUCKET_ORDER = ['6单以上', '4-5单', '3单', '2单', '1单'];
     const repurchaseByBucket = Object.fromEntries((results.repurchaseDistribution || []).map(x => [x.order_bucket, x.member_count]));
     const repurchaseLabels = REPURCHASE_BUCKET_ORDER;
     const repurchaseCounts = REPURCHASE_BUCKET_ORDER.map(k => Number(repurchaseByBucket[k]) || 0);
     const repurchaseSheetRows = REPURCHASE_BUCKET_ORDER.map(k => ({ order_bucket: k, member_count: Number(repurchaseByBucket[k]) || 0 }));
     const repPalette = getChartPalette(repurchaseLabels.length);
 
-    setDownloadTarget('经营看板.xlsx', [{ name: useDaily ? '日销售' : '月度销售', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
+    setDownloadTarget('看板结果.xlsx', [{ name: useDaily ? 'Daily Sales' : 'Monthly Sales', rows: trendRows }, { name:'Repurchase Structure', rows: repurchaseSheetRows }]);
     clearActiveGlows();
     appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
       type:'doughnut',
@@ -3170,7 +3223,7 @@ function updateDashboardCharts(mode){
               label:(ctx)=>{
                 const v = ctx.parsed != null ? ctx.parsed : ctx.raw;
                 const n = Number(v);
-                return UI_TEXT.members + ': ' + fmtInt(Number.isFinite(n) ? n : 0);
+                return '会员数：' + fmtInt(Number.isFinite(n) ? n : 0);
               }
             }
           },
@@ -3206,34 +3259,34 @@ function updateDashboardCharts(mode){
   let rightChartType = 'doughnut';
 
   if (mode === 'stores'){
-    leftBaseTitle = '门店业绩 TOP 10';
+    leftBaseTitle = '门店业绩前 10';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = '门店业绩占比 TOP 10';
+    rightBaseTitle = '门店业绩占比前 10';
     rightTitle.textContent = rightBaseTitle;
     rows = results.storeRank.slice(0, 10);
     labelKey = 'store';
     valueKey = 'performance';
-    setDownloadTarget('门店业绩TOP.xlsx', [{ name:'门店业绩TOP', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店排行.xlsx', [{ name:'Top Stores', rows: results.storeRank || [] }]);
     setActiveGlow('#topStoresCard');
   } else if (mode === 'salespeople'){
-    leftBaseTitle = '导购业绩 TOP 10';
+    leftBaseTitle = '销售员业绩前 10';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = '导购业绩占比 TOP 10';
+    rightBaseTitle = '销售员业绩占比前 10';
     rightTitle.textContent = rightBaseTitle;
     rows = results.salespersonRank.slice(0, 10);
     labelKey = 'salesperson';
     valueKey = 'performance';
-    setDownloadTarget('导购业绩TOP.xlsx', [{ name:'导购业绩TOP', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('销售员排行.xlsx', [{ name:'Top Salespeople', rows: results.salespersonRank || [] }]);
     setActiveGlow('#topSalespeopleCard');
   } else if (mode === 'products'){
-    leftBaseTitle = '商品销售 TOP 10';
+    leftBaseTitle = '商品销售前 10';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = '商品销售占比 TOP 10';
+    rightBaseTitle = '商品销售占比前 10';
     rightTitle.textContent = rightBaseTitle;
     rows = results.productRank.slice(0, 10);
     labelKey = 'product';
     valueKey = 'sales_amount';
-    setDownloadTarget('商品销售TOP.xlsx', [{ name:'商品销售TOP', rows: results.productRank || [] }]);
+    setDownloadTarget('商品排行.xlsx', [{ name:'Top Products', rows: results.productRank || [] }]);
     setActiveGlow('#topProductsCard');
   }
   if (appState.dashboardShareSelection.mode !== mode) appState.dashboardShareSelection = { mode, index: null };
@@ -3242,7 +3295,7 @@ function updateDashboardCharts(mode){
 
   appState.charts.monthly = new Chart(document.getElementById('monthlyChart'), {
     type:leftChartType,
-    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:UI_TEXT.amount, data:rows.map(x=>x[valueKey]), borderRadius:{topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', maxBarThickness:40, clip:0, backgroundColor:getChartPalette(rows.length).bg, borderColor:'rgba(17,24,39,0.92)', borderWidth:0}] },
+    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius:{topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', maxBarThickness:40, clip:0, backgroundColor:getChartPalette(rows.length).bg, borderColor:'rgba(17,24,39,0.92)', borderWidth:0}] },
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -3264,7 +3317,7 @@ function updateDashboardCharts(mode){
   const dashboardPalette = getChartPalette(rows.length);
   appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
     type:rightChartType,
-    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:UI_TEXT.amount, data:rows.map(x=>x[valueKey]), borderRadius: rightChartType === 'doughnut' ? 2 : {topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', spacing: rightChartType === 'doughnut' ? 0 : 0, hoverOffset: rightChartType === 'doughnut' ? 12 : undefined, hoverBackgroundColor: rightChartType === 'doughnut' ? hoverBackgroundColorsFrom(dashboardPalette.bg) : undefined, cutout: rightChartType === 'doughnut' ? '52%' : undefined, maxBarThickness:40, clip:0, backgroundColor: rightChartType === 'doughnut' ? dashboardPalette.bg : 'rgba(96, 165, 250, 0.55)', borderColor: rightChartType === 'doughnut' ? dashboardPalette.border : 'rgba(96, 165, 250, 0.9)', borderWidth: 0}] },
+    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius: rightChartType === 'doughnut' ? 2 : {topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', spacing: rightChartType === 'doughnut' ? 0 : 0, hoverOffset: rightChartType === 'doughnut' ? 12 : undefined, hoverBackgroundColor: rightChartType === 'doughnut' ? hoverBackgroundColorsFrom(dashboardPalette.bg) : undefined, cutout: rightChartType === 'doughnut' ? '52%' : undefined, maxBarThickness:40, clip:0, backgroundColor: rightChartType === 'doughnut' ? dashboardPalette.bg : 'rgba(96, 165, 250, 0.55)', borderColor: rightChartType === 'doughnut' ? dashboardPalette.border : 'rgba(96, 165, 250, 0.9)', borderWidth: 0}] },
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -3338,7 +3391,7 @@ function refreshSleepingTable(sourceResults){
   const filtered = getFilteredSleepList(sourceResults);
   renderTable('sleepListTable', filtered, {total_spend:fmtCurrency, order_count:fmtInt, avg_ticket:fmtCurrency, repurchase_times:fmtInt, sleep_days:fmtInt}, true);
   if (document.querySelector('.tab.active')?.dataset.tab === 'sleeping') {
-    setDownloadTarget('沉睡会员唤醒清单.xlsx', [{ name:'沉睡会员唤醒清单', rows: filtered || [] }]);
+    setDownloadTarget('沉睡会员唤醒清单.xlsx', [{ name:'Sleeping Member Wake-up List', rows: filtered || [] }]);
   }
 }
 
@@ -3384,9 +3437,9 @@ function renderResults(results, mappings){
   updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
 
   const exportTrend = getDashboardTrendPresentation(getActiveResults());
-  setDownloadTarget('经营看板.xlsx', [
-    { name: exportTrend.useDaily ? '日销售' : '月度销售', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
-    { name:'复购结构', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
+  setDownloadTarget('看板结果.xlsx', [
+    { name: exportTrend.useDaily ? 'Daily Sales' : 'Monthly Sales', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
+    { name:'Repurchase Structure', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
   ]);
 
   hideDuplicateRankingCards();
@@ -3395,7 +3448,7 @@ function renderResults(results, mappings){
 
 async function downloadWorkbook(filename, sheets){
   const wb = new ExcelJS.Workbook();
-  wb.creator = '销售分析助手';
+  wb.creator = '销售分析应用';
   wb.created = new Date();
 
   function columnLetter(n){
@@ -3410,17 +3463,17 @@ async function downloadWorkbook(filename, sheets){
 
   sheets.forEach(sheet => {
     const rows = sheet.rows || [];
-    const ws = wb.addWorksheet(sheet.name, {
+    const ws = wb.addWorksheet(displaySheetName(sheet.name), {
       views: [{ state: 'frozen', ySplit: 1 }]
     });
 
     if (!rows.length){
-      ws.addRow([UI_TEXT.noData]);
+      ws.addRow(['暂无数据']);
       return;
     }
 
     const headers = Object.keys(rows[0]);
-    ws.addRow(headers.map(labelFor));
+    ws.addRow(headers.map(displayColumnName));
 
     const headerRow = ws.getRow(1);
     headerRow.eachCell((cell) => {
@@ -3452,7 +3505,7 @@ async function downloadWorkbook(filename, sheets){
     };
 
     ws.columns = headers.map(h => {
-      const values = [labelFor(h), ...rows.map(r => {
+      const values = [displayColumnName(h), ...rows.map(r => {
         const v = r[h];
         return v instanceof Date ? ymd(v) : String(v ?? '');
       })];
@@ -3488,7 +3541,7 @@ function toCSV(rows){
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  return [cols.map(labelFor).join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+  return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
 }
 
 function updateControlVisibility(activeTab){
@@ -3539,8 +3592,8 @@ document.querySelectorAll('.tab').forEach(tab => {
       refreshSleepingTable(getActiveResults());
     } else if (tab.dataset.tab === 'validation') {
       setDownloadTarget('数据校验.xlsx', [
-        { name:'文件校验', rows: appState.results?.results?.fileCheck || [] },
-        { name:'字段映射', rows: appState.results?.mappings || [] }
+        { name:'File Validation', rows: appState.results?.results?.fileCheck || [] },
+        { name:'Resolved Column Mapping', rows: appState.results?.mappings || [] }
       ]);
     }
   });
@@ -3555,11 +3608,6 @@ document.getElementById('sleepSalespersonSearch')?.addEventListener('input', pop
 document.getElementById('sleepDays')?.addEventListener('input', onGlobalFiltersChanged);
 document.getElementById('sleepMinOrders')?.addEventListener('input', onGlobalFiltersChanged);
 document.getElementById('aclassMinAmount')?.addEventListener('input', onGlobalFiltersChanged);
-document.getElementById('files')?.addEventListener('change', () => {
-  const fileCount = document.getElementById('files')?.files?.length || 0;
-  const summary = document.getElementById('fileSummary');
-  if (summary) summary.textContent = fileCount ? '已选择 ' + fileCount.toLocaleString('zh-CN') + ' 个文件' : '未选择文件';
-});
 updateControlVisibility('dashboard');
 populateDashboardStoreOptions();
 populateDashboardSalespersonOptions();
@@ -3653,7 +3701,7 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   playRunButtonBounce();
   const files = [...document.getElementById('files').files];
   const status = document.getElementById('status');
-  if (!files.length){ status.textContent = '请先上传至少一个 Excel 文件。'; return; }
+  if (!files.length){ status.textContent = '请至少上传一个文件。'; return; }
 
   const overrides = {
     store: normalizeText(document.getElementById('storeHeader')?.value || ''),
@@ -3669,16 +3717,16 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   try{
     setAnalyzeLoading(true);
     const prepared = await prepareFiles(files, overrides);
-    if (!prepared.cleaned.length){ status.textContent = '没有找到可用于分析的有效数据行。'; return; }
+    if (!prepared.cleaned.length){ status.textContent = '未找到有效数据行。'; return; }
     const results = analyze(prepared.cleaned, cfg);
     appState.lastCfg = cfg;
     appState.results = { results, mappings: prepared.mappings, originalCleaned: prepared.cleaned };
     populateSleepingSalespersonOptions();
     renderResults(results, prepared.mappings);
-    status.innerHTML = '<span class="ok">完成。</span>已从 ' + files.length.toLocaleString('zh-CN') + ' 个文件中读取 ' + prepared.cleaned.length.toLocaleString('zh-CN') + ' 行有效数据。';
+    status.innerHTML = '<span class="ok">完成。</span> 已从 ' + files.length + ' 个文件中加载 ' + prepared.cleaned.length.toLocaleString() + ' 行有效数据。';
   }catch(err){
     console.error(err);
-    status.innerHTML = '<span class="warn">错误：</span>' + (err.message || err);
+    status.innerHTML = '<span class="warn">错误：</span> ' + (err.message || err);
   }finally{
     setAnalyzeLoading(false);
   }
@@ -3724,26 +3772,6 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
   setTimeout(() => btn?.classList.remove('clicked-edge'), 1400);
   useDownloadTarget();
 });
-
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js?v=20260427-cache-refresh', { updateViaCache: 'none' }).then((registration) => {
-      registration.update();
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-      registration.addEventListener('updatefound', () => {
-        const worker = registration.installing;
-        if (!worker) return;
-        worker.addEventListener('statechange', () => {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            worker.postMessage({ type: 'SKIP_WAITING' });
-          }
-        });
-      });
-    }).catch(() => {});
-  });
-}
 </script>
 <!-- ===== Interactive 3D Earth renderer ===== -->
 <script id="earth-edges-data" type="text/plain">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</script>
