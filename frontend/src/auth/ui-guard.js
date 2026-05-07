@@ -1,3 +1,5 @@
+import { setHtml } from "../dom/safe-dom.js";
+
 function ensureAuthActions() {
   if (document.getElementById("authLogoutBtn")) return;
   const top = document.querySelector(".wrap h1");
@@ -134,7 +136,7 @@ function applyRoleUi(role, user) {
     tabEl.style.display = allowed ? "" : "none";
     const panel = tabKey ? document.getElementById(tabKey) : null;
     if (panel && !allowed) {
-      panel.innerHTML = '<div class="card"><p class="small">暂无权限查看此模块</p></div>';
+      setHtml(panel, '<div class="card"><p class="small">暂无权限查看此模块</p></div>');
       panel.classList.add("hidden");
     }
   });

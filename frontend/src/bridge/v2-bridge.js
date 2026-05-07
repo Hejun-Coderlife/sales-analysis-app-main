@@ -22,12 +22,12 @@ import {
   setV2Loading,
   v2State,
 } from "../state/v2-state.js";
+import { setHtml } from "../dom/safe-dom.js";
 import { renderVirtualTable } from "../tables/virtual-table.js";
 
 function setStatus(message, isError = false) {
-  const status = document.getElementById("status");
-  if (!status) return;
-  status.innerHTML = isError ? `<span class="warn">错误：</span>${message}` : message;
+  const html = isError ? `<span class="warn">错误：</span>${message}` : message;
+  setHtml("status", html);
 }
 
 function getFiles() {
@@ -75,12 +75,37 @@ function getSleepingConfig() {
   };
 }
 
-async function optionalSection(promiseFactory, fallbackValue) {
+function isPermissionDeniedError(error) {
+  const message = String(error?.message || "");
+  return (
+    message.includes("你没有权限查看该范围的数据。") ||
+    message.includes("无权限访问") ||
+    message.includes("暂无权限查看此模块") ||
+    /\b403\b/i.test(message)
+  );
+}
+
+const MODULE_FORBIDDEN_HTML = '<p class="small" style="padding:12px">暂无权限查看此模块</p>';
+const forbiddenRenderIds = new Set();
+
+function queueForbiddenContainers(containerIds) {
+  if (!Array.isArray(containerIds)) return;
+  containerIds.forEach((id) => forbiddenRenderIds.add(id));
+}
+
+function flushForbiddenPlaceholders() {
+  for (const id of forbiddenRenderIds) {
+    setHtml(id, MODULE_FORBIDDEN_HTML);
+  }
+  forbiddenRenderIds.clear();
+}
+
+async function optionalSection(promiseFactory, fallbackValue, containerIds = null) {
   try {
     return await promiseFactory();
   } catch (error) {
-    const message = String(error?.message || "");
-    if (message.includes("你没有权限查看该范围的数据。") || message.includes("无权限访问")) {
+    if (isPermissionDeniedError(error)) {
+      queueForbiddenContainers(containerIds);
       return fallbackValue;
     }
     throw error;
@@ -139,9 +164,7 @@ function buildRepurchaseDistribution(memberRows = []) {
 }
 
 function renderUnavailableMessage(containerId, message) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  el.innerHTML = `<p class="small" style="padding:12px">${message}</p>`;
+  setHtml(containerId, `<p class="small" style="padding:12px">${message}</p>`);
 }
 
 function applyQualityMessages(results, qualityMessages = []) {
@@ -209,40 +232,74 @@ function mergeV2IntoLegacyResults(payload) {
   return merged;
 }
 
+function runRenderStep(label, fn) {
+  try {
+    fn();
+  } catch (error) {
+    console.warn(`[v2-bridge] render step skipped (${label}):`, error);
+  }
+}
+
 function renderFromResults(results, keepDropdownOpen = false) {
   if (!results) return;
   document.getElementById("resultArea")?.classList.remove("hidden");
-  window.renderKpisFromResults?.(results);
-  window.renderAllTablesFromResults?.(results);
-  window.updateDashboardCharts?.("default");
-  window.renderRankingTabCharts?.(window.appState?.rankingsMode || "store");
-  window.renderMembersTabCharts?.(window.appState?.membersMode || "spend");
-  window.renderSleepingTabCharts?.(window.appState?.sleepingMode || "store");
-  applyQualityMessages(results, window.appState?.results?.qualityMessages || []);
+  runRenderStep("renderKpisFromResults", () => window.renderKpisFromResults?.(results));
+  runRenderStep("renderAllTablesFromResults", () => window.renderAllTablesFromResults?.(results));
+  runRenderStep("updateDashboardCharts", () => window.updateDashboardCharts?.("default"));
+  runRenderStep("renderRankingTabCharts", () =>
+    window.renderRankingTabCharts?.(window.appState?.rankingsMode || "store")
+  );
+  runRenderStep("renderMembersTabCharts", () =>
+    window.renderMembersTabCharts?.(window.appState?.membersMode || "spend")
+  );
+  runRenderStep("renderSleepingTabCharts", () =>
+    window.renderSleepingTabCharts?.(window.appState?.sleepingMode || "store")
+  );
+  runRenderStep("applyQualityMessages", () =>
+    applyQualityMessages(results, window.appState?.results?.qualityMessages || [])
+  );
+  flushForbiddenPlaceholders();
   if (!keepDropdownOpen) {
-    window.updateControlVisibility?.(document.querySelector(".tab.active")?.dataset.tab || "dashboard");
+    runRenderStep("updateControlVisibility", () =>
+      window.updateControlVisibility?.(document.querySelector(".tab.active")?.dataset.tab || "dashboard")
+    );
   }
 }
 
 async function fetchV2ResultBundle(datasetId) {
   const filters = getV2Filters();
   const sleepConfig = getSleepingConfig();
+  const storeForbiddenTargets = ["topStores", "rankingsStoreMini", "storeRankTable"];
+  const salespersonForbiddenTargets = ["topSalespeople", "rankingsSalespersonMini", "salesRankTable"];
+  const productForbiddenTargets = ["topProducts", "rankingsProductMini", "productRankTable"];
+  const ticketForbiddenTargets = ["rankingsTicketMini", "ticketRankTable"];
+  const memberForbiddenTargets = ["memberRankTable"];
+  const sleepForbiddenTargets = ["sleepListTable", "sleepByStoreTable", "sleepSummary"];
+  const qualityForbiddenTargets = ["fileCheckTable", "mappingTable"];
+
   const [kpis, storeRank, salespersonRank, productRank, memberRankRaw, sleepingData, trends, quality] =
     await Promise.all([
       optionalSection(() => getDatasetKpis(datasetId, filters), { totalSales: 0, totalOrders: 0 }),
       optionalSection(
         () => getStoreRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
-        []
+        [],
+        storeForbiddenTargets
       ),
       optionalSection(
         () => getSalespersonRankings(datasetId, { filters, ...v2State.pagination.salespersonRank }),
-        []
+        [],
+        [...salespersonForbiddenTargets, ...ticketForbiddenTargets]
       ),
       optionalSection(
         () => getProductRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
-        []
+        [],
+        productForbiddenTargets
       ),
-      optionalSection(() => getMemberRankings(datasetId, { filters, ...v2State.pagination.memberRank }), []),
+      optionalSection(
+        () => getMemberRankings(datasetId, { filters, ...v2State.pagination.memberRank }),
+        [],
+        memberForbiddenTargets
+      ),
       optionalSection(
         () =>
           getSleepingMembers(datasetId, {
@@ -250,12 +307,14 @@ async function fetchV2ResultBundle(datasetId) {
             ...sleepConfig,
             ...v2State.pagination.sleepList,
           }),
-        { rows: [], sleepByStore: [], sleepSummary: [] }
+        { rows: [], sleepByStore: [], sleepSummary: [] },
+        sleepForbiddenTargets
       ),
       optionalSection(() => getTrendSeries(datasetId, filters), { daily: [], weekly: [], monthly: [] }),
       optionalSection(
         () => getDataQualityReport(datasetId, filters),
-        { fileCheck: [], mappingRows: [], messages: [] }
+        { fileCheck: [], mappingRows: [], messages: [] },
+        qualityForbiddenTargets
       ),
     ]);
   const mappedSalespersonRows = salespersonRank.map((row) => ({
@@ -334,9 +393,12 @@ function renderCheckboxOptions({
       }> <span>${value}</span></label>`;
     })
     .join("");
-  wrap.innerHTML = `<label class="store-option"><input type="checkbox" id="${allId}"> <span>${allLabel}</span></label>${
-    optionsHtml || '<div class="small">暂无匹配结果</div>'
-  }`;
+  setHtml(
+    wrap,
+    `<label class="store-option"><input type="checkbox" id="${allId}"> <span>${allLabel}</span></label>${
+      optionsHtml || '<div class="small">暂无匹配结果</div>'
+    }`
+  );
   const allOpt = document.getElementById(allId);
   if (allOpt) {
     allOpt.checked = values.length > 0 && values.every((x) => selectedSet.has(x));
@@ -418,6 +480,7 @@ function wireV2FilterMenus() {
 
 async function refreshV2Results(keepDropdownOpen = false) {
   if (!v2State.activeDatasetId) return;
+  forbiddenRenderIds.clear();
   setV2Loading(true);
   if ((window.__CURRENT_USER || {}).role === "admin") window.setAnalyzeLoading?.(true);
   setStatus("正在加载 v2 分析结果...");
@@ -432,6 +495,7 @@ async function refreshV2Results(keepDropdownOpen = false) {
       : "";
     setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。${messageAddon}`);
   } catch (error) {
+    forbiddenRenderIds.clear();
     console.error("[v2-bridge] refresh failed:", error);
     setStatus(error?.message || "v2 分析刷新失败", true);
   } finally {

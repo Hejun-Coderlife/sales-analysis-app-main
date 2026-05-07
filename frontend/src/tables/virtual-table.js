@@ -1,3 +1,5 @@
+import { clearElement, setHtml } from "../dom/safe-dom.js";
+
 export function renderVirtualTable({
   container,
   columns,
@@ -7,7 +9,7 @@ export function renderVirtualTable({
 }) {
   if (!container) return;
   const safeRows = Array.isArray(rows) ? rows : [];
-  container.innerHTML = "";
+  clearElement(container);
   container.style.position = "relative";
   container.style.overflow = "auto";
   container.style.height = `${viewportHeight}px`;
@@ -30,7 +32,7 @@ export function renderVirtualTable({
     const visibleCount = Math.ceil(viewportHeight / rowHeight) + 16;
     const end = Math.min(safeRows.length, start + visibleCount);
 
-    viewport.innerHTML = "";
+    clearElement(viewport);
     viewport.style.transform = `translateY(${start * rowHeight}px)`;
 
     for (let i = start; i < end; i += 1) {

@@ -1001,6 +1001,36 @@ const HEADER_CANDIDATES = {
 
 Chart.register(ChartDataLabels);
 
+(function installSafeDomGlobals(){
+  function resolveElement(idOrElement){
+    if (idOrElement == null) return null;
+    if (typeof idOrElement === 'string') return document.getElementById(idOrElement);
+    if (typeof Element !== 'undefined' && idOrElement instanceof Element) return idOrElement;
+    return null;
+  }
+  if (typeof window.setHtml !== 'function'){
+    window.setHtml = function setHtml(idOrElement, html){
+      const el = resolveElement(idOrElement);
+      if (!el) return;
+      el.innerHTML = html == null ? '' : String(html);
+    };
+  }
+  if (typeof window.setText !== 'function'){
+    window.setText = function setText(idOrElement, text){
+      const el = resolveElement(idOrElement);
+      if (!el) return;
+      el.textContent = text == null ? '' : String(text);
+    };
+  }
+  if (typeof window.clearElement !== 'function'){
+    window.clearElement = function clearElement(idOrElement){
+      const el = resolveElement(idOrElement);
+      if (!el) return;
+      el.innerHTML = '';
+    };
+  }
+})();
+
 /** Anchor Rankings tooltips to appState.rankingsHoverIndex geometry so long x-axis labels cannot desync text vs placement. */
 if (Chart?.Tooltip?.positioners) {
   Chart.Tooltip.positioners.rankingsSynced = function(items, event){
@@ -1488,7 +1518,8 @@ function analyze(cleaned, cfg){
 }
 function renderTable(containerId, rows, formatters = {}, addIndex = false){
   const el = document.getElementById(containerId);
-  if (!rows || !rows.length){ el.innerHTML = '<p class="small" style="padding:12px">暂无数据。</p>'; return; }
+  if (!el) return;
+  if (!rows || !rows.length){ setHtml(el, '<p class="small" style="padding:12px">暂无数据。</p>'); return; }
   const cols = Object.keys(rows[0]);
   const headerLabelMap = {
     store: '门店',
@@ -1542,11 +1573,12 @@ function renderTable(containerId, rows, formatters = {}, addIndex = false){
     html += '<tr>' + rowHtml + '</tr>';
   });
   html += '</tbody></table>';
-  el.innerHTML = html;
+  setHtml(el, html);
 }
 function renderMiniList(elId, rows, keyField, valueField, formatter, rankBase = 0, options = {}){
   const el = document.getElementById(elId);
-  if (!rows.length){ el.innerHTML = '<p class="small">暂无数据。</p>'; return; }
+  if (!el) return;
+  if (!rows.length){ setHtml(el, '<p class="small">暂无数据。</p>'); return; }
   const showBelowAveragePercent = !!options.showBelowAveragePercent;
   const enableNameScroll = !!options.enableNameScroll;
   const sideMetricField = options.sideMetricField || '';
@@ -1598,7 +1630,7 @@ function renderMiniList(elId, rows, keyField, valueField, formatter, rankBase = 
         '</div></div>';
     })()
   ).join('');
-  el.innerHTML = listHtml;
+  setHtml(el, listHtml);
 }
 function destroyCharts(){
   for (const c of Object.values(appState.charts)){ if (c) c.destroy(); }
@@ -1698,7 +1730,7 @@ function populateSleepingSalespersonOptions(){
     const checked = name === selected;
     return '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>');
+  setHtml(wrap, '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>'));
   wrap.querySelectorAll('input[name="sleepSalespersonFilter"]').forEach(input => {
     input.addEventListener('change', () => {
       appState.selectedSleepingSalesperson = normalizeText(input.value);
@@ -1749,7 +1781,7 @@ function populateDashboardProductOptions(){
     const checked = appState.selectedProducts.has(prod);
     return '<label class="store-option"><input type="checkbox" value="' + prod.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + prod + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>全部商品</span></label>' + (optionsHtml || '<div class="small">暂无匹配商品</div>');
+  setHtml(wrap, '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>全部商品</span></label>' + (optionsHtml || '<div class="small">暂无匹配商品</div>'));
   const allOpt = document.getElementById('dashboardProductAllOption');
   function syncProductAllCheckbox(){
     if (!allOpt) return;
@@ -1813,7 +1845,7 @@ function populateDashboardSalespersonOptions(){
     const checked = appState.selectedSalespeople.has(name);
     return '<label class="store-option"><input type="checkbox" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>');
+  setHtml(wrap, '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>'));
   const allOpt = document.getElementById('dashboardSalespeopleAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedSalespeople.size === names.length && names.length > 0;
@@ -1867,7 +1899,7 @@ function populateDashboardStoreOptions(){
     const checked = appState.selectedStores.has(store);
     return '<label class="store-option"><input type="checkbox" value="' + store.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + store + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>全部门店</span></label>' + (optionsHtml || '<div class="small">暂无匹配门店</div>');
+  setHtml(wrap, '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>全部门店</span></label>' + (optionsHtml || '<div class="small">暂无匹配门店</div>'));
   const allOpt = document.getElementById('dashboardStoreAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedStores.size === stores.length && stores.length > 0;
@@ -1932,14 +1964,14 @@ function showOverlayLight(show){
 }
 function renderKpisFromResults(results){
   if (!results?.kpis) return;
-  document.getElementById('kpiSales').textContent = fmtCurrency(results.kpis.totalSales);
-  document.getElementById('kpiOrders').textContent = fmtInt(results.kpis.totalOrders);
-  document.getElementById('kpiReg').textContent = fmtPct(results.kpis.memberRegistrationRate);
-  document.getElementById('kpiRep').textContent = fmtPct(results.kpis.repurchaseRate);
-  document.getElementById('kpiRepTimes').textContent = Number(results.kpis.averageRepurchaseTimes || 0).toFixed(2);
-  document.getElementById('kpiSleep').textContent = fmtInt(results.kpis.sleepingMembers);
-  document.getElementById('kpiASleep').textContent = fmtInt(results.kpis.aClassSleepingMembers);
-  document.getElementById('kpiFiles').textContent = fmtInt(results.kpis.filesLoaded);
+  setText('kpiSales', fmtCurrency(results.kpis.totalSales));
+  setText('kpiOrders', fmtInt(results.kpis.totalOrders));
+  setText('kpiReg', fmtPct(results.kpis.memberRegistrationRate));
+  setText('kpiRep', fmtPct(results.kpis.repurchaseRate));
+  setText('kpiRepTimes', Number(results.kpis.averageRepurchaseTimes || 0).toFixed(2));
+  setText('kpiSleep', fmtInt(results.kpis.sleepingMembers));
+  setText('kpiASleep', fmtInt(results.kpis.aClassSleepingMembers));
+  setText('kpiFiles', fmtInt(results.kpis.filesLoaded));
 }
 
 function toggleDropdown(menuId, forceOpen){
@@ -2246,6 +2278,10 @@ function renderRankingTabCharts(mode){
   if (miniConfig) {
     renderMiniList(miniConfig.elId, miniRows, miniConfig.keyField, miniConfig.valueField, fmtCurrency, 0);
   }
+  const rankingsLineEl = document.getElementById('rankingsLineChart');
+  const rankingsBarEl = document.getElementById('rankingsBarChart');
+  if (!rankingsLineEl || !rankingsBarEl) return;
+
   const basePalette = getChartPalette(values.length);
   const applyRankingHover = (hoverIndex, sourceChart, pointerEvt) => {
     appState.rankingsHoverIndex = hoverIndex;
@@ -2304,7 +2340,7 @@ function renderRankingTabCharts(mode){
     applyRankingHover(idx, sourceChart, evt);
   };
 
-  appState.charts.rankingsLine = new Chart(document.getElementById('rankingsLineChart'), {
+  appState.charts.rankingsLine = new Chart(rankingsLineEl, {
     type:'bar',
     data:{
       labels: labels,
@@ -2313,7 +2349,7 @@ function renderRankingTabCharts(mode){
     options: { ...commonLabelOpts, interaction:{mode:'index', intersect:false}, onHover: (evt, elements) => handleHover(evt, elements, 'left') }
   });
 
-  appState.charts.rankingsBar = new Chart(document.getElementById('rankingsBarChart'), {
+  appState.charts.rankingsBar = new Chart(rankingsBarEl, {
     type:'doughnut',
     data:{
       labels: labels,
@@ -3037,6 +3073,7 @@ function updateDashboardCharts(mode){
 
   const leftTitle = document.querySelector('#dashboard .grid-2 .card:first-child .section-title');
   const rightTitle = document.querySelector('#dashboard .grid-2 .card:last-child .section-title');
+  if (!leftTitle || !rightTitle) return;
 
   if (!mode || mode === 'default'){
     appState.dashboardShareSelection = { mode: 'default', index: null };
@@ -3057,7 +3094,11 @@ function updateDashboardCharts(mode){
       return c > 0 ? s / c : null;
     });
 
-    appState.charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+    const monthlyCanvas = document.getElementById('monthlyChart');
+    const repurchaseCanvas = document.getElementById('repurchaseChart');
+    if (!monthlyCanvas || !repurchaseCanvas) return;
+
+    appState.charts.monthly = new Chart(monthlyCanvas, {
       type:'line',
       data:{
         labels: trendRows.map(x => x[labelKey]),
@@ -3150,7 +3191,7 @@ function updateDashboardCharts(mode){
 
     setDownloadTarget('dashboard_results.xlsx', [{ name: useDaily ? '日销售趋势' : '月销售趋势', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
     clearActiveGlows();
-    appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
+    appState.charts.repurchase = new Chart(repurchaseCanvas, {
       type:'doughnut',
       data:{
         labels: repurchaseLabels,
@@ -3258,7 +3299,11 @@ function updateDashboardCharts(mode){
   appState.dashboardShareHoverIndex = null;
   appState.dashboardShareHoverSource = '';
 
-  appState.charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+  const shareMonthlyCanvas = document.getElementById('monthlyChart');
+  const shareRepurchaseCanvas = document.getElementById('repurchaseChart');
+  if (!shareMonthlyCanvas || !shareRepurchaseCanvas) return;
+
+  appState.charts.monthly = new Chart(shareMonthlyCanvas, {
     type:leftChartType,
     data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius:{topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', maxBarThickness:40, clip:0, backgroundColor:getChartPalette(rows.length).bg, borderColor:'rgba(17,24,39,0.92)', borderWidth:0}] },
     options:{
@@ -3280,7 +3325,7 @@ function updateDashboardCharts(mode){
   });
 
   const dashboardPalette = getChartPalette(rows.length);
-  appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
+  appState.charts.repurchase = new Chart(shareRepurchaseCanvas, {
     type:rightChartType,
     data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius: rightChartType === 'doughnut' ? 2 : {topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', spacing: rightChartType === 'doughnut' ? 0 : 0, hoverOffset: rightChartType === 'doughnut' ? 12 : undefined, hoverBackgroundColor: rightChartType === 'doughnut' ? hoverBackgroundColorsFrom(dashboardPalette.bg) : undefined, cutout: rightChartType === 'doughnut' ? '52%' : undefined, maxBarThickness:40, clip:0, backgroundColor: rightChartType === 'doughnut' ? dashboardPalette.bg : 'rgba(96, 165, 250, 0.55)', borderColor: rightChartType === 'doughnut' ? dashboardPalette.border : 'rgba(96, 165, 250, 0.9)', borderWidth: 0}] },
     options:{
@@ -3293,7 +3338,7 @@ function updateDashboardCharts(mode){
       onHover:(evt, elements) => {
         const idx = resolveHoverIndexFromEvent(appState.charts.repurchase, evt, elements);
         if (idx != null) clearHoverTimer('dashboardShare');
-        evt.native.target.style.cursor = (elements.length || idx != null) ? 'pointer' : 'default';
+        if (evt?.native?.target) evt.native.target.style.cursor = (elements.length || idx != null) ? 'pointer' : 'default';
         if (appState.dashboardShareHoverIndex === idx && appState.dashboardShareHoverSource === 'right') return;
         appState.dashboardShareHoverIndex = idx;
         appState.dashboardShareHoverSource = 'right';
@@ -3377,7 +3422,7 @@ function hideDuplicateRankingCards(){
   });
 }
 function renderResults(results, mappings){
-  document.getElementById('resultArea').classList.remove('hidden');
+  document.getElementById('resultArea')?.classList.remove('hidden');
 
   // Evaluation time: always reset to min/max transaction dates in this upload (avoids stale range after new Excel).
   const datedRows = (appState.results?.originalCleaned || []).filter(r => r.date).sort((a,b)=>(a.date?.getTime?.()||0)-(b.date?.getTime?.()||0));
@@ -3688,10 +3733,10 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
     appState.results = { results, mappings: prepared.mappings, originalCleaned: prepared.cleaned };
     populateSleepingSalespersonOptions();
     renderResults(results, prepared.mappings);
-    status.innerHTML = '<span class="ok">完成。</span>已从 ' + files.length + ' 个文件中加载 ' + prepared.cleaned.length.toLocaleString() + ' 条有效数据。';
+    setHtml('status', '<span class="ok">完成。</span>已从 ' + files.length + ' 个文件中加载 ' + prepared.cleaned.length.toLocaleString() + ' 条有效数据。');
   }catch(err){
     console.error(err);
-    status.innerHTML = '<span class="warn">错误：</span>' + (err.message || err);
+    setHtml('status', '<span class="warn">错误：</span>' + (err.message || err));
   }finally{
     setAnalyzeLoading(false);
   }

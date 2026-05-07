@@ -1,6 +1,9 @@
 import "./config/feature-flags.js";
+import { clearElement, setHtml, setText } from "./dom/safe-dom.js";
 import { initAuthUiGuard } from "./auth/ui-guard.js";
 import { initV2Bridge } from "./bridge/v2-bridge.js";
+
+Object.assign(window, { setHtml, setText, clearElement });
 
 async function boot() {
   try {
