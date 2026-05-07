@@ -12,8 +12,78 @@
       align-items:center;
       justify-content:center;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      background:radial-gradient(1200px 700px at 15% -10%, rgba(59,130,246,.25), transparent), #f3f6fb;
+      background:#02030f;
       color:#111827;
+      position:relative;
+      overflow-x:hidden;
+      padding:16px;
+      box-sizing:border-box;
+    }
+    .space-bg{
+      position:fixed;
+      inset:0;
+      z-index:-1;
+      overflow:hidden;
+      pointer-events:none;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 15%, rgba(120, 70, 220, 0.35), transparent 60%),
+        radial-gradient(ellipse 70% 60% at 85% 80%, rgba(30, 120, 210, 0.30), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 50% 50%, rgba(180, 50, 150, 0.10), transparent 65%),
+        linear-gradient(180deg, #05061a 0%, #020210 50%, #01010a 100%);
+    }
+    .sci-grid{
+      position:absolute;
+      inset:0;
+      opacity:.10;
+      background-image:
+        linear-gradient(rgba(120,140,255,.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(120,140,255,.16) 1px, transparent 1px);
+      background-size:36px 36px,36px 36px;
+      mask-image:radial-gradient(circle at 50% 44%, black 38%, transparent 84%);
+    }
+    .nebula{
+      position:absolute;
+      filter:blur(24px);
+      border-radius:50%;
+    }
+    .nebula-1{
+      width:360px;height:360px;left:-120px;top:-20px;
+      background:radial-gradient(circle at 30% 30%, rgba(216,180,254,.38), rgba(139,92,246,.12) 55%, transparent 75%);
+    }
+    .nebula-2{
+      width:320px;height:320px;right:-130px;top:220px;
+      background:radial-gradient(circle at 60% 40%, rgba(125,211,252,.32), rgba(59,130,246,.10) 58%, transparent 78%);
+    }
+    .nebula-3{
+      width:420px;height:420px;left:50%;bottom:-220px;transform:translateX(-50%);
+      background:radial-gradient(circle at 50% 50%, rgba(244,114,182,.24), rgba(168,85,247,.08) 60%, transparent 80%);
+    }
+    .galaxy-wrap{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:700px;height:700px;opacity:.5}
+    .galaxy{
+      width:100%;height:100%;border-radius:50%;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,.24) 0%, rgba(255,255,255,.05) 18%, transparent 42%),
+        conic-gradient(from 0deg, rgba(167,139,250,.20) 0deg 70deg, rgba(56,189,248,.18) 70deg 130deg, rgba(244,114,182,.18) 130deg 200deg, rgba(251,191,36,.14) 200deg 260deg, rgba(99,102,241,.16) 260deg 320deg, rgba(167,139,250,.20) 320deg 360deg);
+      filter:blur(1px);
+    }
+    .orbit{
+      position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
+      border:1px solid rgba(165,180,252,.2);border-radius:50%;
+    }
+    .orbit::before{
+      content:"";position:absolute;left:50%;top:50%;
+      width:7px;height:7px;margin-left:-3.5px;margin-top:-3.5px;border-radius:50%;
+      background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(165,180,252,.9) 55%, transparent 100%);
+      box-shadow:0 0 12px rgba(255,255,255,.7);
+    }
+    .orbit-1{width:380px;height:380px}
+    .orbit-1::before{transform:translate(190px,0)}
+    .orbit-2{width:560px;height:560px;border-color:rgba(125,211,252,.18)}
+    .orbit-2::before{transform:translate(-280px,0)}
+    #starfield{
+      position:absolute;inset:0;
+      width:100%;height:100%;
+      opacity:.5;
     }
     .card{
       width:min(420px,92vw);
@@ -22,6 +92,8 @@
       border-radius:14px;
       box-shadow:0 20px 50px rgba(2,6,23,.12);
       padding:24px;
+      position:relative;
+      z-index:1;
     }
     h1{ margin:0 0 10px; font-size:22px; }
     p{ margin:0 0 16px; color:#4b5563; font-size:14px; }
@@ -55,6 +127,16 @@
   </style>
 </head>
 <body>
+  <div class="space-bg" aria-hidden="true">
+    <div class="sci-grid"></div>
+    <div class="nebula nebula-1"></div>
+    <div class="nebula nebula-2"></div>
+    <div class="nebula nebula-3"></div>
+    <div class="galaxy-wrap"><div class="galaxy"></div></div>
+    <div class="orbit orbit-2"></div>
+    <div class="orbit orbit-1"></div>
+    <canvas id="starfield"></canvas>
+  </div>
   <section class="card">
     <h1>销售数据分析系统</h1>
     <p>登录后可访问数据看板与管理后台。</p>
@@ -69,6 +151,33 @@
     <div class="meta">默认管理员账号：<b>admin</b> / <b>Admin@123456</b>（上线前请立即修改）。</div>
   </section>
   <script>
+    (function initStarfield(){
+      const canvas = document.getElementById("starfield");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      function drawStars(){
+        const w = Math.max(window.innerWidth, 320);
+        const h = Math.max(window.innerHeight, 480);
+        canvas.width = w;
+        canvas.height = h;
+        ctx.clearRect(0, 0, w, h);
+        const count = Math.min(120, Math.floor((w * h) / 16000));
+        for (let i = 0; i < count; i += 1){
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const r = Math.random() * 1.2 + 0.2;
+          const a = Math.random() * 0.55 + 0.2;
+          ctx.fillStyle = `rgba(224,231,255,${a})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      drawStars();
+      window.addEventListener("resize", drawStars, { passive: true });
+    })();
+
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('submitBtn');
     const msg = document.getElementById('message');
