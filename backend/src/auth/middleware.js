@@ -47,49 +47,64 @@ export function createAuthMiddleware(authService) {
     const user = await getCurrentUser(req);
     if (!user) {
       if (asPage) {
-        const next = safeLoginNextPath(req.path || "");
-        return res.redirect(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
+        const nextPath = safeLoginNextPath(req.path || "");
+        res.redirect(nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login");
+      } else {
+        res.status(401).json({ error: "请先登录" });
       }
-      return res.status(401).json({ error: "请先登录" });
+      return true;
     }
     if (!user.enabled || String(user.role || "") === "disabled") {
-      req.session?.destroy?.(() => {});
-      if (asPage) return res.redirect("/login");
-      return res.status(403).json({ error: "账号已停用" });
+      await new Promise((resolve) => {
+        if (req.session) {
+          req.session.destroy(() => resolve());
+        } else {
+          resolve();
+        }
+      });
+      if (asPage) {
+        res.redirect("/login");
+      } else {
+        res.status(403).json({ error: "账号已停用" });
+      }
+      return true;
     }
     req.currentUser = user;
     req.accessScope = authService.deriveAccessScope(user);
-    return null;
+    return false;
   };
 
   const requireAuthApi = async (req, res, next) => {
-    const handled = await attachUserContext(req, res, false);
-    if (handled) return handled;
+    if (await attachUserContext(req, res, false)) return;
     return next();
   };
 
   const requireAuthPage = async (req, res, next) => {
-    const handled = await attachUserContext(req, res, true);
-    if (handled) return handled;
+    if (await attachUserContext(req, res, true)) return;
     return next();
   };
 
   const requireRole = (...roles) => async (req, res, next) => {
-    const handled = await attachUserContext(req, res, true);
-    if (handled) return handled;
+    if (await attachUserContext(req, res, true)) return;
     const userRole = String(req.currentUser?.role || "");
-    if (!roles.includes(userRole)) return res.status(403).send("无权限访问");
+    if (!roles.includes(userRole)) {
+      res.status(403).send("无权限访问");
+      return;
+    }
     return next();
   };
 
   const requirePermission =
     (permissionName, { asPage = false } = {}) =>
     async (req, res, next) => {
-      const handled = await attachUserContext(req, res, asPage);
-      if (handled) return handled;
+      if (await attachUserContext(req, res, asPage)) return;
       if (!authService.hasPermission(req.currentUser, permissionName)) {
-        if (asPage) return res.status(403).send("无权限访问");
-        return res.status(403).json({ error: "无权限访问" });
+        if (asPage) {
+          res.status(403).send("无权限访问");
+        } else {
+          res.status(403).json({ error: "无权限访问" });
+        }
+        return;
       }
       return next();
     };

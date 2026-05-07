@@ -65,6 +65,7 @@ function ensureAuthActions() {
   }
   syncMobileEntryVisibility();
   window.addEventListener("resize", syncMobileEntryVisibility);
+}
 
 function applyRoleUi(role, user) {
   const roleMap = {
