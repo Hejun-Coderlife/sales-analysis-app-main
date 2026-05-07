@@ -1,5 +1,4 @@
 import express from "express";
-import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
@@ -10,8 +9,6 @@ import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -1144,27 +1141,29 @@ function runToolCall(contextEntry, currentUser, toolName, toolArgs) {
   return { ok: false, error: `Unknown tool: ${toolName}` };
 }
 
-const FileStore = FileStoreFactory(session);
+const sessionOptions = {
+  name: "sales.sid",
+  secret: env.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    maxAge: env.sessionMaxAgeMs,
+    httpOnly: true,
+    sameSite: "lax",
+  },
+};
+if (env.sessionStore === "file") {
+  const FileStore = FileStoreFactory(session);
+  sessionOptions.store = new FileStore({
+    path: env.sessionDir,
+    retries: 0,
+    ttl: Math.floor(env.sessionMaxAgeMs / 1000),
+  });
+}
+
 app.use(express.json({ limit: "20mb" }));
-app.use(
-  session({
-    name: "sales.sid",
-    secret: env.sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    store: new FileStore({
-      path: env.sessionDir,
-      retries: 1,
-      ttl: Math.floor(env.sessionMaxAgeMs / 1000),
-    }),
-    cookie: {
-      maxAge: env.sessionMaxAgeMs,
-      httpOnly: true,
-      sameSite: "lax",
-    },
-  })
-);
+app.use(session(sessionOptions));
 app.use(express.static(__dirname));
 
 app.post("/api/auth/login", async (req, res) => {
@@ -1606,5 +1605,11 @@ Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init()])
   .finally(() => {
     app.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
+      console.log(
+        `[session] store=${env.sessionStore}` +
+          (env.sessionStore === "memory"
+            ? " (sessions cleared on process restart; set SESSION_STORE=file on non-Windows if you need disk persistence)"
+            : ` (files in ${env.sessionDir})`)
+      );
     });
   });
