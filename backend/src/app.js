@@ -26,13 +26,14 @@ export async function initV2AnalyticsModule() {
   await jobStore.init();
 }
 
-export function getV2Router() {
+export function getV2Router(options = {}) {
   return createV2Router({
     ingestionService,
     analyticsService,
     jobStore,
     jobQueue,
     maxUploadSizeMb: env.maxUploadSizeMb,
+    onImportEvent: options.onImportEvent || null,
   });
 }
 

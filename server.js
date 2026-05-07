@@ -8,6 +8,7 @@ import { getV2Router, getV2Services, initV2AnalyticsModule } from "./backend/src
 import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
+import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 
 dotenv.config();
 
@@ -21,7 +22,16 @@ const salesContexts = new Map();
 const MAX_TOOL_CALL_STEPS = 4;
 const authService = new AuthService({ usersPath: env.usersPath });
 const { requireAuthApi, requireAuthPage, requireRole } = createAuthMiddleware(authService);
-const { analyticsService } = getV2Services();
+const { analyticsService, jobStore } = getV2Services();
+const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
+
+async function appendAuditLog(entry = {}) {
+  try {
+    await auditLogStore.append(entry);
+  } catch (_error) {
+    // Audit persistence should never break main business flow.
+  }
+}
 
 function requireAdminApi(req, res, next) {
   if (!req.session?.user) return res.status(401).json({ error: "请先登录" });
@@ -1074,6 +1084,14 @@ app.post("/api/admin/users", requireAdminApi, async (req, res) => {
       allowedStores: req.body?.allowedStores,
       allowedSalespeople: req.body?.allowedSalespeople,
     });
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "create_user",
+      targetType: "user",
+      targetId: user.id,
+      summary: `创建用户：${user.username}（角色：${user.role}）`,
+      meta: { username: user.username, role: user.role },
+    });
     return res.status(201).json({ ok: true, user });
   } catch (error) {
     return res.status(400).json({ error: error?.message || "创建用户失败" });
@@ -1082,6 +1100,14 @@ app.post("/api/admin/users", requireAdminApi, async (req, res) => {
 
 app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
   try {
+    const beforeRecord = await authService.findById(req.params.id);
+    if (!beforeRecord) return res.status(404).json({ error: "用户不存在" });
+    const before = {
+      role: beforeRecord.role,
+      enabled: Boolean(beforeRecord.enabled),
+      allowedStores: [...(beforeRecord.allowedStores || [])],
+      allowedSalespeople: [...(beforeRecord.allowedSalespeople || [])],
+    };
     const user = await authService.updateUser(req.params.id, {
       displayName: req.body?.displayName,
       role: req.body?.role,
@@ -1089,6 +1115,44 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
       allowedStores: req.body?.allowedStores,
       allowedSalespeople: req.body?.allowedSalespeople,
     });
+    if (String(before.role || "") !== String(user.role || "")) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_user_role",
+        targetType: "user",
+        targetId: user.id,
+        summary: `修改角色：${user.username}（${before.role} -> ${user.role}）`,
+      });
+    }
+    if (Boolean(before.enabled) !== Boolean(user.enabled)) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "toggle_user_enabled",
+        targetType: "user",
+        targetId: user.id,
+        summary: `${user.enabled ? "启用" : "停用"}账号：${user.username}`,
+      });
+    }
+    if (JSON.stringify(before.allowedStores || []) !== JSON.stringify(user.allowedStores || [])) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_allowed_stores",
+        targetType: "user",
+        targetId: user.id,
+        summary: `更新门店权限：${user.username}（${(user.allowedStores || []).length} 项）`,
+      });
+    }
+    if (
+      JSON.stringify(before.allowedSalespeople || []) !== JSON.stringify(user.allowedSalespeople || [])
+    ) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_allowed_salespeople",
+        targetType: "user",
+        targetId: user.id,
+        summary: `更新销售员权限：${user.username}（${(user.allowedSalespeople || []).length} 项）`,
+      });
+    }
     return res.json({ ok: true, user });
   } catch (error) {
     return res.status(400).json({ error: error?.message || "更新用户失败" });
@@ -1098,6 +1162,13 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
 app.post("/api/admin/users/:id/reset-password", requireAdminApi, async (req, res) => {
   try {
     const user = await authService.resetPassword(req.params.id, req.body?.password);
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "reset_password",
+      targetType: "user",
+      targetId: user.id,
+      summary: `重置密码：${user.username}`,
+    });
     return res.json({ ok: true, user });
   } catch (error) {
     return res.status(400).json({ error: error?.message || "重置密码失败" });
@@ -1129,11 +1200,39 @@ app.get("/api/admin/import/latest", requireAdminApi, async (_req, res) => {
   return res.json({ ok: true, latest: latest || null });
 });
 
+app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
+  const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const data = await jobStore.listJobs({ type: "ingest", limit, offset });
+  const rows = (data.rows || []).map((job) => ({
+    jobId: job.id,
+    filename: String(job?.payload?.sourceName || ""),
+    importedAt: job.updatedAt || job.createdAt,
+    rowCount: Number(job?.stats?.rowCount || 0),
+    status: String(job?.status || ""),
+    importedBy: String(job?.payload?.importedBy || ""),
+    datasetId: job?.datasetId || null,
+  }));
+  return res.json({ ok: true, rows, total: data.total, limit: data.limit, offset: data.offset });
+});
+
+app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
+  const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const data = await auditLogStore.list({ limit, offset });
+  return res.json({ ok: true, ...data });
+});
+
 app.use("/api/v2", (req, res, next) => {
   if (req.path === "/health") return next();
   return requireAuthApi(req, res, next);
 });
-app.use("/api/v2", getV2Router());
+app.use(
+  "/api/v2",
+  getV2Router({
+    onImportEvent: (entry) => appendAuditLog(entry),
+  })
+);
 
 app.post("/api/chat/context", requireAuthApi, (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
@@ -1305,7 +1404,7 @@ app.get("/", (req, res) => {
   return res.redirect("/dashboard");
 });
 
-Promise.all([initV2AnalyticsModule(), authService.init()])
+Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init()])
   .catch((error) => {
     console.error("[startup] init failed:", error?.message || error);
   })

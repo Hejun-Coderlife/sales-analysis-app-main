@@ -74,4 +74,20 @@ export class JobStore {
     await this.init();
     return this.jobs.get(id) || null;
   }
+
+  async listJobs({ type = "", limit = 100, offset = 0 } = {}) {
+    await this.init();
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+    const key = String(type || "").trim();
+    const rows = [...this.jobs.values()]
+      .filter((job) => (!key ? true : String(job.type || "") === key))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    return {
+      rows: rows.slice(safeOffset, safeOffset + safeLimit),
+      total: rows.length,
+      limit: safeLimit,
+      offset: safeOffset,
+    };
+  }
 }

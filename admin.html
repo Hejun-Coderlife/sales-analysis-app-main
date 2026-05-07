@@ -5,58 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>管理后台 - 销售数据分析系统</title>
   <style>
-    body{
-      margin:0;
-      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      background:#f3f6fb;
-      color:#111827;
-    }
-    .wrap{ max-width:1100px; margin:24px auto; padding:0 16px; }
-    .top{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:16px;
-    }
-    .btn{
-      border:none;
-      border-radius:10px;
-      min-height:38px;
-      padding:0 14px;
-      cursor:pointer;
-      font-weight:600;
-    }
+    body{ margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f3f6fb; color:#111827; }
+    .wrap{ max-width:1200px; margin:24px auto; padding:0 16px; }
+    .top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; }
+    .btn{ border:none; border-radius:10px; min-height:36px; padding:0 14px; cursor:pointer; font-weight:600; }
     .btn-primary{ background:#2563eb; color:#fff; }
     .btn-light{ background:#e5e7eb; color:#111827; }
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
-      gap:14px;
-    }
-    .card{
-      background:#fff;
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      padding:16px;
-      box-shadow:0 10px 24px rgba(2,6,23,.06);
-    }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; align-items:start; }
+    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; box-shadow:0 10px 24px rgba(2,6,23,.06); }
+    .card-wide{ grid-column:1 / -1; }
     h1{ margin:0; font-size:22px; }
     h2{ margin:0 0 8px; font-size:17px; }
     p{ margin:0; color:#4b5563; font-size:13px; line-height:1.45; }
-    table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
-    th,td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
     .meta{ font-size:12px; color:#6b7280; margin-top:8px; }
-    .field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
-    .field label{ font-size:12px; color:#374151; }
-    .field input,.field select,.field textarea{
-      min-height:36px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px;
-      font-family:inherit;
-    }
-    .field textarea{ min-height:68px; resize:vertical; }
-    .row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .ok{ color:#166534; }
     .err{ color:#b91c1c; }
     .muted{ color:#6b7280; font-size:12px; }
+    .field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+    .field label{ font-size:12px; color:#374151; }
+    .field input,.field select,.field textarea{ min-height:36px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px; font-family:inherit; }
+    .field textarea{ min-height:58px; resize:vertical; }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+    .user-item{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; margin-top:12px; }
+    .perm-list{ max-height:130px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:8px; display:grid; gap:6px; }
+    .tag-wrap{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .tag{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; font-size:12px; padding:2px 8px; }
+    .table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+    .table th,.table td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
   </style>
 </head>
 <body>
@@ -64,9 +39,9 @@
     <header class="top">
       <div>
         <h1>管理后台</h1>
-        <p>当前为第一阶段占位页面：用户、权限、数据导入能力将在后续完善。</p>
+        <p>Phase 3：优化权限编辑体验、审计日志、导入历史与备份准备。</p>
       </div>
-      <div>
+      <div class="row">
         <button id="toDashboardBtn" class="btn btn-light">数据看板</button>
         <button id="logoutBtn" class="btn btn-primary">退出登录</button>
       </div>
@@ -75,15 +50,9 @@
     <section class="grid">
       <article class="card">
         <h2>用户管理</h2>
-        <p>支持创建用户、调整角色与权限范围、启停账号、重置密码。</p>
-        <div class="field">
-          <label for="createUsername">新账号</label>
-          <input id="createUsername" placeholder="例如：user_demo" />
-        </div>
-        <div class="field">
-          <label for="createDisplayName">显示名称</label>
-          <input id="createDisplayName" placeholder="例如：门店经理A" />
-        </div>
+        <p>创建用户、调整角色、启停账号、重置密码。</p>
+        <div class="field"><label for="createUsername">新账号</label><input id="createUsername" placeholder="例如：user_demo" /></div>
+        <div class="field"><label for="createDisplayName">显示名称</label><input id="createDisplayName" placeholder="例如：门店经理A" /></div>
         <div class="field">
           <label for="createRole">角色</label>
           <select id="createRole">
@@ -93,244 +62,275 @@
             <option value="admin">管理员</option>
           </select>
         </div>
-        <div class="field">
-          <label for="createPassword">初始密码（至少8位）</label>
-          <input id="createPassword" type="password" />
-        </div>
-        <div class="row">
-          <button id="createUserBtn" class="btn btn-primary">创建用户</button>
-          <span id="createUserMsg" class="meta"></span>
-        </div>
-        <div id="userListWrap" class="meta">加载中...</div>
+        <div class="field"><label for="createPassword">初始密码（至少8位）</label><input id="createPassword" type="password" /></div>
+        <div class="row"><button id="createUserBtn" class="btn btn-primary">创建用户</button><span id="createUserMsg" class="meta"></span></div>
       </article>
-      <article class="card">
-        <h2>权限管理</h2>
-        <p>在用户列表中可直接编辑门店权限和销售员权限（逗号分隔）。管理员默认查看全部数据。</p>
-        <div id="permissionHint" class="meta">正在加载可分配权限项...</div>
-      </article>
+
       <article class="card">
         <h2>数据导入</h2>
-        <p>仅管理员可上传 Excel 导入数据。导入完成后会自动刷新最新更新时间。</p>
-        <div class="field">
-          <label for="adminImportFile">选择 Excel 文件（.xls / .xlsx）</label>
-          <input id="adminImportFile" type="file" accept=".xls,.xlsx" />
-        </div>
-        <div class="row">
-          <button id="adminImportBtn" class="btn btn-primary">开始导入</button>
-          <span id="adminImportStatus" class="meta">待上传</span>
-        </div>
+        <p>仅管理员可导入 Excel，显示实时状态、最新更新时间与历史记录。</p>
+        <div class="field"><label for="adminImportFile">选择 Excel 文件（.xls / .xlsx）</label><input id="adminImportFile" type="file" accept=".xls,.xlsx" /></div>
+        <div class="row"><button id="adminImportBtn" class="btn btn-primary">开始导入</button><span id="adminImportStatus" class="meta">待上传</span></div>
         <div id="latestImportMeta" class="meta">最新数据更新时间：暂无</div>
+      </article>
+
+      <article class="card card-wide">
+        <h2>权限管理（多选 + 手工兜底）</h2>
+        <p>优先使用可视化多选；如需自定义可使用手工文本（逗号分隔）兜底。</p>
+        <div id="permissionHint" class="meta">正在加载可分配项...</div>
+        <div id="userListWrap" class="meta">加载用户中...</div>
+      </article>
+
+      <article class="card card-wide">
+        <h2>导入历史</h2>
+        <div id="importHistoryWrap" class="meta">加载中...</div>
+      </article>
+
+      <article class="card card-wide">
+        <h2>审计日志</h2>
+        <p>记录管理员关键操作：创建用户、权限变更、重置密码、导入文件等。</p>
+        <div id="auditLogWrap" class="meta">加载中...</div>
       </article>
     </section>
   </div>
 
   <script>
-    const roleMap = {
-      admin: '管理员',
-      manager: '经理',
-      store_user: '门店用户',
-      salesperson: '销售员',
-    };
+    const roleMap = { admin: "管理员", manager: "经理", store_user: "门店用户", salesperson: "销售员" };
     let permissionOptions = { stores: [], salespeople: [] };
     let usersCache = [];
 
-    function splitCsv(value) {
-      return String(value || '')
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean);
+    const splitCsv = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const uniq = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
+    const joinCsv = (list) => (Array.isArray(list) ? list : []).join(", ");
+    const fmtTime = (v) => {
+      if (!v) return "暂无";
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("zh-CN");
+    };
+
+    function renderTagList(targetId, values) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      const rows = uniq(values);
+      el.innerHTML = rows.length ? rows.map((v) => `<span class="tag">${v}</span>`).join("") : '<span class="muted">未选择</span>';
     }
 
-    function joinCsv(list) {
-      return (Array.isArray(list) ? list : []).join(', ');
+    function renderPermissionCheckboxes(kind, userId, selectedValues) {
+      const options = kind === "stores" ? permissionOptions.stores : permissionOptions.salespeople;
+      const selectedSet = new Set(selectedValues || []);
+      if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
+      return options.map((v) => {
+        const checked = selectedSet.has(v) ? " checked" : "";
+        return `<label><input type="checkbox" data-kind="${kind}" data-id="${userId}" value="${v.replace(/"/g, "&quot;")}"${checked}/> ${v}</label>`;
+      }).join("");
     }
 
-    function fmtTime(value) {
-      if (!value) return '暂无';
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return String(value);
-      return d.toLocaleString('zh-CN');
-    }
-
-    async function refreshLatestImportMeta() {
-      const el = document.getElementById('latestImportMeta');
-      const res = await fetch('/api/admin/import/latest');
-      const data = await res.json();
-      if (!res.ok) {
-        el.textContent = data.error || '加载最新导入信息失败';
-        return;
-      }
-      const latest = data.latest;
-      if (!latest) {
-        el.textContent = '最新数据更新时间：暂无';
-        return;
-      }
-      el.textContent = `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）`;
-    }
-
-    async function loadPermissionOptions() {
-      const hint = document.getElementById('permissionHint');
-      const res = await fetch('/api/admin/permission-options');
-      const data = await res.json();
-      if (!res.ok) {
-        hint.textContent = data.error || '权限项加载失败';
-        hint.className = 'meta err';
-        return;
-      }
-      permissionOptions = data.options || { stores: [], salespeople: [] };
-      const stores = permissionOptions.stores || [];
-      const salespeople = permissionOptions.salespeople || [];
-      hint.textContent = `可分配门店 ${stores.length} 项，可分配销售员 ${salespeople.length} 项。`;
-      hint.className = 'meta';
+    function collectPermissionValues(kind, userId) {
+      const checked = [...document.querySelectorAll(`input[type="checkbox"][data-kind="${kind}"][data-id="${userId}"]:checked`)].map((x) => x.value);
+      const manual = splitCsv(document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`)?.value || "");
+      return uniq([...checked, ...manual]);
     }
 
     function renderUsers(rows) {
-      const wrap = document.getElementById('userListWrap');
+      const wrap = document.getElementById("userListWrap");
       if (!rows.length) {
-        wrap.textContent = '暂无用户';
+        wrap.textContent = "暂无用户";
         return;
       }
-      const optionsRole = (role) =>
-        Object.keys(roleMap)
-          .map((key) => `<option value="${key}"${key === role ? ' selected' : ''}>${roleMap[key]}</option>`)
-          .join('');
-      const cards = rows
-        .map((u) => `
-          <div class="card" style="margin-top:12px;padding:12px">
-            <div><b>${u.username}</b> <span class="muted">(${u.displayName || '-'})</span></div>
-            <div class="field">
-              <label>角色</label>
-              <select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select>
-            </div>
-            <div class="field">
-              <label>允许门店（逗号分隔）</label>
-              <textarea data-field="stores" data-id="${u.id}" placeholder="例如：门店1, 门店2">${joinCsv(u.allowedStores)}</textarea>
-            </div>
-            <div class="field">
-              <label>允许销售员（逗号分隔）</label>
-              <textarea data-field="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople)}</textarea>
-            </div>
-            <div class="row">
-              <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? 'checked' : ''}/> 启用</label>
-              <button class="btn btn-light" data-action="save" data-id="${u.id}">保存</button>
-              <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
-              <span id="msg-${u.id}" class="meta"></span>
-            </div>
+      const optionsRole = (role) => Object.keys(roleMap).map((k) => `<option value="${k}"${k === role ? " selected" : ""}>${roleMap[k]}</option>`).join("");
+      wrap.innerHTML = rows.map((u) => `
+        <div class="user-item">
+          <div><b>${u.username}</b> <span class="muted">(${u.displayName || "-"})</span></div>
+          <div class="field"><label>角色</label><select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select></div>
+          <div class="field"><label>门店权限（可视化多选）</label><div class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [])}</div><div id="tags-stores-${u.id}" class="tag-wrap"></div></div>
+          <div class="field"><label>门店权限（手工兜底，逗号分隔）</label><textarea data-fallback="stores" data-id="${u.id}" placeholder="例如：门店1, 门店2">${joinCsv(u.allowedStores || [])}</textarea></div>
+          <div class="field"><label>销售员权限（可视化多选）</label><div class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [])}</div><div id="tags-salespeople-${u.id}" class="tag-wrap"></div></div>
+          <div class="field"><label>销售员权限（手工兜底，逗号分隔）</label><textarea data-fallback="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
+          <div class="row">
+            <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? "checked" : ""}/> 启用</label>
+            <button class="btn btn-light" data-action="save" data-id="${u.id}">保存</button>
+            <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
+            <span id="msg-${u.id}" class="meta"></span>
           </div>
-        `)
-        .join('');
-      wrap.innerHTML = cards;
+        </div>
+      `).join("");
+      rows.forEach((u) => {
+        renderTagList(`tags-stores-${u.id}`, u.allowedStores || []);
+        renderTagList(`tags-salespeople-${u.id}`, u.allowedSalespeople || []);
+      });
     }
 
     async function loadUsers() {
-      const usersRes = await fetch('/api/admin/users');
-      const usersData = await usersRes.json();
-      const wrap = document.getElementById('userListWrap');
-      if (!usersRes.ok) {
-        wrap.textContent = usersData.error || '用户列表加载失败';
+      const res = await fetch("/api/admin/users");
+      const data = await res.json();
+      const wrap = document.getElementById("userListWrap");
+      if (!res.ok) {
+        wrap.textContent = data.error || "用户列表加载失败";
         return;
       }
-      usersCache = usersData.users || [];
+      usersCache = data.users || [];
       renderUsers(usersCache);
     }
 
-    async function createUser() {
-      const msg = document.getElementById('createUserMsg');
-      msg.className = 'meta';
-      msg.textContent = '提交中...';
-      const payload = {
-        username: document.getElementById('createUsername').value.trim(),
-        displayName: document.getElementById('createDisplayName').value.trim(),
-        role: document.getElementById('createRole').value,
-        password: document.getElementById('createPassword').value,
-      };
-      const res = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+    async function loadPermissionOptions() {
+      const hint = document.getElementById("permissionHint");
+      const res = await fetch("/api/admin/permission-options");
       const data = await res.json();
       if (!res.ok) {
-        msg.className = 'meta err';
-        msg.textContent = data.error || '创建失败';
+        hint.className = "meta err";
+        hint.textContent = data.error || "权限项加载失败";
         return;
       }
-      msg.className = 'meta ok';
-      msg.textContent = '创建成功';
-      document.getElementById('createUsername').value = '';
-      document.getElementById('createDisplayName').value = '';
-      document.getElementById('createPassword').value = '';
+      permissionOptions = data.options || { stores: [], salespeople: [] };
+      hint.className = "meta";
+      hint.textContent = `可分配门店 ${permissionOptions.stores.length} 项，可分配销售员 ${permissionOptions.salespeople.length} 项。`;
+    }
+
+    async function createUser() {
+      const msg = document.getElementById("createUserMsg");
+      msg.className = "meta";
+      msg.textContent = "提交中...";
+      const payload = {
+        username: document.getElementById("createUsername").value.trim(),
+        displayName: document.getElementById("createDisplayName").value.trim(),
+        role: document.getElementById("createRole").value,
+        password: document.getElementById("createPassword").value,
+      };
+      const res = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.className = "meta err";
+        msg.textContent = data.error || "创建失败";
+        return;
+      }
+      msg.className = "meta ok";
+      msg.textContent = "创建成功";
+      ["createUsername", "createDisplayName", "createPassword"].forEach((id) => { document.getElementById(id).value = ""; });
       await loadUsers();
+      await loadAuditLogs();
     }
 
     async function saveUser(userId) {
       const msg = document.getElementById(`msg-${userId}`);
-      msg.className = 'meta';
-      msg.textContent = '保存中...';
+      msg.className = "meta";
+      msg.textContent = "保存中...";
       const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
       const enabled = !!document.querySelector(`[data-field="enabled"][data-id="${userId}"]`)?.checked;
-      const storesRaw = document.querySelector(`[data-field="stores"][data-id="${userId}"]`)?.value;
-      const salespeopleRaw = document.querySelector(`[data-field="salespeople"][data-id="${userId}"]`)?.value;
+      const allowedStores = collectPermissionValues("stores", userId);
+      const allowedSalespeople = collectPermissionValues("salespeople", userId);
       const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role,
-          enabled,
-          allowedStores: splitCsv(storesRaw),
-          allowedSalespeople: splitCsv(salespeopleRaw),
-        }),
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, enabled, allowedStores, allowedSalespeople }),
       });
       const data = await res.json();
       if (!res.ok) {
-        msg.className = 'meta err';
-        msg.textContent = data.error || '保存失败';
+        msg.className = "meta err";
+        msg.textContent = data.error || "保存失败";
         return;
       }
-      msg.className = 'meta ok';
-      msg.textContent = '已保存';
+      msg.className = "meta ok";
+      msg.textContent = "已保存";
       await loadUsers();
+      await loadAuditLogs();
     }
 
     async function resetPassword(userId) {
-      const password = window.prompt('请输入新密码（至少 8 位）：');
+      const password = window.prompt("请输入新密码（至少8位）：");
       if (!password) return;
       const msg = document.getElementById(`msg-${userId}`);
-      msg.className = 'meta';
-      msg.textContent = '重置中...';
+      msg.className = "meta";
+      msg.textContent = "重置中...";
       const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
       const data = await res.json();
       if (!res.ok) {
-        msg.className = 'meta err';
-        msg.textContent = data.error || '重置失败';
+        msg.className = "meta err";
+        msg.textContent = data.error || "重置失败";
         return;
       }
-      msg.className = 'meta ok';
-      msg.textContent = '密码已重置';
+      msg.className = "meta ok";
+      msg.textContent = "密码已重置";
+      await loadAuditLogs();
+    }
+
+    async function refreshLatestImportMeta() {
+      const el = document.getElementById("latestImportMeta");
+      const res = await fetch("/api/admin/import/latest");
+      const data = await res.json();
+      if (!res.ok) {
+        el.className = "meta err";
+        el.textContent = data.error || "加载最新导入信息失败";
+        return;
+      }
+      const latest = data.latest;
+      el.className = "meta";
+      el.textContent = latest ? `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）` : "最新数据更新时间：暂无";
+    }
+
+    async function loadImportHistory() {
+      const wrap = document.getElementById("importHistoryWrap");
+      const res = await fetch("/api/admin/import/history?limit=20");
+      const data = await res.json();
+      if (!res.ok) {
+        wrap.className = "meta err";
+        wrap.textContent = data.error || "导入历史加载失败";
+        return;
+      }
+      const rows = data.rows || [];
+      if (!rows.length) {
+        wrap.className = "meta";
+        wrap.textContent = "暂无导入历史";
+        return;
+      }
+      wrap.className = "";
+      wrap.innerHTML = `<table class="table"><thead><tr><th>文件名</th><th>导入时间</th><th>行数</th><th>状态</th><th>导入人</th></tr></thead><tbody>${
+        rows.map((r) => `<tr><td>${r.filename || "-"}</td><td>${fmtTime(r.importedAt)}</td><td>${r.rowCount || 0}</td><td>${r.status || "-"}</td><td>${r.importedBy || "-"}</td></tr>`).join("")
+      }</tbody></table>`;
+    }
+
+    async function loadAuditLogs() {
+      const wrap = document.getElementById("auditLogWrap");
+      const res = await fetch("/api/admin/audit-logs?limit=30");
+      const data = await res.json();
+      if (!res.ok) {
+        wrap.className = "meta err";
+        wrap.textContent = data.error || "审计日志加载失败";
+        return;
+      }
+      const rows = data.rows || [];
+      if (!rows.length) {
+        wrap.className = "meta";
+        wrap.textContent = "暂无审计日志";
+        return;
+      }
+      wrap.className = "";
+      wrap.innerHTML = `<table class="table"><thead><tr><th>时间</th><th>管理员</th><th>动作</th><th>目标</th><th>摘要</th></tr></thead><tbody>${
+        rows.map((r) => `<tr><td>${fmtTime(r.timestamp)}</td><td>${r.adminUsername || "-"}</td><td>${r.actionType || "-"}</td><td>${r.targetType || "-"}:${r.targetId || "-"}</td><td>${r.summary || "-"}</td></tr>`).join("")
+      }</tbody></table>`;
     }
 
     async function uploadImportFile() {
-      const file = document.getElementById('adminImportFile').files?.[0];
-      const status = document.getElementById('adminImportStatus');
+      const file = document.getElementById("adminImportFile").files?.[0];
+      const status = document.getElementById("adminImportStatus");
       if (!file) {
-        status.className = 'meta err';
-        status.textContent = '请先选择文件';
+        status.className = "meta err";
+        status.textContent = "请先选择文件";
         return;
       }
-      status.className = 'meta';
-      status.textContent = '上传中...';
+      status.className = "meta";
+      status.textContent = "上传中...";
       const form = new FormData();
-      form.append('file', file);
-      form.append('mapping', JSON.stringify({}));
-      const uploadRes = await fetch('/api/v2/uploads', { method: 'POST', body: form });
+      form.append("file", file);
+      form.append("mapping", JSON.stringify({}));
+      const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) {
-        status.className = 'meta err';
-        status.textContent = uploadData.error || '上传失败';
+        status.className = "meta err";
+        status.textContent = uploadData.error || "上传失败";
         return;
       }
       const jobId = uploadData.jobId;
@@ -338,50 +338,61 @@
         const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
         const jobData = await jobRes.json();
         const job = jobData.job || {};
-        status.textContent = `导入状态：${job.status || 'running'}（${job.progress || 0}%）`;
-        if (job.status === 'completed') {
-          status.className = 'meta ok';
-          status.textContent = `导入完成：${job.datasetId || ''}`;
-          await refreshLatestImportMeta();
+        status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）`;
+        if (job.status === "completed") {
+          status.className = "meta ok";
+          status.textContent = `导入完成：${job.datasetId || ""}`;
+          await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs(), loadPermissionOptions()]);
           return;
         }
-        if (job.status === 'failed') {
-          status.className = 'meta err';
-          status.textContent = job.error || '导入失败';
+        if (job.status === "failed") {
+          status.className = "meta err";
+          status.textContent = job.error || "导入失败";
+          await Promise.all([loadImportHistory(), loadAuditLogs()]);
           return;
         }
         await new Promise((r) => setTimeout(r, 1200));
       }
-      status.className = 'meta err';
-      status.textContent = '导入超时，请稍后在任务状态中查看';
+      status.className = "meta err";
+      status.textContent = "导入超时，请稍后查看导入历史";
     }
 
-    document.getElementById('toDashboardBtn').addEventListener('click', () => {
-      window.location.href = '/dashboard';
-    });
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/login';
-    });
-    document.getElementById('createUserBtn').addEventListener('click', () => { void createUser(); });
-    document.getElementById('adminImportBtn').addEventListener('click', () => { void uploadImportFile(); });
-    document.getElementById('userListWrap').addEventListener('click', (event) => {
-      const target = event.target.closest('[data-action]');
+    document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
+    document.getElementById("logoutBtn").addEventListener("click", async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; });
+    document.getElementById("createUserBtn").addEventListener("click", () => { void createUser(); });
+    document.getElementById("adminImportBtn").addEventListener("click", () => { void uploadImportFile(); });
+    document.getElementById("userListWrap").addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action]");
       if (!target) return;
-      const userId = target.getAttribute('data-id');
-      const action = target.getAttribute('data-action');
+      const userId = target.getAttribute("data-id");
+      const action = target.getAttribute("data-action");
       if (!userId) return;
-      if (action === 'save') void saveUser(userId);
-      if (action === 'reset') void resetPassword(userId);
+      if (action === "save") void saveUser(userId);
+      if (action === "reset") void resetPassword(userId);
+    });
+    document.getElementById("userListWrap").addEventListener("change", (event) => {
+      const cb = event.target.closest('input[type="checkbox"][data-kind]');
+      if (!cb) return;
+      const userId = cb.getAttribute("data-id");
+      const kind = cb.getAttribute("data-kind");
+      if (!userId || !kind) return;
+      renderTagList(`tags-${kind}-${userId}`, collectPermissionValues(kind, userId));
+    });
+    document.getElementById("userListWrap").addEventListener("input", (event) => {
+      const input = event.target.closest("[data-fallback]");
+      if (!input) return;
+      const userId = input.getAttribute("data-id");
+      const kind = input.getAttribute("data-fallback");
+      if (!userId || !kind) return;
+      renderTagList(`tags-${kind}-${userId}`, collectPermissionValues(kind, userId));
     });
 
     (async () => {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) {
-        window.location.href = '/login';
-        return;
-      }
-      await Promise.all([loadUsers(), loadPermissionOptions(), refreshLatestImportMeta()]);
+      const meRes = await fetch("/api/auth/me");
+      if (!meRes.ok) { window.location.href = "/login"; return; }
+      await loadPermissionOptions();
+      await loadUsers();
+      await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs()]);
     })();
   </script>
 </body>

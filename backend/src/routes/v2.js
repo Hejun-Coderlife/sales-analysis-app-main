@@ -47,6 +47,7 @@ export function createV2Router({
   jobStore,
   jobQueue,
   maxUploadSizeMb = 100,
+  onImportEvent = null,
 }) {
   const router = express.Router();
   const upload = multer({
@@ -73,11 +74,24 @@ export function createV2Router({
     }
 
     const uploadedPath = await ingestionService.persistUploadBuffer(req.file);
+    const importedBy = String(req.currentUser?.username || "");
     const job = await jobStore.createJob({
       type: "ingest",
       payload: {
         sourceName: req.file.originalname || "upload.xlsx",
         path: uploadedPath,
+        importedBy,
+      },
+    });
+    onImportEvent?.({
+      adminUsername: importedBy,
+      actionType: "import_excel",
+      targetType: "file",
+      targetId: req.file.originalname || "upload.xlsx",
+      summary: `提交导入任务：${req.file.originalname || "upload.xlsx"}（job: ${job.id.slice(0, 8)}）`,
+      meta: {
+        jobId: job.id,
+        filename: req.file.originalname || "upload.xlsx",
       },
     });
 
