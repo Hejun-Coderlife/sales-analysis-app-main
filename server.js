@@ -9,6 +9,7 @@ import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
+import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
 dotenv.config();
 
@@ -20,8 +21,10 @@ const MAX_HISTORY_MESSAGES = 24;
 const sessions = new Map();
 const salesContexts = new Map();
 const MAX_TOOL_CALL_STEPS = 4;
+const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
 const authService = new AuthService({ usersPath: env.usersPath });
-const { requireAuthApi, requireAuthPage, requireRole } = createAuthMiddleware(authService);
+const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requireAdminApi } =
+  createAuthMiddleware(authService);
 const { analyticsService, jobStore } = getV2Services();
 const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
 
@@ -33,14 +36,10 @@ async function appendAuditLog(entry = {}) {
   }
 }
 
-function requireAdminApi(req, res, next) {
-  if (!req.session?.user) return res.status(401).json({ error: "请先登录" });
-  if (String(req.session.user.role || "") !== "admin") {
-    return res.status(403).json({ error: "仅管理员可访问" });
-  }
-  req.currentUser = req.session.user;
-  req.accessScope = authService.deriveAccessScope(req.currentUser);
-  return next();
+function ensurePermissionOrDeny(res, user, permissionName) {
+  if (hasPermission(user, permissionName)) return true;
+  res.status(403).json({ error: "无权限访问" });
+  return false;
 }
 
 function getConversationId(rawValue) {
@@ -339,6 +338,97 @@ function sanitizeSalesContext(raw) {
       sales_amount: Number(row?.sales_amount || 0),
     }), 5000),
   };
+}
+
+function applyScopeToSalesContext(sourceContext, user, scope) {
+  const context = sanitizeSalesContext(sourceContext);
+  if (!scope || scope.unrestricted) {
+    if (!hasPermission(user, "canAskSensitiveMemberQuestions")) {
+      context.memberRank = maskSensitiveMemberRows(context.memberRank, user?.allowedMemberFields || {});
+      context.sleepList = maskSensitiveMemberRows(context.sleepList, user?.allowedMemberFields || {});
+    }
+    return context;
+  }
+  if (scope.forceNoData) {
+    return {
+      ...context,
+      kpis: {
+        ...context.kpis,
+        totalSales: 0,
+        totalOrders: 0,
+        memberRegistrationRate: 0,
+        repurchaseRate: 0,
+        averageRepurchaseTimes: 0,
+        sleepingMembers: 0,
+        aClassSleepingMembers: 0,
+      },
+      topStores: [],
+      topSalespeople: [],
+      salespersonStoreStats: [],
+      yearlyStorePerformance: [],
+      monthlyStorePerformance: [],
+      weeklyStorePerformance: [],
+      topProducts: [],
+      memberRank: [],
+      sleepList: [],
+      memberStorePerformance: [],
+      salespersonYearlyPerformance: [],
+      salespersonMonthlyPerformance: [],
+      salespersonWeeklyPerformance: [],
+      salespersonDailyPerformance: [],
+      orderSummary: [],
+      dailyTrend: [],
+      monthlyTrend: [],
+      weeklyTrend: [],
+    };
+  }
+
+  const storeSet = new Set(scope.allowedStores || []);
+  const salespersonSet = new Set(scope.allowedSalespeople || []);
+  const productSet = new Set(scope.allowedProducts || []);
+  const canStore = (store) => scope.allowAllStores || !String(store || "").trim() || storeSet.has(String(store || ""));
+  const canSalesperson = (salesperson) =>
+    scope.allowAllSalespeople ||
+    !String(salesperson || "").trim() ||
+    salespersonSet.has(String(salesperson || ""));
+  const canProduct = (product) =>
+    scope.allowAllProducts || !String(product || "").trim() || productSet.has(String(product || ""));
+
+  context.topStores = (context.topStores || []).filter((row) => canStore(row.store));
+  context.topSalespeople = (context.topSalespeople || []).filter((row) => canSalesperson(row.salesperson));
+  context.salespersonStoreStats = (context.salespersonStoreStats || []).filter(
+    (row) => canStore(row.store) && canSalesperson(row.salesperson)
+  );
+  context.yearlyStorePerformance = (context.yearlyStorePerformance || []).filter((row) => canStore(row.store));
+  context.monthlyStorePerformance = (context.monthlyStorePerformance || []).filter((row) => canStore(row.store));
+  context.weeklyStorePerformance = (context.weeklyStorePerformance || []).filter((row) => canStore(row.store));
+  context.topProducts = (context.topProducts || []).filter((row) => canProduct(row.product));
+  context.memberRank = (context.memberRank || []).filter(
+    (row) => canStore(row.latest_store) && canSalesperson(row.latest_salesperson)
+  );
+  context.sleepList = (context.sleepList || []).filter(
+    (row) => canStore(row.last_store) && canSalesperson(row.last_salesperson)
+  );
+  context.memberStorePerformance = (context.memberStorePerformance || []).filter((row) => canStore(row.store));
+  context.salespersonYearlyPerformance = (context.salespersonYearlyPerformance || []).filter((row) =>
+    canSalesperson(row.salesperson)
+  );
+  context.salespersonMonthlyPerformance = (context.salespersonMonthlyPerformance || []).filter((row) =>
+    canSalesperson(row.salesperson)
+  );
+  context.salespersonWeeklyPerformance = (context.salespersonWeeklyPerformance || []).filter((row) =>
+    canSalesperson(row.salesperson)
+  );
+  context.salespersonDailyPerformance = (context.salespersonDailyPerformance || []).filter((row) =>
+    canSalesperson(row.salesperson)
+  );
+  context.orderSummary = (context.orderSummary || []).filter(
+    (row) => canStore(row.store) && canSalesperson(row.salesperson)
+  );
+
+  context.memberRank = maskSensitiveMemberRows(context.memberRank, user?.allowedMemberFields || {});
+  context.sleepList = maskSensitiveMemberRows(context.sleepList, user?.allowedMemberFields || {});
+  return context;
 }
 
 function getToolDefinitions() {
@@ -702,32 +792,38 @@ function getToolDefinitions() {
   ];
 }
 
-function runToolCall(conversationId, toolName, toolArgs) {
-  const context = salesContexts.get(conversationId);
+function runToolCall(contextEntry, currentUser, toolName, toolArgs) {
+  const context = contextEntry?.context || null;
   if (!context) {
     return {
       ok: false,
       error: "当前暂无销售数据上下文，请先上传并完成分析。",
     };
   }
+  const deny = () => ({ ok: false, error: OUT_OF_SCOPE_MESSAGE });
 
   const args = toolArgs && typeof toolArgs === "object" ? toolArgs : {};
   const limit = sanitizeLimit(args.limit, 50, 500);
   const offset = Math.max(0, Math.floor(Number(args.offset || 0)));
 
   if (toolName === "getKpis") {
+    if (!hasPermission(currentUser, "canViewKpi")) return deny();
     return { ok: true, data: context.kpis, filters: context.filters, updatedAt: context.updatedAt };
   }
   if (toolName === "getTotalSales") {
+    if (!hasPermission(currentUser, "canViewKpi")) return deny();
     return { ok: true, totalSales: context.kpis.totalSales, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopStores") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     return { ok: true, rows: context.topStores.slice(0, limit), updatedAt: context.updatedAt };
   }
   if (toolName === "getTopSalespeople") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     return { ok: true, rows: context.topSalespeople.slice(0, limit), updatedAt: context.updatedAt };
   }
   if (toolName === "getAllSalespeoplePerformance") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const allRows = context.topSalespeople || [];
     return {
       ok: true,
@@ -739,6 +835,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     };
   }
   if (toolName === "getTopSalespeopleByYear") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const year = String(args.year || "").trim();
     if (!year) return { ok: false, error: "year is required" };
     const rows = (context.salespersonYearlyPerformance || [])
@@ -749,6 +846,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, year, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopSalespeopleByMonth") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const month = String(args.month || "").trim();
     if (!month) return { ok: false, error: "month is required" };
     const rows = (context.salespersonMonthlyPerformance || [])
@@ -759,6 +857,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, month, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopSalespeopleByWeek") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const weekStart = String(args.weekStart || "").trim();
     if (!weekStart) return { ok: false, error: "weekStart is required" };
     const rows = (context.salespersonWeeklyPerformance || [])
@@ -769,6 +868,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, weekStart, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopSalespeopleByDay") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const day = String(args.day || "").trim();
     if (!day) return { ok: false, error: "day is required" };
     const rows = (context.salespersonDailyPerformance || [])
@@ -779,6 +879,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, day, updatedAt: context.updatedAt };
   }
   if (toolName === "getSalespersonLeadersByGranularity") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const granularity = String(args.granularity || "").trim();
     const limitPerPeriod = sanitizeLimit(args.limitPerPeriod, 1, 20);
     let sourceRows = [];
@@ -823,6 +924,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, granularity, rows, updatedAt: context.updatedAt };
   }
   if (toolName === "getMemberSummary") {
+    if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
     const memberRows = context.memberRank || [];
     const sleepingRows = context.sleepList || [];
     return {
@@ -839,6 +941,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     };
   }
   if (toolName === "getTopMembers") {
+    if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
     const rows = (context.memberRank || [])
       .slice(0, limit)
       .map((m, idx) => ({
@@ -855,6 +958,11 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, total: (context.memberRank || []).length, updatedAt: context.updatedAt };
   }
   if (toolName === "findMember") {
+    if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
+    const keywordRaw = String(args.keyword || "").trim();
+    const maybeSensitive =
+      /\d{6,}/.test(keywordRaw) || keywordRaw.includes("手机号") || keywordRaw.toLowerCase().includes("phone");
+    if (maybeSensitive && !hasPermission(currentUser, "canAskSensitiveMemberQuestions")) return deny();
     const keyword = String(args.keyword || "").trim().toLowerCase();
     if (!keyword) return { ok: false, error: "keyword is required" };
     const memberLimit = sanitizeLimit(args.limit, 10, 100);
@@ -874,6 +982,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     };
   }
   if (toolName === "getMembersBySalesperson") {
+    if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
     const salesperson = String(args.salesperson || "").trim().toLowerCase();
     if (!salesperson) return { ok: false, error: "salesperson is required" };
     const memberLimit = sanitizeLimit(args.limit, 30, 500);
@@ -901,6 +1010,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     };
   }
   if (toolName === "getTopMembersByStore") {
+    if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
     const store = String(args.store || "").trim().toLowerCase();
     if (!store) return { ok: false, error: "store is required" };
     const storeLimit = sanitizeLimit(args.limit, 20, 200);
@@ -924,15 +1034,18 @@ function runToolCall(conversationId, toolName, toolArgs) {
     };
   }
   if (toolName === "getHighestOrder") {
+    if (!hasPermission(currentUser, "canViewRawRows")) return deny();
     const top = (context.orderSummary || [])[0];
     if (!top) return { ok: true, row: null, message: "No order data available in current filters." };
     return { ok: true, row: top, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopOrders") {
+    if (!hasPermission(currentUser, "canViewRawRows")) return deny();
     const rows = (context.orderSummary || []).slice(0, limit);
     return { ok: true, rows, total: (context.orderSummary || []).length, updatedAt: context.updatedAt };
   }
   if (toolName === "getSalespersonStores") {
+    if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const requested = String(args.salesperson || "").trim().toLowerCase();
     if (!requested) {
       return { ok: false, error: "salesperson is required" };
@@ -951,6 +1064,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopStoresByYear") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const year = String(args.year || "").trim();
     if (!year) {
       return { ok: false, error: "year is required" };
@@ -963,6 +1077,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, year, updatedAt: context.updatedAt };
   }
   if (toolName === "getStoreYearlyRanks") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const storeRequested = String(args.store || "").trim().toLowerCase();
     if (!storeRequested) {
       return { ok: false, error: "store is required" };
@@ -987,18 +1102,21 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows: result, updatedAt: context.updatedAt };
   }
   if (toolName === "getMonthlySales") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const month = String(args.month || "").trim();
     if (!month) return { ok: false, error: "month is required" };
     const row = (context.monthlyTrend || []).find((x) => String(x.year_month || "") === month);
     return { ok: true, month, sales_amount: Number(row?.sales_amount || 0), updatedAt: context.updatedAt };
   }
   if (toolName === "getWeeklySales") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const weekStart = String(args.weekStart || "").trim();
     if (!weekStart) return { ok: false, error: "weekStart is required" };
     const row = (context.weeklyTrend || []).find((x) => String(x.weekStart || "") === weekStart);
     return { ok: true, weekStart, sales_amount: Number(row?.sales_amount || 0), updatedAt: context.updatedAt };
   }
   if (toolName === "getTopStoresByMonth") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const month = String(args.month || "").trim();
     if (!month) return { ok: false, error: "month is required" };
     const rows = (context.monthlyStorePerformance || [])
@@ -1009,6 +1127,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, month, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopStoresByWeek") {
+    if (!hasPermission(currentUser, "canAskStoreQuestions")) return deny();
     const weekStart = String(args.weekStart || "").trim();
     if (!weekStart) return { ok: false, error: "weekStart is required" };
     const rows = (context.weeklyStorePerformance || [])
@@ -1019,6 +1138,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
     return { ok: true, rows, weekStart, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopProducts") {
+    if (!hasPermission(currentUser, "canViewProductRanking")) return deny();
     return { ok: true, rows: context.topProducts.slice(0, limit), updatedAt: context.updatedAt };
   }
   return { ok: false, error: `Unknown tool: ${toolName}` };
@@ -1063,17 +1183,21 @@ app.post("/api/auth/logout", (req, res) => {
   });
 });
 
-app.get("/api/auth/me", (req, res) => {
+app.get("/api/auth/me", async (req, res) => {
   if (!req.session?.user) return res.status(401).json({ error: "未登录" });
-  return res.json({ ok: true, user: req.session.user });
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "未登录" });
+  return res.json({ ok: true, user });
 });
 
 app.get("/api/admin/users", requireAdminApi, async (_req, res) => {
+  if (!ensurePermissionOrDeny(res, _req.currentUser, "canManageUsers")) return;
   const users = await authService.listUsers();
   return res.json({ ok: true, users });
 });
 
 app.post("/api/admin/users", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canCreateUsers")) return;
   try {
     const user = await authService.createUser({
       username: req.body?.username,
@@ -1082,7 +1206,13 @@ app.post("/api/admin/users", requireAdminApi, async (req, res) => {
       password: req.body?.password,
       enabled: req.body?.enabled !== false,
       allowedStores: req.body?.allowedStores,
+      allowAllStores: req.body?.allowAllStores,
       allowedSalespeople: req.body?.allowedSalespeople,
+      allowAllSalespeople: req.body?.allowAllSalespeople,
+      allowedProducts: req.body?.allowedProducts,
+      allowAllProducts: req.body?.allowAllProducts,
+      permissions: req.body?.permissions,
+      allowedMemberFields: req.body?.allowedMemberFields,
     });
     await appendAuditLog({
       adminUsername: req.currentUser?.username,
@@ -1099,6 +1229,7 @@ app.post("/api/admin/users", requireAdminApi, async (req, res) => {
 });
 
 app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return;
   try {
     const beforeRecord = await authService.findById(req.params.id);
     if (!beforeRecord) return res.status(404).json({ error: "用户不存在" });
@@ -1107,13 +1238,23 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
       enabled: Boolean(beforeRecord.enabled),
       allowedStores: [...(beforeRecord.allowedStores || [])],
       allowedSalespeople: [...(beforeRecord.allowedSalespeople || [])],
+      allowedProducts: [...(beforeRecord.allowedProducts || [])],
+      permissions: { ...(beforeRecord.permissions || {}) },
+      allowedMemberFields: { ...(beforeRecord.allowedMemberFields || {}) },
     };
     const user = await authService.updateUser(req.params.id, {
       displayName: req.body?.displayName,
       role: req.body?.role,
       enabled: req.body?.enabled,
       allowedStores: req.body?.allowedStores,
+      allowAllStores: req.body?.allowAllStores,
       allowedSalespeople: req.body?.allowedSalespeople,
+      allowAllSalespeople: req.body?.allowAllSalespeople,
+      allowedProducts: req.body?.allowedProducts,
+      allowAllProducts: req.body?.allowAllProducts,
+      permissions: req.body?.permissions,
+      allowedMemberFields: req.body?.allowedMemberFields,
+      applyRoleDefaults: req.body?.applyRoleDefaults,
     });
     if (String(before.role || "") !== String(user.role || "")) {
       await appendAuditLog({
@@ -1153,6 +1294,35 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
         summary: `更新销售员权限：${user.username}（${(user.allowedSalespeople || []).length} 项）`,
       });
     }
+    if (JSON.stringify(before.allowedProducts || []) !== JSON.stringify(user.allowedProducts || [])) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_allowed_products",
+        targetType: "user",
+        targetId: user.id,
+        summary: `更新商品权限：${user.username}（${(user.allowedProducts || []).length} 项）`,
+      });
+    }
+    if (JSON.stringify(before.permissions || {}) !== JSON.stringify(user.permissions || {})) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_feature_permissions",
+        targetType: "user",
+        targetId: user.id,
+        summary: `更新功能权限：${user.username}`,
+      });
+    }
+    if (
+      JSON.stringify(before.allowedMemberFields || {}) !== JSON.stringify(user.allowedMemberFields || {})
+    ) {
+      await appendAuditLog({
+        adminUsername: req.currentUser?.username,
+        actionType: "update_sensitive_fields",
+        targetType: "user",
+        targetId: user.id,
+        summary: `更新敏感字段权限：${user.username}`,
+      });
+    }
     return res.json({ ok: true, user });
   } catch (error) {
     return res.status(400).json({ error: error?.message || "更新用户失败" });
@@ -1160,6 +1330,7 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
 });
 
 app.post("/api/admin/users/:id/reset-password", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canResetPasswords")) return;
   try {
     const user = await authService.resetPassword(req.params.id, req.body?.password);
     await appendAuditLog({
@@ -1176,12 +1347,13 @@ app.post("/api/admin/users/:id/reset-password", requireAdminApi, async (req, res
 });
 
 app.get("/api/admin/permission-options", requireAdminApi, async (_req, res) => {
+  if (!ensurePermissionOrDeny(res, _req.currentUser, "canAssignDataScopes")) return;
   const latest = await analyticsService.getLatestDatasetSummary();
   if (!latest?.dataset_id) {
     return res.json({
       ok: true,
       latestDataset: null,
-      options: { stores: [], salespeople: [] },
+      options: { stores: [], salespeople: [], products: [] },
     });
   }
   const options = await analyticsService.getFilterOptions(latest.dataset_id, { filters: {} });
@@ -1191,16 +1363,19 @@ app.get("/api/admin/permission-options", requireAdminApi, async (_req, res) => {
     options: {
       stores: options.stores || [],
       salespeople: options.salespeople || [],
+      products: options.products || [],
     },
   });
 });
 
 app.get("/api/admin/import/latest", requireAdminApi, async (_req, res) => {
+  if (!ensurePermissionOrDeny(res, _req.currentUser, "canViewImportHistory")) return;
   const latest = await analyticsService.getLatestDatasetSummary();
   return res.json({ ok: true, latest: latest || null });
 });
 
 app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canViewImportHistory")) return;
   const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
   const offset = Math.max(0, Number(req.query.offset) || 0);
   const data = await jobStore.listJobs({ type: "ingest", limit, offset });
@@ -1217,6 +1392,7 @@ app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
 });
 
 app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canViewAuditLogs")) return;
   const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
   const offset = Math.max(0, Number(req.query.offset) || 0);
   const data = await auditLogStore.list({ limit, offset });
@@ -1235,16 +1411,25 @@ app.use(
 );
 
 app.post("/api/chat/context", requireAuthApi, (req, res) => {
+  if (!hasPermission(req.currentUser, "canUseAgentChat")) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+  }
   const conversationId = getConversationId(req.body?.conversationId);
   if (!conversationId) {
     return res.status(400).json({ error: "缺少 conversationId" });
   }
-  const salesContext = sanitizeSalesContext(req.body?.salesContext);
-  salesContexts.set(conversationId, salesContext);
+  const salesContext = applyScopeToSalesContext(req.body?.salesContext, req.currentUser, req.accessScope);
+  salesContexts.set(conversationId, {
+    userId: String(req.currentUser?.id || ""),
+    context: salesContext,
+  });
   return res.json({ ok: true, conversationId });
 });
 
 app.post("/api/chat", requireAuthApi, async (req, res) => {
+  if (!hasPermission(req.currentUser, "canUseAgentChat")) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+  }
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.AI_MODEL || "gpt-4o-mini";
@@ -1261,6 +1446,12 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
     return res.status(400).json({
       error: "消息内容不能为空",
     });
+  }
+  if (
+    !hasPermission(req.currentUser, "canAskCompanyWideQuestions") &&
+    /(全公司|全部门店|公司整体|company[-\s]?wide|all stores|overall company)/i.test(userMessage)
+  ) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
   }
 
   try {
@@ -1340,7 +1531,11 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
           parsedArgs = {};
         }
 
-        const toolResult = runToolCall(conversationId, toolName, parsedArgs);
+        const contextEntry = salesContexts.get(conversationId);
+        if (contextEntry?.userId && contextEntry.userId !== String(req.currentUser?.id || "")) {
+          return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+        }
+        const toolResult = runToolCall(contextEntry, req.currentUser, toolName, parsedArgs);
         workingMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -1380,7 +1575,7 @@ app.post("/api/chat/reset", requireAuthApi, (req, res) => {
 
 app.get("/login", (req, res) => {
   if (req.session?.user) {
-    return res.redirect(req.session.user.role === "admin" ? "/admin" : "/dashboard");
+    return res.redirect(hasPermission(req.session.user, "canAccessAdmin") ? "/admin" : "/dashboard");
   }
   res.sendFile(path.join(__dirname, "login.html"));
 });
@@ -1392,10 +1587,10 @@ app.get("/index.html", requireAuthPage, (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-app.get("/admin", requireRole("admin"), (_req, res) => {
+app.get("/admin", requirePermission("canAccessAdmin", { asPage: true }), (_req, res) => {
   res.sendFile(path.join(__dirname, "admin.html"));
 });
-app.get("/admin.html", requireRole("admin"), (_req, res) => {
+app.get("/admin.html", requirePermission("canAccessAdmin", { asPage: true }), (_req, res) => {
   res.sendFile(path.join(__dirname, "admin.html"));
 });
 

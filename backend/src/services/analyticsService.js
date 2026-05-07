@@ -34,6 +34,12 @@ function buildWhereClause({ datasetId, filters = {} }) {
       params[`salesperson_${i}`] = String(filters.salespeople[i]);
     }
   }
+  if (Array.isArray(filters.products) && filters.products.length) {
+    clauses.push(`product IN (${filters.products.map((_, idx) => `$product_${idx}`).join(", ")})`);
+    for (let i = 0; i < filters.products.length; i += 1) {
+      params[`product_${i}`] = String(filters.products[i]);
+    }
+  }
   return { whereSql: clauses.join(" AND "), params };
 }
 

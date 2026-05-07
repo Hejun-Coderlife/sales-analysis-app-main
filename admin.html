@@ -62,6 +62,8 @@
             <option value="manager">经理</option>
             <option value="store_user">门店用户</option>
             <option value="salesperson">销售员</option>
+            <option value="viewer">查看者</option>
+            <option value="disabled">停用</option>
             <option value="admin">管理员</option>
           </select>
         </div>
@@ -98,8 +100,55 @@
   </div>
 
   <script>
-    const roleMap = { admin: "管理员", manager: "经理", store_user: "门店用户", salesperson: "销售员" };
-    let permissionOptions = { stores: [], salespeople: [] };
+    const roleMap = {
+      admin: "管理员",
+      manager: "经理",
+      store_user: "门店用户",
+      salesperson: "销售员",
+      viewer: "查看者",
+      disabled: "停用",
+    };
+    const permissionGroups = {
+      dashboard: [
+        "canViewDashboard","canViewKpi","canViewStoreRanking","canViewSalespersonRanking","canViewProductRanking",
+        "canViewMemberAnalysis","canViewSleepingMembers","canViewTrendCharts","canViewRepurchaseAnalysis","canUseFilters",
+        "canExportData","canDownloadExcel","canViewRawRows","canViewDataQuality"
+      ],
+      admin: [
+        "canAccessAdmin","canManageUsers","canCreateUsers","canDisableUsers","canResetPasswords","canAssignRoles",
+        "canAssignDataScopes","canImportExcel","canDeleteImportedData","canViewImportHistory","canViewAuditLogs",
+        "canManageSystemSettings","canManageAgentSettings","canManageDingTalkSettings","canManageBackups"
+      ],
+      agent: [
+        "canUseAgentChat","canAskCompanyWideQuestions","canAskStoreQuestions","canAskSalespersonQuestions",
+        "canAskMemberQuestions","canAskSensitiveMemberQuestions","canAskForExport","canAskForRecommendations"
+      ],
+      reminders: [
+        "canReceiveDingTalkReminders","canReceiveMemberMaintenanceReminders","canReceiveStoreManagementReminders",
+        "canReceiveSalespersonPerformanceReminders","canReceiveSleepingMemberReminders","canManageReminderRules","canManageReminderRecipients"
+      ],
+      memberFields: ["canViewMemberName","canViewPhone","canViewMemberId","canViewBirthday","canViewAddress"],
+    };
+    const permissionLabelMap = {
+      canViewDashboard: "查看数据看板", canViewKpi: "查看 KPI", canViewStoreRanking: "查看门店排行",
+      canViewSalespersonRanking: "查看销售员排行", canViewProductRanking: "查看商品排行", canViewMemberAnalysis: "查看会员分析",
+      canViewSleepingMembers: "查看沉睡会员", canViewTrendCharts: "查看趋势图", canViewRepurchaseAnalysis: "查看复购分析",
+      canUseFilters: "使用筛选器", canExportData: "导出数据", canDownloadExcel: "下载 Excel",
+      canViewRawRows: "查看原始明细", canViewDataQuality: "查看数据校验", canAccessAdmin: "访问管理后台",
+      canManageUsers: "管理用户", canCreateUsers: "创建用户", canDisableUsers: "停用用户", canResetPasswords: "重置密码",
+      canAssignRoles: "分配角色", canAssignDataScopes: "分配数据范围", canImportExcel: "导入 Excel",
+      canDeleteImportedData: "删除导入数据", canViewImportHistory: "查看导入历史", canViewAuditLogs: "查看审计日志",
+      canManageSystemSettings: "系统设置", canManageAgentSettings: "Agent 设置", canManageDingTalkSettings: "钉钉设置", canManageBackups: "备份设置",
+      canUseAgentChat: "使用数据助手", canAskCompanyWideQuestions: "跨全公司提问", canAskStoreQuestions: "门店维度提问",
+      canAskSalespersonQuestions: "销售员维度提问", canAskMemberQuestions: "会员维度提问", canAskSensitiveMemberQuestions: "敏感会员信息提问",
+      canAskForExport: "要求导出", canAskForRecommendations: "经营建议问答",
+      canReceiveDingTalkReminders: "接收钉钉提醒", canReceiveMemberMaintenanceReminders: "会员维护提醒",
+      canReceiveStoreManagementReminders: "门店管理提醒", canReceiveSalespersonPerformanceReminders: "销售员业绩提醒",
+      canReceiveSleepingMemberReminders: "沉睡会员提醒", canManageReminderRules: "管理提醒规则", canManageReminderRecipients: "管理提醒接收人",
+      canViewMemberName: "查看会员姓名", canViewPhone: "查看手机号", canViewMemberId: "查看会员标识",
+      canViewBirthday: "查看生日", canViewAddress: "查看地址",
+    };
+    let permissionOptions = { stores: [], salespeople: [], products: [] };
     const permissionSearchState = {};
     let usersCache = [];
 
@@ -147,12 +196,12 @@
       const el = document.getElementById(`count-${kind}-${userId}`);
       if (!el) return;
       const count = uniq(selectedValues || []).length;
-      const unit = kind === "stores" ? "个门店" : "位销售员";
+      const unit = kind === "stores" ? "个门店" : kind === "salespeople" ? "位销售员" : "个商品";
       el.textContent = `已选择 ${count} ${unit}`;
     }
 
     function renderPermissionCheckboxes(kind, userId, selectedValues, searchValue = "") {
-      const options = kind === "stores" ? permissionOptions.stores : permissionOptions.salespeople;
+      const options = kind === "stores" ? permissionOptions.stores : kind === "salespeople" ? permissionOptions.salespeople : permissionOptions.products;
       const selectedSet = new Set(selectedValues || []);
       const search = String(searchValue || "").trim().toLowerCase();
       if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
@@ -181,7 +230,7 @@
     }
 
     function applyPermissionBulkAction(kind, userId, action) {
-      const options = kind === "stores" ? permissionOptions.stores : permissionOptions.salespeople;
+      const options = kind === "stores" ? permissionOptions.stores : kind === "salespeople" ? permissionOptions.salespeople : permissionOptions.products;
       const fallback = document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`);
       const manualValues = splitCsv(fallback?.value || "");
       if (action === "clear") {
@@ -195,6 +244,27 @@
       }
     }
 
+    function renderPermissionFlagsCheckboxes(userId, groupName, flags = {}) {
+      const keys = permissionGroups[groupName] || [];
+      return keys
+        .map((key) => {
+          const checked = flags?.[key] ? " checked" : "";
+          return `<label><input type="checkbox" data-perm-group="${groupName}" data-perm-key="${key}" data-id="${userId}"${checked}/> ${permissionLabelMap[key] || key}</label>`;
+        })
+        .join("");
+    }
+
+    function collectPermissionFlags(userId, groupName) {
+      const values = {};
+      const nodes = document.querySelectorAll(`input[type="checkbox"][data-perm-group="${groupName}"][data-id="${userId}"]`);
+      nodes.forEach((node) => {
+        const key = node.getAttribute("data-perm-key");
+        if (!key) return;
+        values[key] = !!node.checked;
+      });
+      return values;
+    }
+
     function renderUsers(rows) {
       const wrap = document.getElementById("userListWrap");
       if (!rows.length) {
@@ -206,6 +276,11 @@
         <div class="user-item">
           <div><b>${u.username}</b> <span class="muted">(${u.displayName || "-"})</span></div>
           <div class="field"><label>角色</label><select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select></div>
+          <div class="row">
+            <label class="muted"><input type="checkbox" data-field="allowAllStores" data-id="${u.id}" ${u.allowAllStores ? "checked" : ""}/> 所有门店</label>
+            <label class="muted"><input type="checkbox" data-field="allowAllSalespeople" data-id="${u.id}" ${u.allowAllSalespeople ? "checked" : ""}/> 所有销售员</label>
+            <label class="muted"><input type="checkbox" data-field="allowAllProducts" data-id="${u.id}" ${u.allowAllProducts ? "checked" : ""}/> 所有商品</label>
+          </div>
           <div class="field">
             <label>门店权限（可视化多选）</label>
             <div class="perm-toolbar">
@@ -230,8 +305,26 @@
             <div id="tags-salespeople-${u.id}" class="tag-wrap"></div>
           </div>
           <div class="field"><label>销售员权限（手工兜底，逗号分隔）</label><textarea data-fallback="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
+          <div class="field">
+            <label>商品权限（可视化多选）</label>
+            <div class="perm-toolbar">
+              <input type="text" data-search-kind="products" data-id="${u.id}" placeholder="搜索商品..." value="${getPermissionSearchValue("products", u.id).replace(/"/g, "&quot;")}"/>
+              <button class="btn btn-light" data-action="perm-all" data-kind="products" data-id="${u.id}">全选商品</button>
+              <button class="btn btn-light" data-action="perm-clear" data-kind="products" data-id="${u.id}">清空商品</button>
+            </div>
+            <div id="count-products-${u.id}" class="meta"></div>
+            <div id="perm-list-products-${u.id}" class="perm-list">${renderPermissionCheckboxes("products", u.id, u.allowedProducts || [], getPermissionSearchValue("products", u.id))}</div>
+            <div id="tags-products-${u.id}" class="tag-wrap"></div>
+          </div>
+          <div class="field"><label>商品权限（手工兜底，逗号分隔）</label><textarea data-fallback="products" data-id="${u.id}" placeholder="例如：男装, 女装">${joinCsv(u.allowedProducts || [])}</textarea></div>
+          <div class="field"><label>看板/导出权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "dashboard", u.permissions || {})}</div></div>
+          <div class="field"><label>管理权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "admin", u.permissions || {})}</div></div>
+          <div class="field"><label>Agent 权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "agent", u.permissions || {})}</div></div>
+          <div class="field"><label>提醒权限（预留）</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "reminders", u.permissions || {})}</div></div>
+          <div class="field"><label>会员敏感字段权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "memberFields", u.allowedMemberFields || {})}</div></div>
           <div class="row">
             <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? "checked" : ""}/> 启用</label>
+            <button class="btn btn-light" data-action="apply-role-defaults" data-id="${u.id}">应用角色默认权限</button>
             <button class="btn btn-light" data-action="save" data-id="${u.id}">保存</button>
             <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
             <span id="msg-${u.id}" class="meta"></span>
@@ -241,6 +334,7 @@
       rows.forEach((u) => {
         renderPermissionPanel("stores", u.id, u.allowedStores || []);
         renderPermissionPanel("salespeople", u.id, u.allowedSalespeople || []);
+        renderPermissionPanel("products", u.id, u.allowedProducts || []);
       });
     }
 
@@ -265,9 +359,9 @@
         hint.textContent = data.error || "权限项加载失败";
         return;
       }
-      permissionOptions = data.options || { stores: [], salespeople: [] };
+      permissionOptions = data.options || { stores: [], salespeople: [], products: [] };
       hint.className = "meta";
-      hint.textContent = `可分配门店 ${permissionOptions.stores.length} 项，可分配销售员 ${permissionOptions.salespeople.length} 项。`;
+      hint.textContent = `可分配门店 ${permissionOptions.stores.length} 项，可分配销售员 ${permissionOptions.salespeople.length} 项，可分配商品 ${permissionOptions.products.length} 项。`;
     }
 
     async function createUser() {
@@ -300,12 +394,34 @@
       msg.textContent = "保存中...";
       const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
       const enabled = !!document.querySelector(`[data-field="enabled"][data-id="${userId}"]`)?.checked;
+      const allowAllStores = !!document.querySelector(`[data-field="allowAllStores"][data-id="${userId}"]`)?.checked;
+      const allowAllSalespeople = !!document.querySelector(`[data-field="allowAllSalespeople"][data-id="${userId}"]`)?.checked;
+      const allowAllProducts = !!document.querySelector(`[data-field="allowAllProducts"][data-id="${userId}"]`)?.checked;
       const allowedStores = collectPermissionValues("stores", userId);
       const allowedSalespeople = collectPermissionValues("salespeople", userId);
+      const allowedProducts = collectPermissionValues("products", userId);
+      const permissions = {
+        ...collectPermissionFlags(userId, "dashboard"),
+        ...collectPermissionFlags(userId, "admin"),
+        ...collectPermissionFlags(userId, "agent"),
+        ...collectPermissionFlags(userId, "reminders"),
+      };
+      const allowedMemberFields = collectPermissionFlags(userId, "memberFields");
       const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, enabled, allowedStores, allowedSalespeople }),
+        body: JSON.stringify({
+          role,
+          enabled,
+          allowAllStores,
+          allowAllSalespeople,
+          allowAllProducts,
+          allowedStores,
+          allowedSalespeople,
+          allowedProducts,
+          permissions,
+          allowedMemberFields,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -338,6 +454,28 @@
       }
       msg.className = "meta ok";
       msg.textContent = "密码已重置";
+      await loadAuditLogs();
+    }
+
+    async function applyRoleDefaultsForUser(userId) {
+      const msg = document.getElementById(`msg-${userId}`);
+      msg.className = "meta";
+      msg.textContent = "应用中...";
+      const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, applyRoleDefaults: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.className = "meta err";
+        msg.textContent = data.error || "应用失败";
+        return;
+      }
+      msg.className = "meta ok";
+      msg.textContent = "已应用角色默认权限";
+      await loadUsers();
       await loadAuditLogs();
     }
 
@@ -455,6 +593,10 @@
         const kind = target.getAttribute("data-kind");
         if (!kind) return;
         applyPermissionBulkAction(kind, userId, action === "perm-all" ? "all" : "clear");
+        return;
+      }
+      if (action === "apply-role-defaults") {
+        void applyRoleDefaultsForUser(userId);
         return;
       }
       if (action === "save") void saveUser(userId);

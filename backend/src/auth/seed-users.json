@@ -50,10 +50,23 @@
     "id": "u-disabled-001",
     "username": "disabled_demo",
     "displayName": "Disabled Demo",
-    "role": "store_user",
+    "role": "disabled",
     "enabled": false,
     "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
     "allowedStores": [],
     "allowedSalespeople": []
+  },
+  {
+    "id": "u-viewer-001",
+    "username": "viewer_demo",
+    "displayName": "Viewer Demo",
+    "role": "viewer",
+    "enabled": true,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [
+      "门店1"
+    ],
+    "allowedSalespeople": [],
+    "allowedProducts": []
   }
 ]

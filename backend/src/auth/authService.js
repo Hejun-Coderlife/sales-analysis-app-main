@@ -3,44 +3,17 @@ import path from "path";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import seedUsers from "./seed-users.json" with { type: "json" };
+import {
+  buildPermissionScope,
+  getRolePermissionTemplate,
+  hasPermission,
+  normalizeArray,
+  normalizeRole,
+  sanitizeUserWithPermissions,
+  toPublicUser,
+} from "./permissionModel.js";
 
-const USER_ROLES = new Set(["admin", "manager", "store_user", "salesperson"]);
 const BCRYPT_ROUNDS = 10;
-
-function normalizeArray(values) {
-  if (!Array.isArray(values)) return [];
-  return values.map((x) => String(x || "").trim()).filter(Boolean);
-}
-
-function sanitizeRole(role) {
-  const key = String(role || "").trim();
-  return USER_ROLES.has(key) ? key : "salesperson";
-}
-
-function sanitizeUserRecord(user) {
-  return {
-    id: String(user?.id || ""),
-    username: String(user?.username || "").trim().toLowerCase(),
-    displayName: String(user?.displayName || ""),
-    role: sanitizeRole(user?.role),
-    enabled: user?.enabled !== false,
-    passwordHash: String(user?.passwordHash || ""),
-    allowedStores: normalizeArray(user?.allowedStores),
-    allowedSalespeople: normalizeArray(user?.allowedSalespeople),
-  };
-}
-
-function toPublicUser(user) {
-  return {
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    role: user.role,
-    enabled: user.enabled,
-    allowedStores: user.allowedStores,
-    allowedSalespeople: user.allowedSalespeople,
-  };
-}
 
 export class AuthService {
   constructor({ usersPath }) {
@@ -55,9 +28,9 @@ export class AuthService {
     try {
       const raw = await fs.readFile(this.usersPath, "utf8");
       const parsed = JSON.parse(raw);
-      this.users = Array.isArray(parsed?.users) ? parsed.users.map(sanitizeUserRecord) : [];
+      this.users = Array.isArray(parsed?.users) ? parsed.users.map(sanitizeUserWithPermissions) : [];
     } catch (_error) {
-      this.users = seedUsers.map(sanitizeUserRecord);
+      this.users = seedUsers.map(sanitizeUserWithPermissions);
       await this.persist();
     }
     this.loaded = true;
@@ -97,9 +70,10 @@ export class AuthService {
   async authenticate(username, password) {
     const user = await this.findByUsername(username);
     if (!user) return { ok: false, error: "账号或密码错误" };
-    if (!user.enabled) return { ok: false, error: "该账号已被停用" };
+    if (!user.enabled || String(user.role || "") === "disabled") return { ok: false, error: "该账号已被停用" };
     const valid = await bcrypt.compare(String(password || ""), user.passwordHash);
     if (!valid) return { ok: false, error: "账号或密码错误" };
+    await this.touchLastLogin(user.id);
     return { ok: true, user: toPublicUser(user) };
   }
 
@@ -110,7 +84,13 @@ export class AuthService {
     password,
     enabled = true,
     allowedStores = [],
+    allowAllStores,
     allowedSalespeople = [],
+    allowAllSalespeople,
+    allowedProducts = [],
+    allowAllProducts,
+    permissions = null,
+    allowedMemberFields = null,
   }) {
     await this.init();
     const normalizedUsername = String(username || "").trim().toLowerCase();
@@ -122,15 +102,30 @@ export class AuthService {
     const rawPassword = String(password || "");
     if (rawPassword.length < 8) throw new Error("密码至少 8 位");
     const passwordHash = await this.hashPassword(rawPassword);
-    const record = sanitizeUserRecord({
+    const normalizedRole = normalizeRole(role);
+    const roleDefaults = getRolePermissionTemplate(normalizedRole);
+    const nowIso = new Date().toISOString();
+    const record = sanitizeUserWithPermissions({
       id: randomUUID(),
       username: normalizedUsername,
       displayName: String(displayName || normalizedUsername),
-      role,
+      role: normalizedRole,
       enabled,
       passwordHash,
       allowedStores,
+      allowAllStores,
       allowedSalespeople,
+      allowAllSalespeople,
+      allowedProducts,
+      allowAllProducts,
+      permissions: permissions && typeof permissions === "object" ? permissions : roleDefaults.permissions,
+      allowedMemberFields:
+        allowedMemberFields && typeof allowedMemberFields === "object"
+          ? allowedMemberFields
+          : roleDefaults.allowedMemberFields,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastLoginAt: "",
     });
     this.users.push(record);
     await this.persist();
@@ -141,11 +136,41 @@ export class AuthService {
     await this.init();
     const user = await this.findById(userId);
     if (!user) throw new Error("用户不存在");
-    if (updates.role != null) user.role = sanitizeRole(updates.role);
+    const nextRole = updates.role != null ? normalizeRole(updates.role) : user.role;
+    const applyRoleDefaults = Boolean(updates.applyRoleDefaults);
+    const roleDefaults = getRolePermissionTemplate(nextRole);
+    user.role = nextRole;
     if (updates.displayName != null) user.displayName = String(updates.displayName || "").trim();
     if (updates.enabled != null) user.enabled = Boolean(updates.enabled);
+    if (nextRole === "disabled") user.enabled = false;
     if (updates.allowedStores != null) user.allowedStores = normalizeArray(updates.allowedStores);
+    if (updates.allowAllStores != null) user.allowAllStores = Boolean(updates.allowAllStores);
     if (updates.allowedSalespeople != null) user.allowedSalespeople = normalizeArray(updates.allowedSalespeople);
+    if (updates.allowAllSalespeople != null) user.allowAllSalespeople = Boolean(updates.allowAllSalespeople);
+    if (updates.allowedProducts != null) user.allowedProducts = normalizeArray(updates.allowedProducts);
+    if (updates.allowAllProducts != null) user.allowAllProducts = Boolean(updates.allowAllProducts);
+    if (applyRoleDefaults) {
+      user.permissions = { ...roleDefaults.permissions };
+      user.allowedMemberFields = { ...roleDefaults.allowedMemberFields };
+      user.allowAllStores = Boolean(roleDefaults.allowAllStores);
+      user.allowAllSalespeople = Boolean(roleDefaults.allowAllSalespeople);
+      user.allowAllProducts = Boolean(roleDefaults.allowAllProducts);
+      if (nextRole === "admin") {
+        user.allowedStores = [];
+        user.allowedSalespeople = [];
+        user.allowedProducts = [];
+      }
+    } else {
+      if (updates.permissions && typeof updates.permissions === "object") {
+        user.permissions = { ...(user.permissions || {}), ...updates.permissions };
+      }
+      if (updates.allowedMemberFields && typeof updates.allowedMemberFields === "object") {
+        user.allowedMemberFields = { ...(user.allowedMemberFields || {}), ...updates.allowedMemberFields };
+      }
+    }
+    user.updatedAt = new Date().toISOString();
+    const normalized = sanitizeUserWithPermissions(user);
+    Object.assign(user, normalized);
     await this.persist();
     return toPublicUser(user);
   }
@@ -157,23 +182,24 @@ export class AuthService {
     const rawPassword = String(newPassword || "");
     if (rawPassword.length < 8) throw new Error("密码至少 8 位");
     user.passwordHash = await this.hashPassword(rawPassword);
+    user.updatedAt = new Date().toISOString();
     await this.persist();
     return toPublicUser(user);
   }
 
+  async touchLastLogin(userId) {
+    const user = await this.findById(userId);
+    if (!user) return;
+    user.lastLoginAt = new Date().toISOString();
+    user.updatedAt = new Date().toISOString();
+    await this.persist();
+  }
+
   deriveAccessScope(user) {
-    const role = String(user?.role || "");
-    if (!user || role === "admin") {
-      return { role, allowedStores: [], allowedSalespeople: [], unrestricted: true };
-    }
-    const allowedStores = normalizeArray(user.allowedStores);
-    const allowedSalespeople = normalizeArray(user.allowedSalespeople);
-    return {
-      role,
-      allowedStores,
-      allowedSalespeople,
-      forceNoData: !allowedStores.length && !allowedSalespeople.length,
-      unrestricted: false,
-    };
+    return buildPermissionScope(user);
+  }
+
+  hasPermission(user, permissionName) {
+    return hasPermission(user, permissionName);
   }
 }

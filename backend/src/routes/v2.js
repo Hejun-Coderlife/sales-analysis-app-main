@@ -1,5 +1,10 @@
 import express from "express";
 import multer from "multer";
+import {
+  applyPermissionScopeToFilters,
+  hasPermission,
+  maskSensitiveMemberRows,
+} from "../auth/permissionModel.js";
 
 function clamp(value, fallback, min = 1, max = 1000) {
   const n = Number(value);
@@ -19,26 +24,19 @@ function parseFilters(query = {}, scope = null) {
     endDate: String(query.endDate || ""),
     stores: pickCsv(query.stores),
     salespeople: pickCsv(query.salespeople),
+    products: pickCsv(query.products),
   };
-  if (!scope || scope.unrestricted) return parsed;
-  if (scope.forceNoData) {
-    return {
-      ...parsed,
-      stores: ["__NO_ACCESS_STORE__"],
-      salespeople: ["__NO_ACCESS_SALESPERSON__"],
-    };
-  }
-  const scopedValues = (requested, allowed) => {
-    if (!Array.isArray(allowed) || !allowed.length) return requested;
-    if (!Array.isArray(requested) || !requested.length) return allowed.slice();
-    const allowedSet = new Set(allowed);
-    return requested.filter((x) => allowedSet.has(x));
-  };
-  return {
-    ...parsed,
-    stores: scopedValues(parsed.stores, scope.allowedStores),
-    salespeople: scopedValues(parsed.salespeople, scope.allowedSalespeople),
-  };
+  return applyPermissionScopeToFilters(parsed, scope);
+}
+
+function forbidByPermission(res) {
+  return res.status(403).json({ error: "你没有权限查看该范围的数据。" });
+}
+
+function ensurePermission(req, res, permissionName) {
+  if (hasPermission(req.currentUser, permissionName)) return true;
+  forbidByPermission(res);
+  return false;
 }
 
 export function createV2Router({
@@ -60,12 +58,13 @@ export function createV2Router({
   });
 
   router.get("/datasets/latest", async (_req, res) => {
+    if (!ensurePermission(_req, res, "canViewDashboard")) return;
     const dataset = await analyticsService.getLatestDatasetSummary({ onlyReady: true });
     return res.json({ ok: true, dataset: dataset || null });
   });
 
   router.post("/uploads", upload.single("file"), async (req, res) => {
-    if (String(req.currentUser?.role || "") !== "admin") {
+    if (!hasPermission(req.currentUser, "canImportExcel")) {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });
     }
     if (!req.file) {
@@ -139,23 +138,27 @@ export function createV2Router({
   });
 
   router.get("/jobs/:id", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewImportHistory")) return;
     const job = await jobStore.getJob(req.params.id);
     if (!job) return res.status(404).json({ error: "job not found" });
     return res.json({ ok: true, job });
   });
 
   router.get("/datasets/:datasetId/summary", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewDashboard")) return;
     const summary = await analyticsService.getDatasetSummary(req.params.datasetId);
     if (!summary) return res.status(404).json({ error: "dataset not found" });
     return res.json({ ok: true, summary });
   });
 
   router.get("/datasets/:datasetId/kpis", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewKpi")) return;
     const kpis = await analyticsService.getKpis(req.params.datasetId, parseFilters(req.query, req.accessScope));
     return res.json({ ok: true, kpis });
   });
 
   router.get("/datasets/:datasetId/rankings/stores", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewStoreRanking")) return;
     const rows = await analyticsService.getTopStores(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
@@ -165,6 +168,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/rankings/salespeople", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewSalespersonRanking")) return;
     const rows = await analyticsService.getTopSalespeople(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
@@ -174,6 +178,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/rankings/products", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewProductRanking")) return;
     const rows = await analyticsService.getTopProducts(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
@@ -183,16 +188,21 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/members/top", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewMemberAnalysis")) return;
     const rows = await analyticsService.getTopMembers(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
       keyword: String(req.query.keyword || ""),
     });
-    return res.json({ ok: true, rows });
+    return res.json({
+      ok: true,
+      rows: maskSensitiveMemberRows(rows, req.currentUser?.allowedMemberFields || {}),
+    });
   });
 
   router.get("/datasets/:datasetId/filters/options", async (req, res) => {
+    if (!ensurePermission(req, res, "canUseFilters")) return;
     const options = await analyticsService.getFilterOptions(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
     });
@@ -200,6 +210,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/members/sleeping", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewSleepingMembers")) return;
     const result = await analyticsService.getSleepingAnalytics(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       sleepDays: Number(req.query.sleepDays || 90),
@@ -211,10 +222,15 @@ export function createV2Router({
       limit: clamp(req.query.limit, 200, 1, 2000),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
     });
-    return res.json({ ok: true, ...result });
+    return res.json({
+      ok: true,
+      ...result,
+      rows: maskSensitiveMemberRows(result.rows, req.currentUser?.allowedMemberFields || {}),
+    });
   });
 
   router.get("/datasets/:datasetId/orders/highest", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewRawRows")) return;
     const row = await analyticsService.getHighestOrder(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
     });
@@ -222,6 +238,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/orders/top", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewRawRows")) return;
     const rows = await analyticsService.getOrders(req.params.datasetId, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
@@ -231,6 +248,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/leaders", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewTrendCharts")) return;
     const granularity = String(req.query.granularity || "month");
     const rows = await analyticsService.getLeadersByGranularity(req.params.datasetId, {
       granularity,
@@ -241,6 +259,7 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/table/:tableName", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewRawRows")) return;
     try {
       const data = await analyticsService.getTablePage(req.params.datasetId, req.params.tableName, {
         limit: clamp(req.query.limit, 100, 1, 2000),

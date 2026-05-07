@@ -52,8 +52,16 @@ function applyRoleUi(role, user) {
     manager: "经理",
     store_user: "门店用户",
     salesperson: "销售员",
+    viewer: "查看者",
+    disabled: "停用账号",
   };
+  const permissions = user?.permissions || {};
   const isAdmin = role === "admin";
+  const canAccessAdmin = isAdmin || Boolean(permissions.canAccessAdmin);
+  const canImportExcel = canAccessAdmin && Boolean(permissions.canImportExcel);
+  const canDownloadExcel = Boolean(permissions.canDownloadExcel);
+  const canUseFilters = Boolean(permissions.canUseFilters);
+  const canViewKpi = Boolean(permissions.canViewKpi);
   const uploadBox = document.querySelector(".upload-box");
   const uploadBoxFallback = document.getElementById("files")?.closest(".upload-box");
   const filesInput = document.getElementById("files");
@@ -68,25 +76,75 @@ function applyRoleUi(role, user) {
   if (userLabel) {
     userLabel.textContent = `${user.displayName || user.username}（${roleMap[role] || role}）`;
   }
-  if (adminBtn) adminBtn.style.display = isAdmin ? "inline-flex" : "none";
+  if (adminBtn) adminBtn.style.display = canAccessAdmin ? "inline-flex" : "none";
 
-  // Admin keeps import/analyze/download controls. Non-admin users only see filters/charts/tables/chat.
-  if (uploadBox) uploadBox.style.display = isAdmin ? "" : "none";
-  if (uploadBoxFallback) uploadBoxFallback.style.display = isAdmin ? "" : "none";
-  if (controlButtons) controlButtons.style.display = isAdmin ? "" : "none";
-  if (filesInput) filesInput.hidden = !isAdmin;
-  if (filesLabel) filesLabel.hidden = !isAdmin;
-  if (uploadHint) uploadHint.hidden = !isAdmin;
-  if (analyzeWrap) analyzeWrap.style.display = isAdmin ? "" : "none";
-  if (downloadBtn) downloadBtn.style.display = isAdmin ? "" : "none";
+  // Import/analyze/download must always follow backend permissions, not role name only.
+  if (uploadBox) uploadBox.style.display = canImportExcel ? "" : "none";
+  if (uploadBoxFallback) uploadBoxFallback.style.display = canImportExcel ? "" : "none";
+  if (controlButtons) controlButtons.style.display = canImportExcel || canDownloadExcel ? "" : "none";
+  if (filesInput) filesInput.hidden = !canImportExcel;
+  if (filesLabel) filesLabel.hidden = !canImportExcel;
+  if (uploadHint) uploadHint.hidden = !canImportExcel;
+  if (analyzeWrap) analyzeWrap.style.display = canImportExcel ? "" : "none";
+  if (downloadBtn) downloadBtn.style.display = canDownloadExcel ? "" : "none";
 
-  if (!isAdmin && analyzeBtn) {
+  if (!canImportExcel && analyzeBtn) {
     analyzeBtn.disabled = true;
     analyzeBtn.title = "仅管理员可导入并执行分析";
-  } else if (isAdmin && analyzeBtn) {
+  } else if (analyzeBtn) {
     analyzeBtn.disabled = false;
     analyzeBtn.title = "";
   }
+
+  // Respect module-level permissions on dashboard tabs.
+  const tabRules = {
+    dashboard: Boolean(permissions.canViewDashboard),
+    rankings:
+      Boolean(permissions.canViewStoreRanking) ||
+      Boolean(permissions.canViewSalespersonRanking) ||
+      Boolean(permissions.canViewProductRanking),
+    members: Boolean(permissions.canViewMemberAnalysis),
+    sleeping: Boolean(permissions.canViewSleepingMembers),
+    validation: Boolean(permissions.canViewDataQuality),
+  };
+  document.querySelectorAll(".tab").forEach((tabEl) => {
+    const tabKey = tabEl.dataset.tab;
+    const allowed = tabRules[tabKey] !== false;
+    tabEl.style.display = allowed ? "" : "none";
+    const panel = tabKey ? document.getElementById(tabKey) : null;
+    if (panel && !allowed) {
+      panel.innerHTML = '<div class="card"><p class="small">暂无权限查看此模块</p></div>';
+      panel.classList.add("hidden");
+    }
+  });
+
+  const firstVisibleTab = document.querySelector(".tab:not([style*='display: none'])");
+  if (firstVisibleTab) {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
+    firstVisibleTab.classList.add("active");
+    const panel = document.getElementById(firstVisibleTab.dataset.tab || "dashboard");
+    panel?.classList.remove("hidden");
+  }
+
+  const kpiGrid = document.querySelector("#resultArea .grid.grid-4");
+  if (kpiGrid) {
+    kpiGrid.style.display = canViewKpi ? "" : "none";
+    if (!canViewKpi) {
+      const parent = kpiGrid.parentElement;
+      if (parent && !parent.querySelector(".kpi-permission-tip")) {
+        const tip = document.createElement("p");
+        tip.className = "small kpi-permission-tip";
+        tip.textContent = "暂无权限查看此模块";
+        parent.insertBefore(tip, kpiGrid.nextSibling);
+      }
+    }
+  }
+
+  const filterFields = document.querySelectorAll(".control-field[data-control='dashboardDateRange'], .control-field[data-control='dashboardMultiFilters']");
+  filterFields.forEach((el) => {
+    el.style.display = canUseFilters ? "" : "none";
+  });
 }
 
 export async function initAuthUiGuard() {
