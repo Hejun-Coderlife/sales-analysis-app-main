@@ -60,7 +60,9 @@ function applyRoleUi(role, user) {
   const filesLabel = document.querySelector('label[for="files"]');
   const uploadHint = uploadBox?.querySelector(".small");
   const analyzeBtn = document.getElementById("analyzeBtn");
+  const downloadBtn = document.getElementById("downloadSleepXlsxBtn");
   const analyzeWrap = analyzeBtn?.closest(".analyze-wrap");
+  const controlButtons = document.querySelector(".button-group");
   const adminBtn = document.getElementById("authAdminBtn");
   const userLabel = document.getElementById("authUserLabel");
   if (userLabel) {
@@ -68,17 +70,22 @@ function applyRoleUi(role, user) {
   }
   if (adminBtn) adminBtn.style.display = isAdmin ? "inline-flex" : "none";
 
-  if (!isAdmin) {
-    if (uploadBox) uploadBox.style.display = "none";
-    if (uploadBoxFallback) uploadBoxFallback.style.display = "none";
-    if (filesInput) filesInput.hidden = true;
-    if (filesLabel) filesLabel.hidden = true;
-    if (uploadHint) uploadHint.hidden = true;
-    if (analyzeWrap) analyzeWrap.style.display = "none";
-    if (analyzeBtn) {
-      analyzeBtn.disabled = true;
-      analyzeBtn.title = "仅管理员可导入并执行分析";
-    }
+  // Admin keeps import/analyze/download controls. Non-admin users only see filters/charts/tables/chat.
+  if (uploadBox) uploadBox.style.display = isAdmin ? "" : "none";
+  if (uploadBoxFallback) uploadBoxFallback.style.display = isAdmin ? "" : "none";
+  if (controlButtons) controlButtons.style.display = isAdmin ? "" : "none";
+  if (filesInput) filesInput.hidden = !isAdmin;
+  if (filesLabel) filesLabel.hidden = !isAdmin;
+  if (uploadHint) uploadHint.hidden = !isAdmin;
+  if (analyzeWrap) analyzeWrap.style.display = isAdmin ? "" : "none";
+  if (downloadBtn) downloadBtn.style.display = isAdmin ? "" : "none";
+
+  if (!isAdmin && analyzeBtn) {
+    analyzeBtn.disabled = true;
+    analyzeBtn.title = "仅管理员可导入并执行分析";
+  } else if (isAdmin && analyzeBtn) {
+    analyzeBtn.disabled = false;
+    analyzeBtn.title = "";
   }
 }
 
