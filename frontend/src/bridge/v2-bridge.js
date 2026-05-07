@@ -23,7 +23,7 @@ import { renderVirtualTable } from "../tables/virtual-table.js";
 function setStatus(message, isError = false) {
   const status = document.getElementById("status");
   if (!status) return;
-  status.innerHTML = isError ? `<span class="warn">Error:</span> ${message}` : message;
+  status.innerHTML = isError ? `<span class="warn">错误：</span>${message}` : message;
 }
 
 function getFiles() {
@@ -194,7 +194,7 @@ function renderCheckboxOptions({
     })
     .join("");
   wrap.innerHTML = `<label class="store-option"><input type="checkbox" id="${allId}"> <span>${allLabel}</span></label>${
-    optionsHtml || '<div class="small">No matching results</div>'
+    optionsHtml || '<div class="small">暂无匹配结果</div>'
   }`;
   const allOpt = document.getElementById(allId);
   if (allOpt) {
@@ -229,7 +229,7 @@ function wireV2FilterMenus() {
       values: v2State.filterOptions.stores,
       selectedSet: appState.selectedStores,
       allId: "dashboardStoreAllOptionV2",
-      allLabel: "All stores",
+      allLabel: "全部门店",
       searchValue: storeSearch?.value || "",
       onChange: async () => {
         window.updateDashboardStoreSelectedText?.();
@@ -241,7 +241,7 @@ function wireV2FilterMenus() {
       values: v2State.filterOptions.salespeople,
       selectedSet: appState.selectedSalespeople,
       allId: "dashboardSalespeopleAllOptionV2",
-      allLabel: "All salespeople",
+      allLabel: "全部销售员",
       searchValue: salespersonSearch?.value || "",
       onChange: async () => {
         window.updateDashboardSalespersonSelectedText?.();
@@ -253,7 +253,7 @@ function wireV2FilterMenus() {
       values: v2State.filterOptions.products,
       selectedSet: appState.selectedProducts,
       allId: "dashboardProductAllOptionV2",
-      allLabel: "All products",
+      allLabel: "全部商品",
       searchValue: productSearch?.value || "",
       onChange: async () => {
         window.updateDashboardProductSelectedText?.();
@@ -279,17 +279,17 @@ async function refreshV2Results(keepDropdownOpen = false) {
   if (!featureFlags.enableV2Upload || !v2State.activeDatasetId) return;
   setV2Loading(true);
   window.setAnalyzeLoading?.(true);
-  setStatus("Loading v2 analytics...");
+  setStatus("正在加载 v2 分析结果...");
   try {
     await populateV2FilterOptions();
     const payload = await fetchV2ResultBundle(v2State.activeDatasetId);
     const merged = mergeV2IntoLegacyResults(payload);
     setLatestResults(merged);
     renderFromResults(merged, keepDropdownOpen);
-    setStatus(`<span class="ok">Done.</span> v2 analytics refreshed.`);
+    setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。`);
   } catch (error) {
     console.error("[v2-bridge] refresh failed:", error);
-    setStatus(error?.message || "v2 analytics refresh failed", true);
+    setStatus(error?.message || "v2 分析刷新失败", true);
   } finally {
     setV2Loading(false);
     window.setAnalyzeLoading?.(false);
@@ -299,19 +299,19 @@ async function refreshV2Results(keepDropdownOpen = false) {
 async function runBackendUploadPath() {
   const files = getFiles();
   if (!files.length) {
-    setStatus("Please upload at least one file.", true);
+    setStatus("请至少上传一个文件。", true);
     return;
   }
   const firstFile = files[0];
-  setStatus("Uploading file and starting async ingestion job...");
+  setStatus("正在上传文件并创建异步导入任务...");
   const started = await startUploadJob(firstFile);
   const completed = await waitForJob(started.jobId, (job) => {
     setLatestJob(job);
-    setStatus(`Ingestion ${job?.status || "running"} (${job?.progress ?? 0}%)`);
+    setStatus(`导入状态：${job?.status || "running"}（${job?.progress ?? 0}%）`);
   });
   const datasetId = completed?.datasetId;
   if (!datasetId) {
-    throw new Error("Upload job completed but datasetId is missing");
+    throw new Error("导入任务已完成，但缺少 datasetId");
   }
   setDatasetId(datasetId);
   await refreshV2Results(false);
@@ -338,7 +338,7 @@ async function runBackendUploadPath() {
       });
     }
   }
-  setStatus(`<span class="ok">Done.</span> v2 ingestion ready with dataset ${datasetId.slice(0, 8)}...`);
+  setStatus(`<span class="ok">完成。</span>v2 数据导入完成，数据集 ${datasetId.slice(0, 8)}...`);
 }
 
 function wireV2FilterRefreshHooks() {
@@ -371,7 +371,7 @@ export function initV2Bridge() {
         await runBackendUploadPath();
       } catch (error) {
         console.error("[v2-bridge] fallback to legacy due to:", error);
-        setStatus(error?.message || "v2 ingestion failed; please retry.", true);
+        setStatus(error?.message || "v2 导入失败，请重试。", true);
       } finally {
         window.setAnalyzeLoading?.(false);
       }

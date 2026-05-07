@@ -23,7 +23,7 @@ function ensureAuthActions() {
   adminLink.className = "light btn";
   adminLink.style.minHeight = "34px";
   adminLink.style.padding = "6px 10px";
-  adminLink.textContent = "Admin";
+  adminLink.textContent = "管理后台";
   adminLink.addEventListener("click", () => {
     window.location.href = "/admin";
   });
@@ -33,7 +33,7 @@ function ensureAuthActions() {
   logout.className = "light btn";
   logout.style.minHeight = "34px";
   logout.style.padding = "6px 10px";
-  logout.textContent = "Logout";
+  logout.textContent = "退出登录";
   logout.addEventListener("click", async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
@@ -47,21 +47,37 @@ function ensureAuthActions() {
 }
 
 function applyRoleUi(role, user) {
+  const roleMap = {
+    admin: "管理员",
+    manager: "经理",
+    store_user: "门店用户",
+    salesperson: "销售员",
+  };
   const isAdmin = role === "admin";
   const uploadBox = document.querySelector(".upload-box");
+  const uploadBoxFallback = document.getElementById("files")?.closest(".upload-box");
+  const filesInput = document.getElementById("files");
+  const filesLabel = document.querySelector('label[for="files"]');
+  const uploadHint = uploadBox?.querySelector(".small");
   const analyzeBtn = document.getElementById("analyzeBtn");
+  const analyzeWrap = analyzeBtn?.closest(".analyze-wrap");
   const adminBtn = document.getElementById("authAdminBtn");
   const userLabel = document.getElementById("authUserLabel");
   if (userLabel) {
-    userLabel.textContent = `${user.displayName || user.username} (${role})`;
+    userLabel.textContent = `${user.displayName || user.username}（${roleMap[role] || role}）`;
   }
   if (adminBtn) adminBtn.style.display = isAdmin ? "inline-flex" : "none";
 
   if (!isAdmin) {
     if (uploadBox) uploadBox.style.display = "none";
+    if (uploadBoxFallback) uploadBoxFallback.style.display = "none";
+    if (filesInput) filesInput.hidden = true;
+    if (filesLabel) filesLabel.hidden = true;
+    if (uploadHint) uploadHint.hidden = true;
+    if (analyzeWrap) analyzeWrap.style.display = "none";
     if (analyzeBtn) {
       analyzeBtn.disabled = true;
-      analyzeBtn.title = "Only admins can import/analyze files";
+      analyzeBtn.title = "仅管理员可导入并执行分析";
     }
   }
 }

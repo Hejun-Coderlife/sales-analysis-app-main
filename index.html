@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sales Analysis App</title>
+  <title>销售数据分析系统</title>
   <link rel="icon" type="image/png" href="./favicon.png" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -665,9 +665,9 @@ input[type="date"], select.control-select{
 </script>
 
 <div class="wrap">
-  <h1>Sales Analysis App</h1>
-  <p>Open this file in Chrome, upload one or more Excel files, and the analysis runs entirely in your browser.</p>
-  <p class="small">Rules built in: use <b>Q-column amount logic</b>, keep negative values, convert text amounts into real numbers, and generate sleeping-member analysis.</p>
+  <h1>销售数据分析系统</h1>
+  <p>请在浏览器中打开系统，上传一个或多个 Excel 文件后即可开始分析。</p>
+  <p class="small">系统内置规则：支持 <b>Q 列金额逻辑</b>、保留负值、自动识别文本金额，并生成沉睡会员分析。</p>
 
   
   
@@ -675,17 +675,17 @@ input[type="date"], select.control-select{
     <div class="control-top">
       <div class="control-left">
         <div class="upload-box">
-          <label for="files">Upload Excel files (.xls / .xlsx)</label>
+          <label for="files">上传 Excel 文件（.xls / .xlsx）</label>
           <input id="files" type="file" accept=".xls,.xlsx" multiple />
-          <div class="small">Upload one or more files, then run analysis in your browser.</div>
+          <div class="small">可上传一个或多个文件，然后开始分析。</div>
         </div>
 
         <div class="button-group">
           <div class="analyze-wrap">
             <div class="analyze-spinner" aria-hidden="true"></div>
-            <button id="analyzeBtn" class="btn">Run analysis</button>
+            <button id="analyzeBtn" class="btn">开始分析</button>
           </div>
-          <button id="downloadSleepXlsxBtn" class="light btn">Download</button>
+          <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
         </div>
 
         <div class="status-row">
@@ -697,68 +697,68 @@ input[type="date"], select.control-select{
 <div class="field-grid">
           
 <div class="col control-field" data-control="dashboardDateRange" style="grid-column: span 2;">
-  <label>Evaluation time</label>
+  <label>评估时间</label>
   <div class="filter-dropdown" id="dashboardDateDropdown">
     <button type="button" class="filter-trigger" id="dashboardDateTrigger">
-      <span class="range-trigger-text" id="dashboardDateTriggerText">Select date range</span>
+      <span class="range-trigger-text" id="dashboardDateTriggerText">选择日期范围</span>
       <span class="filter-caret">▾</span>
     </button>
     <div class="filter-menu hidden" id="dashboardDateMenu">
       <div class="range-grid">
         <div>
-          <div class="menu-label">Start date</div>
+          <div class="menu-label">开始日期</div>
           <input id="dashboardStartDate" type="date" />
         </div>
         <div>
-          <div class="menu-label">End date</div>
+          <div class="menu-label">结束日期</div>
           <input id="dashboardEndDate" type="date" />
         </div>
       </div>
       <div class="range-apply">
-        <button type="button" class="light btn" id="applyDateRangeBtn" style="min-height:38px;padding:8px 12px">Apply</button>
+        <button type="button" class="light btn" id="applyDateRangeBtn" style="min-height:38px;padding:8px 12px">应用</button>
       </div>
     </div>
   </div>
 </div>
           <div class="multi-grid control-field" data-control="dashboardMultiFilters">
             <div class="col">
-              <label>Store</label>
+              <label>门店</label>
               <div class="filter-dropdown" id="dashboardStoreDropdown">
                 <button type="button" class="filter-trigger" id="dashboardStoreTrigger">
-                  <span id="dashboardStoreTriggerText">All stores</span>
+                  <span id="dashboardStoreTriggerText">全部门店</span>
                   <span class="filter-caret">▾</span>
                 </button>
                 <div class="filter-menu hidden" id="dashboardStoreMenu">
-                  <input id="dashboardStoreSearch" class="store-search-input" type="text" placeholder="Search store" />
-                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearStoreBtn">Done</button></div>
+                  <input id="dashboardStoreSearch" class="store-search-input" type="text" placeholder="搜索门店" />
+                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearStoreBtn">完成</button></div>
                   <div id="dashboardStoreOptions" class="store-options"></div>
                 </div>
               </div>
             </div>
             <div class="col">
-              <label>Salespeople</label>
+              <label>销售员</label>
               <div class="filter-dropdown" id="dashboardSalespersonDropdown">
                 <button type="button" class="filter-trigger" id="dashboardSalespersonTrigger">
-                  <span id="dashboardSalespersonTriggerText">All salespeople</span>
+                  <span id="dashboardSalespersonTriggerText">全部销售员</span>
                   <span class="filter-caret">▾</span>
                 </button>
                 <div class="filter-menu hidden" id="dashboardSalespersonMenu">
-                  <input id="dashboardSalespersonSearch" class="store-search-input" type="text" placeholder="Search salesperson" />
-                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSalespeopleBtn">Done</button></div>
+                  <input id="dashboardSalespersonSearch" class="store-search-input" type="text" placeholder="搜索销售员" />
+                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSalespeopleBtn">完成</button></div>
                   <div id="dashboardSalespersonOptions" class="store-options"></div>
                 </div>
               </div>
             </div>
             <div class="col">
-              <label>Products</label>
+              <label>商品</label>
               <div class="filter-dropdown" id="dashboardProductDropdown">
                 <button type="button" class="filter-trigger" id="dashboardProductTrigger">
-                  <span id="dashboardProductTriggerText">All products</span>
+                  <span id="dashboardProductTriggerText">全部商品</span>
                   <span class="filter-caret">▾</span>
                 </button>
                 <div class="filter-menu hidden" id="dashboardProductMenu">
-                  <input id="dashboardProductSearch" class="store-search-input" type="text" placeholder="Search product" />
-                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearProductBtn">Done</button></div>
+                  <input id="dashboardProductSearch" class="store-search-input" type="text" placeholder="搜索商品" />
+                  <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearProductBtn">完成</button></div>
                   <div id="dashboardProductOptions" class="store-options"></div>
                 </div>
               </div>
@@ -766,31 +766,31 @@ input[type="date"], select.control-select{
           </div>
 
           <div class="col control-field" data-control="sleepDays">
-            <label for="sleepDays">Sleeping days</label>
+            <label for="sleepDays">沉睡天数</label>
             <input id="sleepDays" type="number" value="90" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinOrders">
-            <label for="sleepMinOrders">Min member orders</label>
+            <label for="sleepMinOrders">最低会员订单数</label>
             <input id="sleepMinOrders" type="number" value="2" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinAmount">
-            <label for="sleepMinAmount">Min member spend</label>
+            <label for="sleepMinAmount">最低会员消费额</label>
             <input id="sleepMinAmount" type="number" value="1000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="aclassMinAmount">
-            <label for="aclassMinAmount">A-class min spend</label>
+            <label for="aclassMinAmount">A 类最低消费额</label>
             <input id="aclassMinAmount" type="number" value="3000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="filterSalesperson">
-            <label>Filter by salesperson</label>
+            <label>按销售员筛选</label>
             <div class="filter-dropdown" id="sleepSalespersonDropdown">
               <button type="button" class="filter-trigger" id="sleepSalespersonTrigger">
-                <span id="sleepSalespersonTriggerText">All salespeople</span>
+                <span id="sleepSalespersonTriggerText">全部销售员</span>
                 <span class="filter-caret">▾</span>
               </button>
               <div class="filter-menu hidden" id="sleepSalespersonMenu">
-                <input id="sleepSalespersonSearch" class="store-search-input" type="text" placeholder="Search salesperson" />
-                <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSleepSalespersonBtn">Done</button></div>
+                <input id="sleepSalespersonSearch" class="store-search-input" type="text" placeholder="搜索销售员" />
+                <div class="dropdown-actions"><button type="button" class="clear-filter-btn" id="clearSleepSalespersonBtn">完成</button></div>
                 <div id="sleepSalespersonOptions" class="store-options"></div>
               </div>
             </div>
@@ -802,53 +802,53 @@ input[type="date"], select.control-select{
 
   <div id="resultArea" class="hidden">
     <div class="grid grid-4" style="margin-top:16px">
-      <div class="card kpi"><div class="label">Total Sales</div><div class="value" id="kpiSales">-</div></div>
-      <div class="card kpi"><div class="label">Total Orders</div><div class="value" id="kpiOrders">-</div></div>
-      <div class="card kpi"><div class="label">Member Registration Rate</div><div class="value" id="kpiReg">-</div></div>
-      <div class="card kpi"><div class="label">Repurchase Rate</div><div class="value" id="kpiRep">-</div></div>
-      <div class="card kpi"><div class="label">Avg Repurchase Times</div><div class="value" id="kpiRepTimes">-</div></div>
-      <div class="card kpi"><div class="label">Sleeping Members</div><div class="value" id="kpiSleep">-</div></div>
-      <div class="card kpi"><div class="label">A-Class Sleeping Members</div><div class="value" id="kpiASleep">-</div></div>
-      <div class="card kpi"><div class="label">Files Loaded</div><div class="value" id="kpiFiles">-</div></div>
+      <div class="card kpi"><div class="label">销售额</div><div class="value" id="kpiSales">-</div></div>
+      <div class="card kpi"><div class="label">订单数</div><div class="value" id="kpiOrders">-</div></div>
+      <div class="card kpi"><div class="label">会员注册率</div><div class="value" id="kpiReg">-</div></div>
+      <div class="card kpi"><div class="label">复购率</div><div class="value" id="kpiRep">-</div></div>
+      <div class="card kpi"><div class="label">平均复购次数</div><div class="value" id="kpiRepTimes">-</div></div>
+      <div class="card kpi"><div class="label">沉睡会员</div><div class="value" id="kpiSleep">-</div></div>
+      <div class="card kpi"><div class="label">A 类沉睡会员</div><div class="value" id="kpiASleep">-</div></div>
+      <div class="card kpi"><div class="label">已加载文件</div><div class="value" id="kpiFiles">-</div></div>
     </div>
 
     <div class="tabs" style="margin-top:16px">
-      <div class="tab active" data-tab="dashboard">Dashboard</div>
-      <div class="tab" data-tab="rankings">Rankings</div>
-      <div class="tab" data-tab="members">Members</div>
-      <div class="tab" data-tab="sleeping">Sleeping Members</div>
-      <div class="tab" data-tab="validation">Validation</div>
+      <div class="tab active" data-tab="dashboard">数据看板</div>
+      <div class="tab" data-tab="rankings">排行榜</div>
+      <div class="tab" data-tab="members">会员分析</div>
+      <div class="tab" data-tab="sleeping">沉睡会员</div>
+      <div class="tab" data-tab="validation">数据校验</div>
     </div>
 
     <div id="dashboard" class="tab-panel">
       <div class="grid grid-2">
         <div class="card">
-          <div class="section-title chart-title-lock">Monthly Sales Trend</div>
-          <div class="small">Click a card below to switch charts. Double-click a top chart card to reset.</div>
+          <div class="section-title chart-title-lock">月度销售趋势</div>
+          <div class="small">点击下方卡片可切换图表；双击上方图表卡片可恢复默认。</div>
           <canvas id="monthlyChart"></canvas>
         </div>
         <div class="card">
-          <div class="section-title chart-title-lock">Repurchase Structure</div>
-          <div class="small">The right chart changes together with the left chart.</div>
+          <div class="section-title chart-title-lock">复购结构</div>
+          <div class="small">右侧图表会与左侧图表联动更新。</div>
           <canvas id="repurchaseChart"></canvas>
         </div>
       </div>
       <div class="dashboard-lower">
         <div class="dashboard-lower-left">
           <div class="card" id="topStoresCard" style="cursor:pointer">
-            <div class="section-title">Top Stores</div>
-            <div class="small">Click to update the two charts</div>
+            <div class="section-title">门店排行</div>
+            <div class="small">点击后更新上方两张图表</div>
             <div id="topStores" style="max-height:420px;overflow:auto"></div>
           </div>
           <div class="card" id="topSalespeopleCard" style="cursor:pointer">
-            <div class="section-title">Top Salespeople</div>
-            <div class="small">Click to update the two charts</div>
+            <div class="section-title">销售员排行</div>
+            <div class="small">点击后更新上方两张图表</div>
             <div id="topSalespeople" style="max-height:420px;overflow:auto"></div>
           </div>
         </div>
         <div class="card" id="topProductsCard" style="cursor:pointer">
-          <div class="section-title">Top Products</div>
-          <div class="small">Click to update the two charts</div>
+          <div class="section-title">商品排行</div>
+          <div class="small">点击后更新上方两张图表</div>
           <div id="topProducts" style="max-height:420px;overflow:auto"></div>
         </div>
       </div>
@@ -857,52 +857,52 @@ input[type="date"], select.control-select{
     <div id="rankings" class="tab-panel hidden">
       <div class="grid grid-2">
         <div class="card">
-          <div class="section-title">Ranking Trend / Distribution</div>
+          <div class="section-title">排行趋势 / 分布</div>
           <canvas id="rankingsLineChart"></canvas>
         </div>
         <div class="card">
-          <div class="section-title">Ranking Comparison</div>
+          <div class="section-title">排行对比</div>
           <canvas id="rankingsBarChart"></canvas>
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-top:16px;align-items:start;overflow-x:auto;padding:6px 6px 10px">
         <div class="card" id="rankingsStoreCard" style="cursor:pointer;min-width:320px">
-          <div class="section-title">Store Performance Ranking</div>
-          <div class="small">Click to update the two charts above</div>
+          <div class="section-title">门店业绩排行</div>
+          <div class="small">点击后更新上方两张图表</div>
           <div id="rankingsStoreMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsSalespersonCard" style="cursor:pointer;min-width:320px">
-          <div class="section-title">Salesperson Performance Ranking</div>
-          <div class="small">Click to update the two charts above</div>
+          <div class="section-title">销售员业绩排行</div>
+          <div class="small">点击后更新上方两张图表</div>
           <div id="rankingsSalespersonMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsProductCard" style="cursor:pointer;min-width:320px">
-          <div class="section-title">Product Ranking</div>
-          <div class="small">Click to update the two charts above</div>
+          <div class="section-title">商品排行</div>
+          <div class="small">点击后更新上方两张图表</div>
           <div id="rankingsProductMini" style="max-height:360px;overflow:auto"></div>
         </div>
         <div class="card" id="rankingsTicketCard" style="cursor:pointer;min-width:320px">
-          <div class="section-title">Average Ticket Ranking</div>
-          <div class="small">Click to update the two charts above</div>
+          <div class="section-title">客单价排行</div>
+          <div class="small">点击后更新上方两张图表</div>
           <div id="rankingsTicketMini" style="max-height:360px;overflow:auto"></div>
         </div>
       </div>
 
       <div class="card" id="storeRankingCard" style="margin-top:16px">
-        <div class="section-title" id="storeRankingTitle" style="cursor:pointer">Store Performance Ranking</div><div class="small">Click section titles below to change the two charts above.</div>
+        <div class="section-title" id="storeRankingTitle" style="cursor:pointer">门店业绩排行</div><div class="small">点击下方标题可切换上方两张图表。</div>
         <div class="table-wrap" id="storeRankTable"></div>
       </div>
       <div class="card" id="salespersonRankingCard" style="margin-top:16px">
-        <div class="section-title" id="salespersonRankingTitle" style="cursor:pointer">Salesperson Performance Ranking</div>
+        <div class="section-title" id="salespersonRankingTitle" style="cursor:pointer">销售员业绩排行</div>
         <div class="table-wrap" id="salesRankTable"></div>
       </div>
       <div class="card" id="productRankingCard" style="margin-top:16px">
-        <div class="section-title" id="productRankingTitle" style="cursor:pointer">Product Ranking</div>
+        <div class="section-title" id="productRankingTitle" style="cursor:pointer">商品排行</div>
         <div class="table-wrap" id="productRankTable"></div>
       </div>
       <div class="card" id="ticketRankingCard" style="margin-top:16px">
-        <div class="section-title" id="ticketRankingTitle" style="cursor:pointer">Average Ticket Ranking</div>
+        <div class="section-title" id="ticketRankingTitle" style="cursor:pointer">客单价排行</div>
         <div class="table-wrap" id="ticketRankTable"></div>
       </div>
     </div>
@@ -910,16 +910,16 @@ input[type="date"], select.control-select{
     <div id="members" class="tab-panel hidden">
       <div class="grid grid-2">
         <div class="card">
-          <div class="section-title">Member Spend Trend</div>
+          <div class="section-title">会员消费趋势</div>
           <canvas id="membersLineChart"></canvas>
         </div>
         <div class="card">
-          <div class="section-title">Top Member Spend</div>
+          <div class="section-title">会员消费排行</div>
           <canvas id="membersBarChart"></canvas>
         </div>
       </div>
       <div class="card" id="memberRankingCard" style="margin-top:16px">
-        <div class="section-title" id="memberRankingTitle" style="cursor:pointer">Member Spend Ranking</div><div class="small">Click this title to refresh the two charts above from member ranking.</div>
+        <div class="section-title" id="memberRankingTitle" style="cursor:pointer">会员消费排行</div><div class="small">点击该标题可基于会员排行刷新上方两张图表。</div>
         <div class="table-wrap" id="memberRankTable"></div>
       </div>
     </div>
@@ -927,39 +927,39 @@ input[type="date"], select.control-select{
     <div id="sleeping" class="tab-panel hidden">
       <div class="grid grid-2">
         <div class="card">
-          <div class="section-title">Sleeping Member Trend</div>
+          <div class="section-title">沉睡会员趋势</div>
           <canvas id="sleepingLineChart"></canvas>
         </div>
         <div class="card">
-          <div class="section-title">Sleeping Member Comparison</div>
+          <div class="section-title">沉睡会员对比</div>
           <canvas id="sleepingBarChart"></canvas>
         </div>
       </div>
       <div class="sleep-row" style="margin-top:16px">
         <div class="card sleep-card" id="sleepWakeListCard" style="cursor:pointer">
-          <div class="section-title" id="sleepWakeListTitle" style="cursor:pointer">Sleeping Member Wake-up List</div>
-          <div class="small">Click this card to update the two charts above. Scroll inside to see more.</div>
+          <div class="section-title" id="sleepWakeListTitle" style="cursor:pointer">沉睡会员唤醒名单</div>
+          <div class="small">点击此卡片可更新上方两张图表，支持滚动查看更多。</div>
           <div class="table-wrap" id="sleepListTable"></div>
         </div>
         <div class="card sleep-card" id="sleepByStoreCard" style="cursor:pointer">
-          <div class="section-title" id="sleepByStoreTitle" style="cursor:pointer">Sleeping Members by Store</div>
-          <div class="small">Click this card to update the two charts above.</div>
+          <div class="section-title" id="sleepByStoreTitle" style="cursor:pointer">按门店统计沉睡会员</div>
+          <div class="small">点击此卡片可更新上方两张图表。</div>
           <div class="table-wrap" id="sleepByStoreTable"></div>
         </div>
       </div>
       <div class="card" id="sleepSummaryCard" style="margin-top:16px">
-        <div class="section-title" id="sleepSummaryTitle">Sleeping Member Summary</div>
+        <div class="section-title" id="sleepSummaryTitle">沉睡会员汇总</div>
         <div id="sleepSummary"></div>
       </div>
     </div>
 
     <div id="validation" class="tab-panel hidden">
       <div class="card">
-        <div class="section-title">File Validation</div>
+        <div class="section-title">文件校验</div>
         <div class="table-wrap" id="fileCheckTable"></div>
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="section-title">Resolved Column Mapping</div>
+        <div class="section-title">字段映射结果</div>
         <div class="table-wrap" id="mappingTable"></div>
       </div>
     </div>
@@ -972,15 +972,15 @@ input[type="date"], select.control-select{
     <div id="earth-canvas"></div>
   </div>
   <div class="earth-caption">
-    Global Network
-    <span class="earth-hint">Drag to rotate · Scroll to zoom</span>
+    全球业务网络
+    <span class="earth-hint">拖动旋转 · 滚轮缩放</span>
   </div>
 </section>
 
 <footer class="app-footer" role="contentinfo">
   <div class="app-footer-inner">
     <span class="app-footer-meta">
-      <a href="https://github.com/Hejun-Coderlife/sales-analysis-app/issues" target="_blank" rel="noopener noreferrer">Report an issue</a><span class="app-footer-sep">|</span>© 2026 Hejun
+      <a href="https://github.com/Hejun-Coderlife/sales-analysis-app/issues" target="_blank" rel="noopener noreferrer">问题反馈</a><span class="app-footer-sep">|</span>© 2026 Hejun
     </span>
   </div>
 </footer>
@@ -1423,11 +1423,11 @@ function analyze(cleaned, cfg){
     let risk_level = 'Warning';
     if (sleep_days >= 180) risk_level = 'Deep Sleep';
     else if (sleep_days >= 91) risk_level = 'High Risk';
-    const contact_channel = priority === 'A' ? 'Phone + 1:1 WeChat' : (m.order_count >= 3 ? '1:1 WeChat + Coupon' : 'SMS / Bulk WeChat');
+    const contact_channel = priority === 'A' ? '电话 + 1对1微信' : (m.order_count >= 3 ? '1对1微信 + 优惠券' : '短信 / 群发微信');
     const favorite_product = favProductMap.get(key) || '';
     const suggested_script = favorite_product
-      ? 'We saved a member-only offer for your usual item: ' + favorite_product + '. Would you like me to reserve it for you?'
-      : 'We prepared a returning-member benefit for you. Would you like us to reserve a visit slot this week?';
+      ? '我们为您常购商品「' + favorite_product + '」准备了会员专享优惠，需要为您预留吗？'
+      : '我们为您准备了老会员回店福利，本周是否为您预留到店名额？';
     return { ...m, sleep_days, last_store:recent?.store || m.latest_store || '', last_salesperson:recent?.salesperson || m.latest_salesperson || '', recent_product:recent?.product || '', favorite_product, priority, risk_level, contact_channel, suggested_script };
   }).filter(m => m.order_count >= cfg.sleepMinOrders && m.total_spend >= cfg.sleepMinAmount && m.sleep_days >= cfg.sleepDays)
     .sort((a,b)=>(a.priority.localeCompare(b.priority))||(b.total_spend-a.total_spend)||(b.sleep_days-a.sleep_days));
@@ -1476,22 +1476,60 @@ function analyze(cleaned, cfg){
     },
     storeRank, salespersonRank, productRank, ticketRank, memberRank, sleepList, monthly, daily, repurchaseDistribution, fileCheck, sleepByStore,
     sleepSummary: [
-      { metric:'Analysis Cutoff Date', value: ymd(analysisDate) },
-      { metric:'Sleeping Members', value: sleepList.length },
-      { metric:'Sleeping Members Historical Spend', value: sleepList.reduce((a,b)=>a+b.total_spend,0) },
-      { metric:'A-Class Members', value: sleepList.filter(x=>x.priority==='A').length },
-      { metric:'A-Class Historical Spend', value: sleepList.filter(x=>x.priority==='A').reduce((a,b)=>a+b.total_spend,0) },
-      { metric:'B-Class Members', value: sleepList.filter(x=>x.priority==='B').length },
-      { metric:'C-Class Members', value: sleepList.filter(x=>x.priority==='C').length }
+      { metric:'分析截止日期', value: ymd(analysisDate) },
+      { metric:'沉睡会员人数', value: sleepList.length },
+      { metric:'沉睡会员历史消费额', value: sleepList.reduce((a,b)=>a+b.total_spend,0) },
+      { metric:'A 类会员人数', value: sleepList.filter(x=>x.priority==='A').length },
+      { metric:'A 类历史消费额', value: sleepList.filter(x=>x.priority==='A').reduce((a,b)=>a+b.total_spend,0) },
+      { metric:'B 类会员人数', value: sleepList.filter(x=>x.priority==='B').length },
+      { metric:'C 类会员人数', value: sleepList.filter(x=>x.priority==='C').length }
     ]
   };
 }
 function renderTable(containerId, rows, formatters = {}, addIndex = false){
   const el = document.getElementById(containerId);
-  if (!rows || !rows.length){ el.innerHTML = '<p class="small" style="padding:12px">No data.</p>'; return; }
+  if (!rows || !rows.length){ el.innerHTML = '<p class="small" style="padding:12px">暂无数据。</p>'; return; }
   const cols = Object.keys(rows[0]);
-  let headerCells = addIndex ? '<th style="width:70px">No.</th>' : '';
-  headerCells += cols.map(c => '<th>' + c + '</th>').join('');
+  const headerLabelMap = {
+    store: '门店',
+    salesperson: '销售员',
+    product: '商品',
+    performance: '业绩',
+    sales_amount: '销售额',
+    sales_qty: '销量',
+    sales_orders: '订单数',
+    total_sales: '销售额',
+    order_count: '订单数',
+    avg_ticket: '客单价',
+    member_key: '会员标识',
+    member_name: '会员姓名',
+    total_spend: '累计消费',
+    repurchase_times: '复购次数',
+    last_purchase_date: '最近消费日期',
+    latest_store: '最近门店',
+    latest_salesperson: '最近销售员',
+    phone: '手机号',
+    sleep_days: '沉睡天数',
+    priority: '优先级',
+    risk_level: '风险等级',
+    last_store: '最近门店',
+    last_salesperson: '最近销售员',
+    recent_product: '最近购买商品',
+    favorite_product: '偏好商品',
+    contact_channel: '触达渠道',
+    suggested_script: '建议话术',
+    sleeping_members: '沉睡会员数',
+    historical_spend: '历史消费额',
+    metric: '指标',
+    value: '数值',
+    source_file: '来源文件',
+    included_rows: '纳入行数',
+    q_sum: '金额合计',
+    negative_rows: '负值行数',
+    negative_sum: '负值金额',
+  };
+  let headerCells = addIndex ? '<th style="width:70px">序号</th>' : '';
+  headerCells += cols.map(c => '<th>' + (headerLabelMap[c] || c) + '</th>').join('');
   let html = '<table><thead><tr>' + headerCells + '</tr></thead><tbody>';
   rows.forEach((row, idx) => {
     let rowHtml = addIndex ? '<td>' + (idx + 1) + '</td>' : '';
@@ -1508,7 +1546,7 @@ function renderTable(containerId, rows, formatters = {}, addIndex = false){
 }
 function renderMiniList(elId, rows, keyField, valueField, formatter, rankBase = 0, options = {}){
   const el = document.getElementById(elId);
-  if (!rows.length){ el.innerHTML = '<p class="small">No data.</p>'; return; }
+  if (!rows.length){ el.innerHTML = '<p class="small">暂无数据。</p>'; return; }
   const showBelowAveragePercent = !!options.showBelowAveragePercent;
   const enableNameScroll = !!options.enableNameScroll;
   const sideMetricField = options.sideMetricField || '';
@@ -1644,7 +1682,7 @@ function selectedSleepingSalesperson(){
 function updateSleepingSalespersonSelectedText(){
   const el = document.getElementById('sleepSalespersonTriggerText');
   if (!el) return;
-  el.textContent = selectedSleepingSalesperson() || 'All salespeople';
+  el.textContent = selectedSleepingSalesperson() || '全部销售员';
 }
 function populateSleepingSalespersonOptions(){
   const wrap = document.getElementById('sleepSalespersonOptions');
@@ -1660,7 +1698,7 @@ function populateSleepingSalespersonOptions(){
     const checked = name === selected;
     return '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>All salespeople</span></label>' + (optionsHtml || '<div class="small">No matching salespeople</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="radio" name="sleepSalespersonFilter" value=""' + (!selected ? ' checked' : '') + '> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>');
   wrap.querySelectorAll('input[name="sleepSalespersonFilter"]').forEach(input => {
     input.addEventListener('change', () => {
       appState.selectedSleepingSalesperson = normalizeText(input.value);
@@ -1675,7 +1713,7 @@ function updateDashboardSalespersonSelectedText(){
   const el = document.getElementById('dashboardSalespersonTriggerText');
   if (!el) return;
   const selected = selectedDashboardSalespeople();
-  if (!selected.length) { el.textContent = 'All salespeople'; return; }
+  if (!selected.length) { el.textContent = '全部销售员'; return; }
   el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' salespeople';
 }
 function selectedDashboardProducts(){
@@ -1685,7 +1723,7 @@ function updateDashboardProductSelectedText(){
   const el = document.getElementById('dashboardProductTriggerText');
   if (!el) return;
   const selected = selectedDashboardProducts();
-  if (!selected.length) { el.textContent = 'All products'; return; }
+  if (!selected.length) { el.textContent = '全部商品'; return; }
   el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' products';
 }
 function populateDashboardProductOptions(){
@@ -1711,7 +1749,7 @@ function populateDashboardProductOptions(){
     const checked = appState.selectedProducts.has(prod);
     return '<label class="store-option"><input type="checkbox" value="' + prod.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + prod + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>All products</span></label>' + (optionsHtml || '<div class="small">No matching products</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardProductAllOption"> <span>全部商品</span></label>' + (optionsHtml || '<div class="small">暂无匹配商品</div>');
   const allOpt = document.getElementById('dashboardProductAllOption');
   function syncProductAllCheckbox(){
     if (!allOpt) return;
@@ -1775,7 +1813,7 @@ function populateDashboardSalespersonOptions(){
     const checked = appState.selectedSalespeople.has(name);
     return '<label class="store-option"><input type="checkbox" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>All salespeople</span></label>' + (optionsHtml || '<div class="small">No matching salespeople</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>全部销售员</span></label>' + (optionsHtml || '<div class="small">暂无匹配销售员</div>');
   const allOpt = document.getElementById('dashboardSalespeopleAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedSalespeople.size === names.length && names.length > 0;
@@ -1814,7 +1852,7 @@ function updateDashboardStoreSelectedText(){
   const el = document.getElementById('dashboardStoreTriggerText');
   if (!el) return;
   const selected = selectedDashboardStores();
-  if (!selected.length) { el.textContent = 'All stores'; return; }
+  if (!selected.length) { el.textContent = '全部门店'; return; }
   el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' stores';
 }
 function populateDashboardStoreOptions(){
@@ -1829,7 +1867,7 @@ function populateDashboardStoreOptions(){
     const checked = appState.selectedStores.has(store);
     return '<label class="store-option"><input type="checkbox" value="' + store.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + store + '</span></label>';
   }).join('');
-  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>All stores</span></label>' + (optionsHtml || '<div class="small">No matching stores</div>');
+  wrap.innerHTML = '<label class="store-option"><input type="checkbox" id="dashboardStoreAllOption"> <span>全部门店</span></label>' + (optionsHtml || '<div class="small">暂无匹配门店</div>');
   const allOpt = document.getElementById('dashboardStoreAllOption');
   if (allOpt) {
     allOpt.checked = appState.selectedStores.size === stores.length && stores.length > 0;
@@ -1873,7 +1911,7 @@ function updateDateRangeTriggerText(){
   if (s && e) el.textContent = `${s} ~ ${e}`;
   else if (s) el.textContent = `${s} ~`;
   else if (e) el.textContent = `~ ${e}`;
-  else el.textContent = 'Select date range';
+  else el.textContent = '选择日期范围';
 }
 function showOverlayLight(show){
   let ov = document.getElementById('overlayLight');
@@ -2126,45 +2164,45 @@ function renderRankingTabCharts(mode){
   let miniRows = [];
   let labels = [];
   let values = [];
-  let title1 = 'Ranking Trend / Distribution';
-  let title2 = 'Ranking Comparison';
+  let title1 = '排行趋势 / 分布';
+  let title2 = '排行对比';
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('store_ranking.xlsx', [{ name:'Store Ranking', rows: results.storeRank || [] }]);
+    setDownloadTarget('store_ranking.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
     setActiveGlow('#rankingsStoreCard');
     rows = results.storeRank.slice(0, 10);
     miniRows = results.storeRank || [];
     labels = rows.map(x => x.store);
     values = rows.map(x => x.performance);
-    title1 = 'Store Performance Trend';
-    title2 = 'Store Performance Comparison';
+    title1 = '门店业绩趋势';
+    title2 = '门店业绩对比';
   } else if (mode === 'salesperson'){
-    setDownloadTarget('salesperson_ranking.xlsx', [{ name:'Salesperson Ranking', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('salesperson_ranking.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     miniRows = results.salespersonRank || [];
     labels = rows.map(x => x.salesperson);
     values = rows.map(x => x.performance);
-    title1 = 'Salesperson Performance Trend';
-    title2 = 'Salesperson Performance Comparison';
+    title1 = '销售员业绩趋势';
+    title2 = '销售员业绩对比';
   } else if (mode === 'product'){
-    setDownloadTarget('product_ranking.xlsx', [{ name:'Product Ranking', rows: results.productRank || [] }]);
+    setDownloadTarget('product_ranking.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#rankingsProductCard');
     rows = results.productRank.slice(0, 10);
     miniRows = rows;
     labels = rows.map(x => x.product);
     values = rows.map(x => x.sales_amount);
-    title1 = 'Product Sales Trend';
-    title2 = 'Product Sales Comparison';
+    title1 = '商品销售趋势';
+    title2 = '商品销售对比';
   } else if (mode === 'ticket'){
-    setDownloadTarget('average_ticket_ranking.xlsx', [{ name:'Average Ticket Ranking', rows: results.ticketRank || [] }]);
+    setDownloadTarget('average_ticket_ranking.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
     miniRows = rows;
     labels = rows.map(x => x.salesperson);
     values = rows.map(x => x.avg_ticket);
-    title1 = 'Average Ticket Trend';
-    title2 = 'Average Ticket Comparison';
+    title1 = '客单价趋势';
+    title2 = '客单价对比';
   }
 
   const commonLabelOpts = {
@@ -2351,25 +2389,25 @@ function renderMembersTabCharts(mode){
   const ticketVals = chartRowsForHover.map(x => x.avg_ticket);
   const repurchaseVals = chartRowsForHover.map(x => x.repurchase_times);
 
-  setDownloadTarget('member_spend_ranking.xlsx', [{ name:'Member Spend Ranking', rows: results.memberRank || [] }]);
+  setDownloadTarget('member_spend_ranking.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
   setActiveGlow('#memberRankingCard');
-  let leftTitle = 'Member Spend Trend';
-  let rightTitle = 'Top Member Spend';
+  let leftTitle = '会员消费趋势';
+  let rightTitle = '会员消费排行';
   let leftData = spendVals;
   let rightData = spendVals;
-  let leftLabel = 'Member Spend';
-  let rightLabel = 'Top Member Spend';
+  let leftLabel = '会员消费';
+  let rightLabel = '会员消费排行';
 
   if (mode === 'ticket'){
-    leftTitle = 'Member Avg Ticket Trend';
-    rightTitle = 'Member Avg Ticket Comparison';
+    leftTitle = '会员客单价趋势';
+    rightTitle = '会员客单价对比';
     leftData = ticketVals;
     rightData = ticketVals;
     leftLabel = 'Avg Ticket';
     rightLabel = 'Avg Ticket';
   } else if (mode === 'repurchase'){
-    leftTitle = 'Member Repurchase Times Trend';
-    rightTitle = 'Member Repurchase Times Comparison';
+    leftTitle = '会员复购次数趋势';
+    rightTitle = '会员复购次数对比';
     leftData = repurchaseVals;
     rightData = repurchaseVals;
     leftLabel = 'Repurchase Times';
@@ -2562,29 +2600,29 @@ function renderSleepingTabCharts(mode){
   let chartRowsForHover = [];
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('sleeping_members_by_store.xlsx', [{ name:'Sleeping Members by Store', rows: results.sleepByStore || [] }]);
+    setDownloadTarget('sleeping_members_by_store.xlsx', [{ name:'按门店沉睡会员', rows: results.sleepByStore || [] }]);
     setActiveGlow('#sleepByStoreCard');
     storeFullForTable = results.sleepByStore || [];
     chartRowsForHover = storeFullForTable.slice(0,10);
     labels = chartRowsForHover.map(x=>x.last_store);
     leftData = chartRowsForHover.map(x=>x.sleeping_members);
     rightData = chartRowsForHover.map(x=>x.historical_spend);
-    leftLabel = 'Sleeping Members';
+    leftLabel = '沉睡会员人数';
     rightLabel = 'Historical Spend';
-    leftTitle = 'Sleeping Members by Store';
-    rightTitle = 'Sleeping Members Historical Spend';
+    leftTitle = '按门店沉睡会员';
+    rightTitle = '沉睡会员历史消费额';
   } else if (mode === 'list'){
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'Sleeping Member Wake-up List', rows: getFilteredSleepList() || results.sleepList || [] }]);
+    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: getFilteredSleepList() || results.sleepList || [] }]);
     setActiveGlow('#sleepWakeListCard');
     listFullForTable = getFilteredSleepList(results) || [];
     chartRowsForHover = listFullForTable.slice(0,10);
     labels = chartRowsForHover.map(x=>x.member_name || x.member_key);
     leftData = chartRowsForHover.map(x=>x.total_spend);
     rightData = chartRowsForHover.map(x=>x.sleep_days);
-    leftLabel = 'Sleeping Member Spend';
-    rightLabel = 'Sleep Days';
-    leftTitle = 'Sleeping Member Wake-up List';
-    rightTitle = 'Sleeping Member Sleep Days';
+    leftLabel = '沉睡会员消费额';
+    rightLabel = '沉睡天数';
+    leftTitle = '沉睡会员唤醒名单';
+    rightTitle = '沉睡会员沉睡天数';
   }
 
   const commonLabelOpts = {
@@ -3006,7 +3044,7 @@ function updateDashboardCharts(mode){
     appState.dashboardShareHoverSource = '';
     const trend = getDashboardTrendPresentation(results);
     const { useDaily, rows: trendRows, daySpan, labelKey } = trend;
-    leftTitle.textContent = useDaily ? 'Daily Sales Trend' : 'Monthly Sales Trend';
+    leftTitle.textContent = useDaily ? '日销售趋势' : '月销售趋势';
     rightTitle.textContent = 'Repurchase Structure';
 
     const xTickOpts = useDaily && daySpan != null && daySpan > 7
@@ -3110,14 +3148,14 @@ function updateDashboardCharts(mode){
     const repurchaseSheetRows = REPURCHASE_BUCKET_ORDER.map(k => ({ order_bucket: k, member_count: Number(repurchaseByBucket[k]) || 0 }));
     const repPalette = getChartPalette(repurchaseLabels.length);
 
-    setDownloadTarget('dashboard_results.xlsx', [{ name: useDaily ? 'Daily Sales' : 'Monthly Sales', rows: trendRows }, { name:'Repurchase Structure', rows: repurchaseSheetRows }]);
+    setDownloadTarget('dashboard_results.xlsx', [{ name: useDaily ? '日销售趋势' : '月销售趋势', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
     clearActiveGlows();
     appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
       type:'doughnut',
       data:{
         labels: repurchaseLabels,
         datasets:[{
-          label:'Members',
+          label:'会员人数',
           data: repurchaseCounts,
           borderRadius:2,
           spacing:0,
@@ -3150,7 +3188,7 @@ function updateDashboardCharts(mode){
               label:(ctx)=>{
                 const v = ctx.parsed != null ? ctx.parsed : ctx.raw;
                 const n = Number(v);
-                return 'Members: ' + fmtInt(Number.isFinite(n) ? n : 0);
+                return '会员人数：' + fmtInt(Number.isFinite(n) ? n : 0);
               }
             }
           },
@@ -3186,34 +3224,34 @@ function updateDashboardCharts(mode){
   let rightChartType = 'doughnut';
 
   if (mode === 'stores'){
-    leftBaseTitle = 'Top 10 Stores Performance';
+    leftBaseTitle = '门店业绩前十';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = 'Top 10 Stores Share';
+    rightBaseTitle = '门店业绩占比前十';
     rightTitle.textContent = rightBaseTitle;
     rows = results.storeRank.slice(0, 10);
     labelKey = 'store';
     valueKey = 'performance';
-    setDownloadTarget('top_stores.xlsx', [{ name:'Top Stores', rows: results.storeRank || [] }]);
+    setDownloadTarget('top_stores.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
     setActiveGlow('#topStoresCard');
   } else if (mode === 'salespeople'){
-    leftBaseTitle = 'Top 10 Salespeople Performance';
+    leftBaseTitle = '销售员业绩前十';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = 'Top 10 Salespeople Share';
+    rightBaseTitle = '销售员业绩占比前十';
     rightTitle.textContent = rightBaseTitle;
     rows = results.salespersonRank.slice(0, 10);
     labelKey = 'salesperson';
     valueKey = 'performance';
-    setDownloadTarget('top_salespeople.xlsx', [{ name:'Top Salespeople', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('top_salespeople.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#topSalespeopleCard');
   } else if (mode === 'products'){
-    leftBaseTitle = 'Top 10 Products Sales';
+    leftBaseTitle = '商品销售前十';
     leftTitle.textContent = leftBaseTitle;
-    rightBaseTitle = 'Top 10 Product Share';
+    rightBaseTitle = '商品销售占比前十';
     rightTitle.textContent = rightBaseTitle;
     rows = results.productRank.slice(0, 10);
     labelKey = 'product';
     valueKey = 'sales_amount';
-    setDownloadTarget('top_products.xlsx', [{ name:'Top Products', rows: results.productRank || [] }]);
+    setDownloadTarget('top_products.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#topProductsCard');
   }
   if (appState.dashboardShareSelection.mode !== mode) appState.dashboardShareSelection = { mode, index: null };
@@ -3222,7 +3260,7 @@ function updateDashboardCharts(mode){
 
   appState.charts.monthly = new Chart(document.getElementById('monthlyChart'), {
     type:leftChartType,
-    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'Amount', data:rows.map(x=>x[valueKey]), borderRadius:{topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', maxBarThickness:40, clip:0, backgroundColor:getChartPalette(rows.length).bg, borderColor:'rgba(17,24,39,0.92)', borderWidth:0}] },
+    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius:{topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', maxBarThickness:40, clip:0, backgroundColor:getChartPalette(rows.length).bg, borderColor:'rgba(17,24,39,0.92)', borderWidth:0}] },
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -3244,7 +3282,7 @@ function updateDashboardCharts(mode){
   const dashboardPalette = getChartPalette(rows.length);
   appState.charts.repurchase = new Chart(document.getElementById('repurchaseChart'), {
     type:rightChartType,
-    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'Amount', data:rows.map(x=>x[valueKey]), borderRadius: rightChartType === 'doughnut' ? 2 : {topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', spacing: rightChartType === 'doughnut' ? 0 : 0, hoverOffset: rightChartType === 'doughnut' ? 12 : undefined, hoverBackgroundColor: rightChartType === 'doughnut' ? hoverBackgroundColorsFrom(dashboardPalette.bg) : undefined, cutout: rightChartType === 'doughnut' ? '52%' : undefined, maxBarThickness:40, clip:0, backgroundColor: rightChartType === 'doughnut' ? dashboardPalette.bg : 'rgba(96, 165, 250, 0.55)', borderColor: rightChartType === 'doughnut' ? dashboardPalette.border : 'rgba(96, 165, 250, 0.9)', borderWidth: 0}] },
+    data:{ labels:rows.map(x=>x[labelKey]), datasets:[{label:'金额', data:rows.map(x=>x[valueKey]), borderRadius: rightChartType === 'doughnut' ? 2 : {topLeft:8,topRight:8,bottomLeft:0,bottomRight:0}, borderSkipped:'bottom', spacing: rightChartType === 'doughnut' ? 0 : 0, hoverOffset: rightChartType === 'doughnut' ? 12 : undefined, hoverBackgroundColor: rightChartType === 'doughnut' ? hoverBackgroundColorsFrom(dashboardPalette.bg) : undefined, cutout: rightChartType === 'doughnut' ? '52%' : undefined, maxBarThickness:40, clip:0, backgroundColor: rightChartType === 'doughnut' ? dashboardPalette.bg : 'rgba(96, 165, 250, 0.55)', borderColor: rightChartType === 'doughnut' ? dashboardPalette.border : 'rgba(96, 165, 250, 0.9)', borderWidth: 0}] },
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -3318,7 +3356,7 @@ function refreshSleepingTable(sourceResults){
   const filtered = getFilteredSleepList(sourceResults);
   renderTable('sleepListTable', filtered, {total_spend:fmtCurrency, order_count:fmtInt, avg_ticket:fmtCurrency, repurchase_times:fmtInt, sleep_days:fmtInt}, true);
   if (document.querySelector('.tab.active')?.dataset.tab === 'sleeping') {
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'Sleeping Member Wake-up List', rows: filtered || [] }]);
+    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: filtered || [] }]);
   }
 }
 
@@ -3365,8 +3403,8 @@ function renderResults(results, mappings){
 
   const exportTrend = getDashboardTrendPresentation(getActiveResults());
   setDownloadTarget('dashboard_results.xlsx', [
-    { name: exportTrend.useDaily ? 'Daily Sales' : 'Monthly Sales', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
-    { name:'Repurchase Structure', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
+    { name: exportTrend.useDaily ? '日销售趋势' : '月销售趋势', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
+    { name:'复购结构', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
   ]);
 
   hideDuplicateRankingCards();
@@ -3395,7 +3433,7 @@ async function downloadWorkbook(filename, sheets){
     });
 
     if (!rows.length){
-      ws.addRow(['No data']);
+      ws.addRow(['暂无数据']);
       return;
     }
 
@@ -3519,8 +3557,8 @@ document.querySelectorAll('.tab').forEach(tab => {
       refreshSleepingTable(getActiveResults());
     } else if (tab.dataset.tab === 'validation') {
       setDownloadTarget('validation.xlsx', [
-        { name:'File Validation', rows: appState.results?.results?.fileCheck || [] },
-        { name:'Resolved Column Mapping', rows: appState.results?.mappings || [] }
+        { name:'文件校验', rows: appState.results?.results?.fileCheck || [] },
+        { name:'字段映射结果', rows: appState.results?.mappings || [] }
       ]);
     }
   });
@@ -3628,7 +3666,7 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   playRunButtonBounce();
   const files = [...document.getElementById('files').files];
   const status = document.getElementById('status');
-  if (!files.length){ status.textContent = 'Please upload at least one file.'; return; }
+  if (!files.length){ status.textContent = '请至少上传一个文件。'; return; }
 
   const overrides = {
     store: normalizeText(document.getElementById('storeHeader')?.value || ''),
@@ -3644,16 +3682,16 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
   try{
     setAnalyzeLoading(true);
     const prepared = await prepareFiles(files, overrides);
-    if (!prepared.cleaned.length){ status.textContent = 'No valid data rows were found.'; return; }
+    if (!prepared.cleaned.length){ status.textContent = '未找到有效数据行。'; return; }
     const results = analyze(prepared.cleaned, cfg);
     appState.lastCfg = cfg;
     appState.results = { results, mappings: prepared.mappings, originalCleaned: prepared.cleaned };
     populateSleepingSalespersonOptions();
     renderResults(results, prepared.mappings);
-    status.innerHTML = '<span class="ok">Done.</span> Loaded ' + prepared.cleaned.length.toLocaleString() + ' valid rows from ' + files.length + ' file(s).';
+    status.innerHTML = '<span class="ok">完成。</span>已从 ' + files.length + ' 个文件中加载 ' + prepared.cleaned.length.toLocaleString() + ' 条有效数据。';
   }catch(err){
     console.error(err);
-    status.innerHTML = '<span class="warn">Error:</span> ' + (err.message || err);
+    status.innerHTML = '<span class="warn">错误：</span>' + (err.message || err);
   }finally{
     setAnalyzeLoading(false);
   }
@@ -4114,19 +4152,19 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
   root.className = 'ai-test-widget';
   root.innerHTML = `
     <div class="ai-test-widget-header">
-      <div class="ai-test-widget-header-title">AI chat test (safe backend proxy)</div>
-      <button id="aiTestHideBtn" type="button" class="ai-test-hide-btn">Hide</button>
+      <div class="ai-test-widget-header-title">数据助手（安全后端代理）</div>
+      <button id="aiTestHideBtn" type="button" class="ai-test-hide-btn">隐藏</button>
     </div>
     <div class="ai-test-widget-body">
-      <div class="small">This sends messages to <code>/api/chat</code>. API key stays on server.</div>
+      <div class="small">消息将发送到 <code>/api/chat</code>，API 密钥仅保存在服务器端。</div>
       <div id="aiTestMessages" class="ai-test-widget-messages"></div>
       <div class="ai-test-widget-tools">
         <div id="aiTestSessionLabel" class="small"></div>
-        <button id="aiTestResetBtn" type="button" class="light">Reset chat</button>
+        <button id="aiTestResetBtn" type="button" class="light">重置对话</button>
       </div>
       <div class="ai-test-widget-row">
-        <input id="aiTestInput" type="text" placeholder="Ask something..." />
-        <button id="aiTestSendBtn" type="button">Send</button>
+        <input id="aiTestInput" type="text" placeholder="请输入你的问题..." />
+        <button id="aiTestSendBtn" type="button">发送</button>
       </div>
     </div>
   `;
@@ -4137,8 +4175,8 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
   launcher.type = 'button';
   launcher.className = 'ai-test-launcher';
   launcher.textContent = '';
-  launcher.title = 'Open Chat';
-  launcher.setAttribute('aria-label', 'Open Chat');
+  launcher.title = '打开数据助手';
+  launcher.setAttribute('aria-label', '打开数据助手');
   launcher.style.display = 'inline-flex';
   document.body.appendChild(launcher);
 
@@ -4249,7 +4287,7 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
           ? 'error'
           : 'system';
     const messageText = role === 'error'
-      ? `Error: ${String(text)}`
+      ? `错误：${String(text)}`
       : String(text);
     chatMessages.push({ role, text: messageText });
     renderMessages();
@@ -4288,13 +4326,13 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
           renderRankingTabCharts(mode);
           if (mode === 'salesperson') {
             document.getElementById('rankingsSalespersonCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            appendLine('System', 'Opened Rankings > Salespeople for you.');
+            appendLine('System', '已为你打开：排行榜 > 销售员。');
           } else if (mode === 'store') {
             document.getElementById('rankingsStoreCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            appendLine('System', 'Opened Rankings > Stores for you.');
+            appendLine('System', '已为你打开：排行榜 > 门店。');
           } else if (mode === 'product') {
             document.getElementById('rankingsProductCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            appendLine('System', 'Opened Rankings > Products for you.');
+            appendLine('System', '已为你打开：排行榜 > 商品。');
           }
         }
       } else if (action.tab === 'members') {
@@ -4302,14 +4340,14 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
         if (typeof renderMembersTabCharts === 'function') {
           renderMembersTabCharts(action.mode || 'spend');
           document.getElementById('memberRankingTitle')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          appendLine('System', 'Opened Members tab for you.');
+          appendLine('System', '已为你打开：会员分析。');
         }
       } else if (action.tab === 'sleeping') {
         activateTab('sleeping');
         if (typeof renderSleepingTabCharts === 'function') {
           renderSleepingTabCharts(action.mode || 'list');
           document.getElementById('sleepWakeListCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          appendLine('System', 'Opened Sleeping Members tab for you.');
+          appendLine('System', '已为你打开：沉睡会员。');
         }
       }
     });
@@ -4601,7 +4639,7 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
         const data = await response.json();
         detail = data?.error || '';
       } catch (_error) {}
-      return { ok: false, error: detail || `Context sync failed (${response.status})` };
+      return { ok: false, error: detail || `上下文同步失败（${response.status}）` };
     }
     return { ok: true };
   }
@@ -4612,12 +4650,12 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
     inputEl.value = '';
     appendLine('You', message);
     sendBtn.disabled = true;
-    sendBtn.textContent = 'Sending...';
+    sendBtn.textContent = '发送中...';
 
     try {
       const syncResult = await syncSalesContextToServer();
       if (!syncResult.ok) {
-        appendLine('Error', syncResult.error || 'Unable to sync dashboard data to chat.');
+        appendLine('Error', syncResult.error || '无法将看板数据同步到数据助手。');
         return;
       }
       const response = await fetch('/api/chat', {
@@ -4627,16 +4665,16 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
       });
       const data = await response.json();
       if (!response.ok) {
-        appendLine('Error', data?.error || 'Request failed');
+        appendLine('Error', data?.error || '请求失败');
         return;
       }
-      appendLine('Agent', data?.reply || 'No response');
+      appendLine('Agent', data?.reply || '暂无回复');
       applyUiActions(data?.uiActions);
     } catch (error) {
-      appendLine('Error', error?.message || 'Network error');
+      appendLine('Error', error?.message || '网络异常');
     } finally {
       sendBtn.disabled = false;
-      sendBtn.textContent = 'Send';
+      sendBtn.textContent = '发送';
     }
   }
 
@@ -4704,16 +4742,16 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
         body: JSON.stringify({ conversationId }),
       });
       chatMessages.length = 0;
-      appendLine('System', 'Chat context reset.');
+      appendLine('System', '对话上下文已重置。');
     } catch (_error) {
-      appendLine('Error', 'Failed to reset chat context');
+      appendLine('Error', '重置对话上下文失败');
     }
   });
   inputEl.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') sendMessage();
   });
   applyChatFontScale(1);
-  appendLine('System', 'Ready. This chat keeps multi-turn context.');
+  appendLine('System', '数据助手已就绪，支持多轮对话。');
 })();
 </script>
 

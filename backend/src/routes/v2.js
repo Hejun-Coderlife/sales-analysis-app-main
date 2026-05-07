@@ -53,7 +53,7 @@ export function createV2Router({
 
   router.post("/uploads", upload.single("file"), async (req, res) => {
     if (String(req.currentUser?.role || "") !== "admin") {
-      return res.status(403).json({ error: "Only admin can upload/import data" });
+      return res.status(403).json({ error: "仅管理员可上传或导入数据" });
     }
     if (!req.file) {
       return res.status(400).json({ error: "file is required (multipart field name: file)" });
@@ -100,7 +100,7 @@ export function createV2Router({
         await jobStore.updateJob(job.id, {
           status: "failed",
           progress: 100,
-          error: error?.message || "ingestion failed",
+          error: error?.message || "导入失败",
         });
       }
     });
@@ -222,7 +222,7 @@ export function createV2Router({
       });
       return res.json({ ok: true, ...data });
     } catch (error) {
-      return res.status(400).json({ error: error?.message || "table query failed" });
+      return res.status(400).json({ error: error?.message || "表格查询失败" });
     }
   });
 

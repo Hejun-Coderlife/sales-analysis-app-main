@@ -27,7 +27,7 @@ export async function waitForJob(jobId, onProgress) {
     const data = await getJob(jobId);
     onProgress?.(data.job);
     if (data.job?.status === "completed") return data.job;
-    if (data.job?.status === "failed") throw new Error(data.job?.error || "job failed");
+    if (data.job?.status === "failed") throw new Error(data.job?.error || "任务失败");
     await new Promise((resolve) => setTimeout(resolve, 1200));
   }
 }

@@ -76,10 +76,10 @@ export class AuthService {
 
   async authenticate(username, password) {
     const user = await this.findByUsername(username);
-    if (!user) return { ok: false, error: "Invalid username or password" };
-    if (!user.enabled) return { ok: false, error: "This account is disabled" };
+    if (!user) return { ok: false, error: "账号或密码错误" };
+    if (!user.enabled) return { ok: false, error: "该账号已被停用" };
     const valid = await bcrypt.compare(String(password || ""), user.passwordHash);
-    if (!valid) return { ok: false, error: "Invalid username or password" };
+    if (!valid) return { ok: false, error: "账号或密码错误" };
     return { ok: true, user: toPublicUser(user) };
   }
 

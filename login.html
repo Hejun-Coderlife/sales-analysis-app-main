@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sales Analysis Login</title>
+  <title>销售数据分析系统 - 登录</title>
   <style>
     body{
       margin:0;
@@ -56,17 +56,17 @@
 </head>
 <body>
   <section class="card">
-    <h1>Sales Analysis Login</h1>
-    <p>Sign in to access dashboard or admin console.</p>
+    <h1>销售数据分析系统</h1>
+    <p>登录后可访问数据看板与管理后台。</p>
     <form id="loginForm">
-      <label for="username">Username</label>
+      <label for="username">账号</label>
       <input id="username" name="username" autocomplete="username" required />
-      <label for="password">Password</label>
+      <label for="password">密码</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
-      <button id="submitBtn" type="submit">Login</button>
+      <button id="submitBtn" type="submit">登录</button>
       <div id="message" class="error"></div>
     </form>
-    <div class="meta">Default admin account: <b>admin</b> / <b>Admin@123456</b> (change in production).</div>
+    <div class="meta">默认管理员账号：<b>admin</b> / <b>Admin@123456</b>（上线前请立即修改）。</div>
   </section>
   <script>
     const form = document.getElementById('loginForm');
@@ -88,14 +88,14 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          msg.textContent = data.error || 'Login failed';
+          msg.textContent = data.error || '登录失败';
           return;
         }
-        msg.textContent = 'Login successful. Redirecting...';
+        msg.textContent = '登录成功，正在跳转...';
         msg.classList.add('ok');
         window.location.href = data.user?.role === 'admin' ? '/admin' : '/dashboard';
       } catch (error) {
-        msg.textContent = error?.message || 'Network error';
+        msg.textContent = error?.message || '网络异常，请稍后重试';
       } finally {
         btn.disabled = false;
       }

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Console - Sales Analysis</title>
+  <title>管理后台 - 销售数据分析系统</title>
   <style>
     body{
       margin:0;
@@ -52,28 +52,28 @@
   <div class="wrap">
     <header class="top">
       <div>
-        <h1>Admin Console</h1>
-        <p>Phase 1 placeholders for user/permission/import management.</p>
+        <h1>管理后台</h1>
+        <p>当前为第一阶段占位页面：用户、权限、数据导入能力将在后续完善。</p>
       </div>
       <div>
-        <button id="toDashboardBtn" class="btn btn-light">Dashboard</button>
-        <button id="logoutBtn" class="btn btn-primary">Logout</button>
+        <button id="toDashboardBtn" class="btn btn-light">数据看板</button>
+        <button id="logoutBtn" class="btn btn-primary">退出登录</button>
       </div>
     </header>
 
     <section class="grid">
       <article class="card">
-        <h2>User List (placeholder)</h2>
-        <p>This placeholder shows current seeded users and role/enable status.</p>
-        <div id="userListWrap" class="meta">Loading...</div>
+        <h2>用户管理（占位）</h2>
+        <p>此区域展示当前账号、角色与启用状态。</p>
+        <div id="userListWrap" class="meta">加载中...</div>
       </article>
       <article class="card">
-        <h2>Permission Management (placeholder)</h2>
-        <p>Role and scope editor UI will be added in next phase.</p>
+        <h2>权限管理（占位）</h2>
+        <p>角色与数据范围配置界面将在下一阶段接入。</p>
       </article>
       <article class="card">
-        <h2>Data Import (placeholder)</h2>
-        <p>Admin-only import panel will be connected to controlled upload workflow in next phase.</p>
+        <h2>数据导入（占位）</h2>
+        <p>仅管理员可用的数据导入面板将在下一阶段接入正式流程。</p>
       </article>
     </section>
   </div>
@@ -96,17 +96,23 @@
       const usersData = await usersRes.json();
       const wrap = document.getElementById('userListWrap');
       if (!usersRes.ok) {
-        wrap.textContent = usersData.error || 'Failed to load users.';
+        wrap.textContent = usersData.error || '用户列表加载失败';
         return;
       }
       const rows = usersData.users || [];
       if (!rows.length) {
-        wrap.textContent = 'No users.';
+        wrap.textContent = '暂无用户';
         return;
       }
-      const head = '<table><thead><tr><th>Username</th><th>Role</th><th>Enabled</th></tr></thead><tbody>';
-      const body = rows.map((u) => '<tr><td>' + u.username + '</td><td>' + u.role + '</td><td>' + (u.enabled ? 'Yes' : 'No') + '</td></tr>').join('');
-      wrap.innerHTML = head + body + '</tbody></table><div class=\"meta\">Read-only placeholder for now.</div>';
+      const roleMap = {
+        admin: '管理员',
+        manager: '经理',
+        store_user: '门店用户',
+        salesperson: '销售员',
+      };
+      const head = '<table><thead><tr><th>账号</th><th>角色</th><th>状态</th></tr></thead><tbody>';
+      const body = rows.map((u) => '<tr><td>' + u.username + '</td><td>' + (roleMap[u.role] || u.role) + '</td><td>' + (u.enabled ? '启用' : '停用') + '</td></tr>').join('');
+      wrap.innerHTML = head + body + '</tbody></table><div class=\"meta\">当前为只读占位，后续支持编辑。</div>';
     })();
   </script>
 </body>

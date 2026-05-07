@@ -686,7 +686,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
   if (!context) {
     return {
       ok: false,
-      error: "No sales data context available yet. Please upload and run analysis first.",
+      error: "当前暂无销售数据上下文，请先上传并完成分析。",
     };
   }
 
@@ -1030,7 +1030,7 @@ app.post("/api/auth/login", async (req, res) => {
   const username = String(req.body?.username || "");
   const password = String(req.body?.password || "");
   const result = await authService.authenticate(username, password);
-  if (!result.ok) return res.status(401).json({ error: result.error || "Login failed" });
+  if (!result.ok) return res.status(401).json({ error: result.error || "登录失败" });
   req.session.user = result.user;
   return res.json({ ok: true, user: result.user });
 });
@@ -1043,7 +1043,7 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/auth/me", (req, res) => {
-  if (!req.session?.user) return res.status(401).json({ error: "Not logged in" });
+  if (!req.session?.user) return res.status(401).json({ error: "未登录" });
   return res.json({ ok: true, user: req.session.user });
 });
 
@@ -1061,7 +1061,7 @@ app.use("/api/v2", getV2Router());
 app.post("/api/chat/context", requireAuthApi, (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
   if (!conversationId) {
-    return res.status(400).json({ error: "conversationId is required" });
+    return res.status(400).json({ error: "缺少 conversationId" });
   }
   const salesContext = sanitizeSalesContext(req.body?.salesContext);
   salesContexts.set(conversationId, salesContext);
@@ -1077,13 +1077,13 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
 
   if (!apiKey) {
     return res.status(500).json({
-      error: "Missing AI_API_KEY on server",
+      error: "服务器未配置 AI_API_KEY",
     });
   }
 
   if (!userMessage) {
     return res.status(400).json({
-      error: "message is required",
+      error: "消息内容不能为空",
     });
   }
 
@@ -1129,22 +1129,22 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
       const data = await response.json();
       if (!response.ok) {
         return res.status(response.status).json({
-          error: data?.error?.message || "Upstream AI API error",
+          error: data?.error?.message || "上游 AI 接口调用失败",
         });
       }
 
       finalUsage = data?.usage || finalUsage;
       const assistantMessage = data?.choices?.[0]?.message;
       if (!assistantMessage) {
-        return res.status(502).json({ error: "No assistant message from AI API" });
+        return res.status(502).json({ error: "AI 接口未返回助手消息" });
       }
 
       const toolCalls = Array.isArray(assistantMessage.tool_calls) ? assistantMessage.tool_calls : [];
       if (!toolCalls.length) {
-        finalReply = normalizeAssistantReply(stripThinkingBlocks(assistantMessage.content || "No response"));
+        finalReply = normalizeAssistantReply(stripThinkingBlocks(assistantMessage.content || "暂无回复"));
         workingMessages.push({
           role: "assistant",
-          content: finalReply || "No response",
+          content: finalReply || "暂无回复",
         });
         break;
       }
@@ -1174,7 +1174,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
     }
 
     if (!finalReply) {
-      return res.status(502).json({ error: "Tool-calling loop ended without final answer" });
+      return res.status(502).json({ error: "工具调用结束，但未生成最终回答" });
     }
 
     setSessionMessages(conversationId, workingMessages.slice(1));
@@ -1187,7 +1187,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({
-      error: error?.message || "Unexpected server error",
+      error: error?.message || "服务器异常",
     });
   }
 });
@@ -1195,7 +1195,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
 app.post("/api/chat/reset", requireAuthApi, (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
   if (!conversationId) {
-    return res.status(400).json({ error: "conversationId is required" });
+    return res.status(400).json({ error: "缺少 conversationId" });
   }
   sessions.delete(conversationId);
   salesContexts.delete(conversationId);
