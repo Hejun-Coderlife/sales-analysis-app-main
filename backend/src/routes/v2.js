@@ -59,6 +59,11 @@ export function createV2Router({
     res.json({ ok: true, service: "analytics-v2", now: new Date().toISOString() });
   });
 
+  router.get("/datasets/latest", async (_req, res) => {
+    const dataset = await analyticsService.getLatestDatasetSummary({ onlyReady: true });
+    return res.json({ ok: true, dataset: dataset || null });
+  });
+
   router.post("/uploads", upload.single("file"), async (req, res) => {
     if (String(req.currentUser?.role || "") !== "admin") {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });

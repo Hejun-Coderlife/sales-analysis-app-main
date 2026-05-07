@@ -61,10 +61,11 @@ export class AnalyticsService {
     return rows[0] || null;
   }
 
-  async getLatestDatasetSummary() {
+  async getLatestDatasetSummary({ onlyReady = true } = {}) {
     const rows = await this.duckdbService.query(
       `SELECT dataset_id, source_name, row_count, created_at, status
        FROM datasets
+       ${onlyReady ? "WHERE status = 'ready'" : ""}
        ORDER BY created_at DESC
        LIMIT 1`
     );
@@ -170,7 +171,7 @@ export class AnalyticsService {
 
   async getFilterOptions(datasetId, { filters = {} } = {}) {
     const { whereSql, params } = buildWhereClause({ datasetId, filters });
-    const [stores, salespeople, products] = await Promise.all([
+    const [stores, salespeople, products, dateRange] = await Promise.all([
       this.duckdbService.query(
         `SELECT DISTINCT store FROM fact_sales WHERE ${whereSql} AND COALESCE(store, '') <> '' ORDER BY store`,
         params
@@ -183,11 +184,23 @@ export class AnalyticsService {
         `SELECT DISTINCT product FROM fact_sales WHERE ${whereSql} AND COALESCE(product, '') <> '' ORDER BY product`,
         params
       ),
+      this.duckdbService.query(
+        `SELECT
+           CAST(MIN(order_date) AS VARCHAR) AS min_date,
+           CAST(MAX(order_date) AS VARCHAR) AS max_date
+         FROM fact_sales
+         WHERE ${whereSql}`,
+        params
+      ),
     ]);
     return {
       stores: stores.map((x) => String(x.store || "")).filter(Boolean),
       salespeople: salespeople.map((x) => String(x.salesperson || "")).filter(Boolean),
       products: products.map((x) => String(x.product || "")).filter(Boolean),
+      dateRange: {
+        minDate: String(dateRange?.[0]?.min_date || ""),
+        maxDate: String(dateRange?.[0]?.max_date || ""),
+      },
     };
   }
 

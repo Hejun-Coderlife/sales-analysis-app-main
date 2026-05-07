@@ -2,6 +2,7 @@ import { featureFlags } from "../config/feature-flags.js";
 import {
   getDatasetKpis,
   getFilterOptions,
+  getLatestDatasetSummary,
   getMemberRankings,
   getPagedTable,
   getSalespersonRankings,
@@ -123,6 +124,7 @@ function mergeV2IntoLegacyResults(payload) {
 
 function renderFromResults(results, keepDropdownOpen = false) {
   if (!results) return;
+  document.getElementById("resultArea")?.classList.remove("hidden");
   window.renderKpisFromResults?.(results);
   window.renderAllTablesFromResults?.(results);
   window.updateDashboardCharts?.("default");
@@ -171,6 +173,13 @@ async function populateV2FilterOptions() {
   if (!v2State.activeDatasetId) return;
   const options = await getFilterOptions(v2State.activeDatasetId, getDateFilters());
   setFilterOptions(options);
+  const startInput = document.getElementById("dashboardStartDate");
+  const endInput = document.getElementById("dashboardEndDate");
+  const minDate = String(options?.dateRange?.minDate || "");
+  const maxDate = String(options?.dateRange?.maxDate || "");
+  if (startInput && minDate && !startInput.value) startInput.value = minDate;
+  if (endInput && maxDate && !endInput.value) endInput.value = maxDate;
+  window.updateDateRangeTriggerText?.();
 }
 
 function renderCheckboxOptions({
@@ -263,7 +272,7 @@ function wireV2FilterMenus() {
   };
 
   const safeRedraw = (event) => {
-    if (!featureFlags.enableV2Upload || !v2State.activeDatasetId) return;
+    if (!v2State.activeDatasetId) return;
     event?.stopImmediatePropagation?.();
     redraw();
   };
@@ -276,9 +285,9 @@ function wireV2FilterMenus() {
 }
 
 async function refreshV2Results(keepDropdownOpen = false) {
-  if (!featureFlags.enableV2Upload || !v2State.activeDatasetId) return;
+  if (!v2State.activeDatasetId) return;
   setV2Loading(true);
-  window.setAnalyzeLoading?.(true);
+  if ((window.__CURRENT_USER || {}).role === "admin") window.setAnalyzeLoading?.(true);
   setStatus("正在加载 v2 分析结果...");
   try {
     await populateV2FilterOptions();
@@ -292,7 +301,7 @@ async function refreshV2Results(keepDropdownOpen = false) {
     setStatus(error?.message || "v2 分析刷新失败", true);
   } finally {
     setV2Loading(false);
-    window.setAnalyzeLoading?.(false);
+    if ((window.__CURRENT_USER || {}).role === "admin") window.setAnalyzeLoading?.(false);
   }
 }
 
@@ -344,38 +353,50 @@ async function runBackendUploadPath() {
 function wireV2FilterRefreshHooks() {
   const originalOnGlobal = window.onGlobalFiltersChanged;
   window.onGlobalFiltersChanged = async (keepDropdownOpen = false) => {
-    if (!featureFlags.enableV2Upload || !v2State.activeDatasetId) {
+    if (!v2State.activeDatasetId) {
       return originalOnGlobal?.(keepDropdownOpen);
     }
     await refreshV2Results(keepDropdownOpen);
   };
 }
 
+async function loadLatestDatasetOnBoot() {
+  const latest = await getLatestDatasetSummary();
+  if (!latest?.dataset_id) {
+    setStatus("暂无数据，请管理员先在后台导入 Excel", true);
+    return;
+  }
+  setDatasetId(String(latest.dataset_id));
+  setStatus("已加载后台最新数据集，正在刷新看板...");
+  await refreshV2Results(false);
+}
+
 export function initV2Bridge() {
-  if (!featureFlags.enableV2Upload) return;
   const currentUser = window.__CURRENT_USER || null;
-  if (!currentUser || currentUser.role !== "admin") return;
+  if (!currentUser) return;
   const analyzeBtn = document.getElementById("analyzeBtn");
-  if (!analyzeBtn) return;
   wireV2FilterRefreshHooks();
   wireV2FilterMenus();
+  void loadLatestDatasetOnBoot();
 
-  // Capture-phase hook allows a safe backend path while preserving legacy handler as fallback.
-  analyzeBtn.addEventListener(
-    "click",
-    async (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      try {
-        window.setAnalyzeLoading?.(true);
-        await runBackendUploadPath();
-      } catch (error) {
-        console.error("[v2-bridge] fallback to legacy due to:", error);
-        setStatus(error?.message || "v2 导入失败，请重试。", true);
-      } finally {
-        window.setAnalyzeLoading?.(false);
-      }
-    },
-    true
-  );
+  if (featureFlags.enableV2Upload && currentUser.role === "admin" && analyzeBtn) {
+    // Admin debug path: capture analyze click into backend upload when feature flag is on.
+    analyzeBtn.addEventListener(
+      "click",
+      async (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try {
+          window.setAnalyzeLoading?.(true);
+          await runBackendUploadPath();
+        } catch (error) {
+          console.error("[v2-bridge] fallback to legacy due to:", error);
+          setStatus(error?.message || "v2 导入失败，请重试。", true);
+        } finally {
+          window.setAnalyzeLoading?.(false);
+        }
+      },
+      true
+    );
+  }
 }

@@ -104,6 +104,18 @@
     const joinCsv = (list) => (Array.isArray(list) ? list : []).join(", ");
     const fmtTime = (v) => {
       if (!v) return "暂无";
+      if (typeof v === "object") {
+        const maybeIso = v?.value || v?.iso || v?.timestamp || "";
+        if (maybeIso) {
+          const d0 = new Date(maybeIso);
+          if (!Number.isNaN(d0.getTime())) return d0.toLocaleString("zh-CN");
+        }
+        if (typeof v?.micros === "number") {
+          const d1 = new Date(Math.floor(v.micros / 1000));
+          if (!Number.isNaN(d1.getTime())) return d1.toLocaleString("zh-CN");
+        }
+        return JSON.stringify(v);
+      }
       const d = new Date(v);
       return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("zh-CN");
     };

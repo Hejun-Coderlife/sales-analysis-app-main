@@ -137,5 +137,10 @@ export async function getFilterOptions(datasetId, filters = {}) {
   );
   withFilterParams(url, filters);
   const data = await fetchJson(url.pathname + url.search);
-  return data.options || { stores: [], salespeople: [], products: [] };
+  return data.options || { stores: [], salespeople: [], products: [], dateRange: { minDate: "", maxDate: "" } };
+}
+
+export async function getLatestDatasetSummary() {
+  const data = await fetchJson("/api/v2/datasets/latest");
+  return data.dataset || null;
 }
