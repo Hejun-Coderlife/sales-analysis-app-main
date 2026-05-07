@@ -155,15 +155,118 @@
 
         const earth = new THREE.Group();
         scene.add(earth);
-        earth.add(new THREE.Mesh(new THREE.SphereGeometry(1, 72, 72), new THREE.MeshBasicMaterial({ color: 0x0e0a24 })));
+        const coreGeo = new THREE.SphereGeometry(1, 72, 72);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0x0e0a24 });
+        earth.add(new THREE.Mesh(coreGeo, coreMat));
 
         const edgeImg = new Image();
         const edgeTex = new THREE.Texture(edgeImg);
         edgeImg.onload = function(){ edgeTex.needsUpdate = true; };
-        edgeImg.src = "data:image/png;base64," + edgesData;
-        earth.add(new THREE.Mesh(new THREE.SphereGeometry(1.004, 72, 72), new THREE.MeshBasicMaterial({
-          map: edgeTex, color: 0xd8b4fe, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false
+        edgeImg.src = "data:image/png;base64," + (edgesData || "");
+        const edgeGeo = new THREE.SphereGeometry(1.004, 72, 72);
+        const edgeMat = new THREE.MeshBasicMaterial({
+          map: edgeTex,
+          color: 0xd8b4fe,
+          transparent: true,
+          opacity: 0.95,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        earth.add(new THREE.Mesh(edgeGeo, edgeMat));
+
+        function latLngToVec3(lat, lng, r){
+          const phi = (90 - lat) * Math.PI / 180;
+          const theta = (lng + 180) * Math.PI / 180;
+          return new THREE.Vector3(
+            -r * Math.sin(phi) * Math.cos(theta),
+             r * Math.cos(phi),
+             r * Math.sin(phi) * Math.sin(theta)
+          );
+        }
+
+        const CITIES = [
+          [40.71,-74.00],[34.05,-118.24],[41.88,-87.63],[29.76,-95.37],[25.76,-80.19],
+          [37.77,-122.42],[47.60,-122.33],[43.65,-79.38],[45.50,-73.56],[49.28,-123.12],
+          [19.43,-99.13],[23.13,-82.38],[21.31,-157.86],
+          [10.48,-66.90],[4.71,-74.07],[-12.04,-77.03],[-33.45,-70.67],
+          [-34.60,-58.38],[-22.91,-43.17],[-23.55,-46.63],[-12.97,-38.51],
+          [51.51,-0.13],[48.86,2.35],[40.42,-3.70],[41.39,2.17],[38.72,-9.14],
+          [53.35,-6.26],[52.37,4.90],[52.52,13.40],[48.14,11.58],[50.45,30.52],
+          [41.90,12.50],[37.98,23.73],[41.01,28.98],[55.76,37.62],[59.33,18.06],
+          [59.91,10.75],[60.17,24.94],[52.23,21.01],[50.08,14.44],[48.21,16.37],
+          [30.04,31.24],[6.52,3.38],[-1.29,36.82],[-26.20,28.04],[-33.92,18.42],
+          [33.57,-7.59],[15.50,32.56],[9.03,38.74],[14.69,-17.44],
+          [25.27,55.30],[24.47,39.61],[35.68,51.39],[33.31,44.36],[31.77,35.21],
+          [19.07,72.87],[28.61,77.20],[12.97,77.59],[22.57,88.36],
+          [13.75,100.49],[1.35,103.82],[-6.21,106.85],[14.60,120.98],
+          [22.32,114.17],[39.90,116.40],[31.23,121.47],[35.68,139.69],
+          [37.57,126.98],[25.03,121.56],[21.03,105.85],[10.82,106.63],
+          [-33.87,151.21],[-37.81,144.96],[-36.85,174.76],[-27.47,153.02]
+        ];
+        const cityVecs = CITIES.map(function(coords){
+          return latLngToVec3(coords[0], coords[1], 1.012);
+        });
+
+        const dotPos = new Float32Array(cityVecs.length * 3);
+        cityVecs.forEach(function(v, i){
+          dotPos[i * 3] = v.x;
+          dotPos[i * 3 + 1] = v.y;
+          dotPos[i * 3 + 2] = v.z;
+        });
+        const dotGeo = new THREE.BufferGeometry();
+        dotGeo.setAttribute("position", new THREE.BufferAttribute(dotPos, 3));
+        earth.add(new THREE.Points(dotGeo, new THREE.PointsMaterial({
+          color: 0xf0abfc,
+          size: 0.034,
+          transparent: true,
+          opacity: 0.95,
+          sizeAttenuation: true,
+          depthWrite: false
         })));
+
+        function makeArc(a, b, color, opacity){
+          const mid = a.clone().add(b).multiplyScalar(0.5);
+          const dist = a.distanceTo(b);
+          const lift = 1 + Math.min(0.65, dist * 0.42);
+          mid.normalize().multiplyScalar(lift);
+          const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+          const pts = curve.getPoints(64);
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          const mat = new THREE.LineBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: opacity,
+            depthWrite: false
+          });
+          return { line: new THREE.Line(geo, mat), curve: curve };
+        }
+
+        for (let i = 0; i < 42; i++){
+          const a = cityVecs[Math.floor(Math.random() * cityVecs.length)];
+          const b = cityVecs[Math.floor(Math.random() * cityVecs.length)];
+          if (a === b) continue;
+          earth.add(makeArc(a, b, 0xa78bfa, 0.32).line);
+        }
+
+        const pulses = [];
+        for (let i = 0; i < 10; i++){
+          const a = cityVecs[Math.floor(Math.random() * cityVecs.length)];
+          const b = cityVecs[Math.floor(Math.random() * cityVecs.length)];
+          if (a === b) { i -= 1; continue; }
+          const arc = makeArc(a, b, 0xe879f9, 0.85);
+          earth.add(arc.line);
+          const pulse = new THREE.Mesh(
+            new THREE.SphereGeometry(0.02, 10, 10),
+            new THREE.MeshBasicMaterial({ color: 0xfdf4ff, transparent: true, opacity: 0.95 })
+          );
+          earth.add(pulse);
+          pulses.push({
+            curve: arc.curve,
+            mesh: pulse,
+            t: Math.random(),
+            speed: 0.003 + Math.random() * 0.004
+          });
+        }
 
         scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.22, 64, 64), new THREE.ShaderMaterial({
           transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false,
@@ -203,9 +306,32 @@
             earth.rotation.x += velX;
             earth.rotation.x = Math.max(-MAX_X, Math.min(MAX_X, earth.rotation.x));
           }
+          for (let i = 0; i < pulses.length; i++){
+            const p = pulses[i];
+            p.t += p.speed;
+            if (p.t > 1) p.t = 0;
+            p.mesh.position.copy(p.curve.getPoint(p.t));
+            const fade = Math.sin(p.t * Math.PI);
+            p.mesh.material.opacity = 0.3 + 0.7 * fade;
+            p.mesh.scale.setScalar(0.5 + 0.9 * fade);
+          }
           renderer.render(scene, camera);
         }
         animate();
+
+        function resize(){
+          const r = mount.getBoundingClientRect();
+          const s = Math.max(1, Math.round(Math.min(r.width, r.height)));
+          renderer.setSize(s, s, true);
+          renderer.domElement.style.width = s + "px";
+          renderer.domElement.style.height = s + "px";
+          camera.aspect = 1;
+          camera.updateProjectionMatrix();
+        }
+        window.addEventListener("resize", resize);
+        if (window.ResizeObserver){
+          try { new ResizeObserver(resize).observe(mount); } catch (e) {}
+        }
       });
     })();
   }
