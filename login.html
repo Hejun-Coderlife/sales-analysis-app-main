@@ -59,6 +59,25 @@
     .meta{ margin-top:10px; font-size:12px; color:#6b7280; }
     .error{ margin-top:10px; color:#b91c1c; font-size:13px; min-height:18px; }
     .ok{ color:#166534; }
+    @media (max-width: 800px) {
+      body{
+        display:block;
+        min-height:100vh;
+        padding:16px 12px 24px;
+      }
+      .card{
+        width:min(420px, 100%);
+        margin:0 auto;
+      }
+      .earth-section{
+        margin:18px auto 0;
+        padding-top:18px;
+      }
+      .earth-stage{
+        width:min(62vw, 280px);
+        height:min(62vw, 280px);
+      }
+    }
   </style>
 </head>
 <body>
