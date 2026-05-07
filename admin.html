@@ -28,6 +28,9 @@
     .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
     .user-item{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; margin-top:12px; }
     .perm-list{ max-height:130px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:8px; display:grid; gap:6px; }
+    .perm-toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+    .perm-toolbar input{ flex:1; min-width:180px; min-height:34px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px; }
+    .perm-toolbar .btn{ min-height:32px; padding:0 10px; }
     .tag-wrap{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
     .tag{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; font-size:12px; padding:2px 8px; }
     .table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
@@ -97,6 +100,7 @@
   <script>
     const roleMap = { admin: "管理员", manager: "经理", store_user: "门店用户", salesperson: "销售员" };
     let permissionOptions = { stores: [], salespeople: [] };
+    const permissionSearchState = {};
     let usersCache = [];
 
     const splitCsv = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -127,11 +131,34 @@
       el.innerHTML = rows.length ? rows.map((v) => `<span class="tag">${v}</span>`).join("") : '<span class="muted">未选择</span>';
     }
 
-    function renderPermissionCheckboxes(kind, userId, selectedValues) {
+    function getPermissionSearchKey(kind, userId) {
+      return `${kind}:${userId}`;
+    }
+
+    function getPermissionSearchValue(kind, userId) {
+      return String(permissionSearchState[getPermissionSearchKey(kind, userId)] || "");
+    }
+
+    function setPermissionSearchValue(kind, userId, value) {
+      permissionSearchState[getPermissionSearchKey(kind, userId)] = String(value || "");
+    }
+
+    function renderSelectedCount(kind, userId, selectedValues) {
+      const el = document.getElementById(`count-${kind}-${userId}`);
+      if (!el) return;
+      const count = uniq(selectedValues || []).length;
+      const unit = kind === "stores" ? "个门店" : "位销售员";
+      el.textContent = `已选择 ${count} ${unit}`;
+    }
+
+    function renderPermissionCheckboxes(kind, userId, selectedValues, searchValue = "") {
       const options = kind === "stores" ? permissionOptions.stores : permissionOptions.salespeople;
       const selectedSet = new Set(selectedValues || []);
+      const search = String(searchValue || "").trim().toLowerCase();
       if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
-      return options.map((v) => {
+      const filtered = options.filter((v) => selectedSet.has(v) || !search || String(v).toLowerCase().includes(search));
+      if (!filtered.length) return '<div class="muted">无匹配项，请调整搜索关键词</div>';
+      return filtered.map((v) => {
         const checked = selectedSet.has(v) ? " checked" : "";
         return `<label><input type="checkbox" data-kind="${kind}" data-id="${userId}" value="${v.replace(/"/g, "&quot;")}"${checked}/> ${v}</label>`;
       }).join("");
@@ -141,6 +168,31 @@
       const checked = [...document.querySelectorAll(`input[type="checkbox"][data-kind="${kind}"][data-id="${userId}"]:checked`)].map((x) => x.value);
       const manual = splitCsv(document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`)?.value || "");
       return uniq([...checked, ...manual]);
+    }
+
+    function renderPermissionPanel(kind, userId, selectedValues) {
+      const listEl = document.getElementById(`perm-list-${kind}-${userId}`);
+      if (!listEl) return;
+      const selected = uniq(Array.isArray(selectedValues) ? selectedValues : collectPermissionValues(kind, userId));
+      const searchValue = getPermissionSearchValue(kind, userId);
+      listEl.innerHTML = renderPermissionCheckboxes(kind, userId, selected, searchValue);
+      renderTagList(`tags-${kind}-${userId}`, selected);
+      renderSelectedCount(kind, userId, selected);
+    }
+
+    function applyPermissionBulkAction(kind, userId, action) {
+      const options = kind === "stores" ? permissionOptions.stores : permissionOptions.salespeople;
+      const fallback = document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`);
+      const manualValues = splitCsv(fallback?.value || "");
+      if (action === "clear") {
+        if (fallback) fallback.value = "";
+        renderPermissionPanel(kind, userId, []);
+        return;
+      }
+      if (action === "all") {
+        const selected = uniq([...options, ...manualValues]);
+        renderPermissionPanel(kind, userId, selected);
+      }
     }
 
     function renderUsers(rows) {
@@ -154,9 +206,29 @@
         <div class="user-item">
           <div><b>${u.username}</b> <span class="muted">(${u.displayName || "-"})</span></div>
           <div class="field"><label>角色</label><select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select></div>
-          <div class="field"><label>门店权限（可视化多选）</label><div class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [])}</div><div id="tags-stores-${u.id}" class="tag-wrap"></div></div>
+          <div class="field">
+            <label>门店权限（可视化多选）</label>
+            <div class="perm-toolbar">
+              <input type="text" data-search-kind="stores" data-id="${u.id}" placeholder="搜索门店..." value="${getPermissionSearchValue("stores", u.id).replace(/"/g, "&quot;")}"/>
+              <button class="btn btn-light" data-action="perm-all" data-kind="stores" data-id="${u.id}">全选门店</button>
+              <button class="btn btn-light" data-action="perm-clear" data-kind="stores" data-id="${u.id}">清空门店</button>
+            </div>
+            <div id="count-stores-${u.id}" class="meta"></div>
+            <div id="perm-list-stores-${u.id}" class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [], getPermissionSearchValue("stores", u.id))}</div>
+            <div id="tags-stores-${u.id}" class="tag-wrap"></div>
+          </div>
           <div class="field"><label>门店权限（手工兜底，逗号分隔）</label><textarea data-fallback="stores" data-id="${u.id}" placeholder="例如：门店1, 门店2">${joinCsv(u.allowedStores || [])}</textarea></div>
-          <div class="field"><label>销售员权限（可视化多选）</label><div class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [])}</div><div id="tags-salespeople-${u.id}" class="tag-wrap"></div></div>
+          <div class="field">
+            <label>销售员权限（可视化多选）</label>
+            <div class="perm-toolbar">
+              <input type="text" data-search-kind="salespeople" data-id="${u.id}" placeholder="搜索销售员..." value="${getPermissionSearchValue("salespeople", u.id).replace(/"/g, "&quot;")}"/>
+              <button class="btn btn-light" data-action="perm-all" data-kind="salespeople" data-id="${u.id}">全选销售员</button>
+              <button class="btn btn-light" data-action="perm-clear" data-kind="salespeople" data-id="${u.id}">清空销售员</button>
+            </div>
+            <div id="count-salespeople-${u.id}" class="meta"></div>
+            <div id="perm-list-salespeople-${u.id}" class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [], getPermissionSearchValue("salespeople", u.id))}</div>
+            <div id="tags-salespeople-${u.id}" class="tag-wrap"></div>
+          </div>
           <div class="field"><label>销售员权限（手工兜底，逗号分隔）</label><textarea data-fallback="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
           <div class="row">
             <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? "checked" : ""}/> 启用</label>
@@ -167,8 +239,8 @@
         </div>
       `).join("");
       rows.forEach((u) => {
-        renderTagList(`tags-stores-${u.id}`, u.allowedStores || []);
-        renderTagList(`tags-salespeople-${u.id}`, u.allowedSalespeople || []);
+        renderPermissionPanel("stores", u.id, u.allowedStores || []);
+        renderPermissionPanel("salespeople", u.id, u.allowedSalespeople || []);
       });
     }
 
@@ -379,6 +451,12 @@
       const userId = target.getAttribute("data-id");
       const action = target.getAttribute("data-action");
       if (!userId) return;
+      if (action === "perm-all" || action === "perm-clear") {
+        const kind = target.getAttribute("data-kind");
+        if (!kind) return;
+        applyPermissionBulkAction(kind, userId, action === "perm-all" ? "all" : "clear");
+        return;
+      }
       if (action === "save") void saveUser(userId);
       if (action === "reset") void resetPassword(userId);
     });
@@ -388,15 +466,28 @@
       const userId = cb.getAttribute("data-id");
       const kind = cb.getAttribute("data-kind");
       if (!userId || !kind) return;
-      renderTagList(`tags-${kind}-${userId}`, collectPermissionValues(kind, userId));
+      const selected = collectPermissionValues(kind, userId);
+      renderTagList(`tags-${kind}-${userId}`, selected);
+      renderSelectedCount(kind, userId, selected);
     });
     document.getElementById("userListWrap").addEventListener("input", (event) => {
+      const searchInput = event.target.closest("[data-search-kind]");
+      if (searchInput) {
+        const userId = searchInput.getAttribute("data-id");
+        const kind = searchInput.getAttribute("data-search-kind");
+        if (!userId || !kind) return;
+        setPermissionSearchValue(kind, userId, searchInput.value || "");
+        renderPermissionPanel(kind, userId);
+        return;
+      }
       const input = event.target.closest("[data-fallback]");
       if (!input) return;
       const userId = input.getAttribute("data-id");
       const kind = input.getAttribute("data-fallback");
       if (!userId || !kind) return;
-      renderTagList(`tags-${kind}-${userId}`, collectPermissionValues(kind, userId));
+      const selected = collectPermissionValues(kind, userId);
+      renderTagList(`tags-${kind}-${userId}`, selected);
+      renderSelectedCount(kind, userId, selected);
     });
 
     (async () => {
