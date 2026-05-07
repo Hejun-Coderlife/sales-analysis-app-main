@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getV2Router, initV2AnalyticsModule } from "./backend/src/app.js";
 
 dotenv.config();
 
@@ -997,6 +998,7 @@ function runToolCall(conversationId, toolName, toolArgs) {
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
+app.use("/api/v2", getV2Router());
 
 app.post("/api/chat/context", (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
@@ -1146,6 +1148,12 @@ app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-});
+initV2AnalyticsModule()
+  .catch((error) => {
+    console.error("[analytics-v2] init failed:", error?.message || error);
+  })
+  .finally(() => {
+    app.listen(port, () => {
+      console.log(`Server running at http://localhost:${port}`);
+    });
+  });

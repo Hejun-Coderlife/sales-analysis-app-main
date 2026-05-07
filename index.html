@@ -1214,6 +1214,7 @@ let appState = {
   sleepingHoverIndex: null,
   hoverClearTimers: {}
 };
+window.appState = appState;
 
 function syncResultAreaToControlPanel(){
   const controlPanel = document.querySelector('.control-panel');
@@ -4716,6 +4717,7 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
 })();
 </script>
 
+<script type="module" src="/frontend/src/bootstrap.js"></script>
 
 </body>
 </html>

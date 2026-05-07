@@ -4,10 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:v2-parity": "node scripts/v2-parity-check.mjs",
+    "test:v2-perf": "node scripts/v2-performance-smoke.mjs"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@duckdb/node-api": "^1.5.2-r.1",
     "dotenv": "^16.6.1",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "multer": "^2.1.1",
+    "uuid": "^14.0.0",
+    "xlsx": "^0.18.5"
   }
 }
