@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
@@ -53,6 +54,20 @@ function getSessionMessages(conversationId) {
 function setSessionMessages(conversationId, messages) {
   if (!conversationId || !Array.isArray(messages)) return;
   sessions.set(conversationId, messages.slice(-MAX_HISTORY_MESSAGES));
+}
+
+let cachedEarthEdgesData = "";
+function getEarthEdgesData() {
+  if (cachedEarthEdgesData) return cachedEarthEdgesData;
+  try {
+    const indexPath = path.join(__dirname, "index.html");
+    const html = fs.readFileSync(indexPath, "utf8");
+    const match = html.match(/<script id="earth-edges-data" type="text\/plain">([\s\S]*?)<\/script>/);
+    cachedEarthEdgesData = (match && match[1] ? String(match[1]).trim() : "");
+  } catch (_error) {
+    cachedEarthEdgesData = "";
+  }
+  return cachedEarthEdgesData;
 }
 
 function stripThinkingBlocks(text) {
@@ -1578,6 +1593,10 @@ app.get("/login", (req, res) => {
     return res.redirect(hasPermission(req.session.user, "canAccessAdmin") ? "/admin" : "/dashboard");
   }
   res.sendFile(path.join(__dirname, "login.html"));
+});
+
+app.get("/api/public/earth-edges-data", (_req, res) => {
+  return res.json({ data: getEarthEdgesData() });
 });
 
 app.get("/dashboard", requireAuthPage, (_req, res) => {

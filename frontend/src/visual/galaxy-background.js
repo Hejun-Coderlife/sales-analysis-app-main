@@ -98,6 +98,14 @@
     const inline = document.getElementById("earth-edges-data");
     if (inline && inline.textContent) return inline.textContent.trim();
     try {
+      const dataResponse = await fetch("/api/public/earth-edges-data", { credentials: "same-origin" });
+      if (dataResponse.ok) {
+        const payload = await dataResponse.json().catch(function(){ return {}; });
+        const value = payload && typeof payload.data === "string" ? payload.data.trim() : "";
+        if (value) return value;
+      }
+    } catch (_error) {}
+    try {
       const html = await fetch("/index.html", { credentials: "same-origin" }).then((r) => r.text());
       const m = html.match(/<script id="earth-edges-data" type="text\/plain">([\s\S]*?)<\/script>/);
       return m && m[1] ? m[1].trim() : "";
