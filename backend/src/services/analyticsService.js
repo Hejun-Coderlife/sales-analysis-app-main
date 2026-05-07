@@ -61,6 +61,16 @@ export class AnalyticsService {
     return rows[0] || null;
   }
 
+  async getLatestDatasetSummary() {
+    const rows = await this.duckdbService.query(
+      `SELECT dataset_id, source_name, row_count, created_at, status
+       FROM datasets
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+    return rows[0] || null;
+  }
+
   async getKpis(datasetId, filters = {}) {
     const key = `kpis:${datasetId}:${JSON.stringify(filters)}`;
     return this.cached(key, async () => {

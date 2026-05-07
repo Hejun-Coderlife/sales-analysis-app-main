@@ -35,3 +35,10 @@ export function getV2Router() {
     maxUploadSizeMb: env.maxUploadSizeMb,
   });
 }
+
+export function getV2Services() {
+  return {
+    analyticsService,
+    jobStore,
+  };
+}

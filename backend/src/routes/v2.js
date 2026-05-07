@@ -21,6 +21,13 @@ function parseFilters(query = {}, scope = null) {
     salespeople: pickCsv(query.salespeople),
   };
   if (!scope || scope.unrestricted) return parsed;
+  if (scope.forceNoData) {
+    return {
+      ...parsed,
+      stores: ["__NO_ACCESS_STORE__"],
+      salespeople: ["__NO_ACCESS_SALESPERSON__"],
+    };
+  }
   const scopedValues = (requested, allowed) => {
     if (!Array.isArray(allowed) || !allowed.length) return requested;
     if (!Array.isArray(requested) || !requested.length) return allowed.slice();

@@ -46,6 +46,17 @@
     table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
     th,td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
     .meta{ font-size:12px; color:#6b7280; margin-top:8px; }
+    .field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+    .field label{ font-size:12px; color:#374151; }
+    .field input,.field select,.field textarea{
+      min-height:36px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px;
+      font-family:inherit;
+    }
+    .field textarea{ min-height:68px; resize:vertical; }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .ok{ color:#166534; }
+    .err{ color:#b91c1c; }
+    .muted{ color:#6b7280; font-size:12px; }
   </style>
 </head>
 <body>
@@ -63,35 +74,155 @@
 
     <section class="grid">
       <article class="card">
-        <h2>用户管理（占位）</h2>
-        <p>此区域展示当前账号、角色与启用状态。</p>
+        <h2>用户管理</h2>
+        <p>支持创建用户、调整角色与权限范围、启停账号、重置密码。</p>
+        <div class="field">
+          <label for="createUsername">新账号</label>
+          <input id="createUsername" placeholder="例如：user_demo" />
+        </div>
+        <div class="field">
+          <label for="createDisplayName">显示名称</label>
+          <input id="createDisplayName" placeholder="例如：门店经理A" />
+        </div>
+        <div class="field">
+          <label for="createRole">角色</label>
+          <select id="createRole">
+            <option value="manager">经理</option>
+            <option value="store_user">门店用户</option>
+            <option value="salesperson">销售员</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="createPassword">初始密码（至少8位）</label>
+          <input id="createPassword" type="password" />
+        </div>
+        <div class="row">
+          <button id="createUserBtn" class="btn btn-primary">创建用户</button>
+          <span id="createUserMsg" class="meta"></span>
+        </div>
         <div id="userListWrap" class="meta">加载中...</div>
       </article>
       <article class="card">
-        <h2>权限管理（占位）</h2>
-        <p>角色与数据范围配置界面将在下一阶段接入。</p>
+        <h2>权限管理</h2>
+        <p>在用户列表中可直接编辑门店权限和销售员权限（逗号分隔）。管理员默认查看全部数据。</p>
+        <div id="permissionHint" class="meta">正在加载可分配权限项...</div>
       </article>
       <article class="card">
-        <h2>数据导入（占位）</h2>
-        <p>仅管理员可用的数据导入面板将在下一阶段接入正式流程。</p>
+        <h2>数据导入</h2>
+        <p>仅管理员可上传 Excel 导入数据。导入完成后会自动刷新最新更新时间。</p>
+        <div class="field">
+          <label for="adminImportFile">选择 Excel 文件（.xls / .xlsx）</label>
+          <input id="adminImportFile" type="file" accept=".xls,.xlsx" />
+        </div>
+        <div class="row">
+          <button id="adminImportBtn" class="btn btn-primary">开始导入</button>
+          <span id="adminImportStatus" class="meta">待上传</span>
+        </div>
+        <div id="latestImportMeta" class="meta">最新数据更新时间：暂无</div>
       </article>
     </section>
   </div>
 
   <script>
-    document.getElementById('toDashboardBtn').addEventListener('click', () => {
-      window.location.href = '/dashboard';
-    });
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/login';
-    });
-    (async () => {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) {
-        window.location.href = '/login';
+    const roleMap = {
+      admin: '管理员',
+      manager: '经理',
+      store_user: '门店用户',
+      salesperson: '销售员',
+    };
+    let permissionOptions = { stores: [], salespeople: [] };
+    let usersCache = [];
+
+    function splitCsv(value) {
+      return String(value || '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    function joinCsv(list) {
+      return (Array.isArray(list) ? list : []).join(', ');
+    }
+
+    function fmtTime(value) {
+      if (!value) return '暂无';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString('zh-CN');
+    }
+
+    async function refreshLatestImportMeta() {
+      const el = document.getElementById('latestImportMeta');
+      const res = await fetch('/api/admin/import/latest');
+      const data = await res.json();
+      if (!res.ok) {
+        el.textContent = data.error || '加载最新导入信息失败';
         return;
       }
+      const latest = data.latest;
+      if (!latest) {
+        el.textContent = '最新数据更新时间：暂无';
+        return;
+      }
+      el.textContent = `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）`;
+    }
+
+    async function loadPermissionOptions() {
+      const hint = document.getElementById('permissionHint');
+      const res = await fetch('/api/admin/permission-options');
+      const data = await res.json();
+      if (!res.ok) {
+        hint.textContent = data.error || '权限项加载失败';
+        hint.className = 'meta err';
+        return;
+      }
+      permissionOptions = data.options || { stores: [], salespeople: [] };
+      const stores = permissionOptions.stores || [];
+      const salespeople = permissionOptions.salespeople || [];
+      hint.textContent = `可分配门店 ${stores.length} 项，可分配销售员 ${salespeople.length} 项。`;
+      hint.className = 'meta';
+    }
+
+    function renderUsers(rows) {
+      const wrap = document.getElementById('userListWrap');
+      if (!rows.length) {
+        wrap.textContent = '暂无用户';
+        return;
+      }
+      const optionsRole = (role) =>
+        Object.keys(roleMap)
+          .map((key) => `<option value="${key}"${key === role ? ' selected' : ''}>${roleMap[key]}</option>`)
+          .join('');
+      const cards = rows
+        .map((u) => `
+          <div class="card" style="margin-top:12px;padding:12px">
+            <div><b>${u.username}</b> <span class="muted">(${u.displayName || '-'})</span></div>
+            <div class="field">
+              <label>角色</label>
+              <select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select>
+            </div>
+            <div class="field">
+              <label>允许门店（逗号分隔）</label>
+              <textarea data-field="stores" data-id="${u.id}" placeholder="例如：门店1, 门店2">${joinCsv(u.allowedStores)}</textarea>
+            </div>
+            <div class="field">
+              <label>允许销售员（逗号分隔）</label>
+              <textarea data-field="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople)}</textarea>
+            </div>
+            <div class="row">
+              <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? 'checked' : ''}/> 启用</label>
+              <button class="btn btn-light" data-action="save" data-id="${u.id}">保存</button>
+              <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
+              <span id="msg-${u.id}" class="meta"></span>
+            </div>
+          </div>
+        `)
+        .join('');
+      wrap.innerHTML = cards;
+    }
+
+    async function loadUsers() {
       const usersRes = await fetch('/api/admin/users');
       const usersData = await usersRes.json();
       const wrap = document.getElementById('userListWrap');
@@ -99,20 +230,158 @@
         wrap.textContent = usersData.error || '用户列表加载失败';
         return;
       }
-      const rows = usersData.users || [];
-      if (!rows.length) {
-        wrap.textContent = '暂无用户';
+      usersCache = usersData.users || [];
+      renderUsers(usersCache);
+    }
+
+    async function createUser() {
+      const msg = document.getElementById('createUserMsg');
+      msg.className = 'meta';
+      msg.textContent = '提交中...';
+      const payload = {
+        username: document.getElementById('createUsername').value.trim(),
+        displayName: document.getElementById('createDisplayName').value.trim(),
+        role: document.getElementById('createRole').value,
+        password: document.getElementById('createPassword').value,
+      };
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.className = 'meta err';
+        msg.textContent = data.error || '创建失败';
         return;
       }
-      const roleMap = {
-        admin: '管理员',
-        manager: '经理',
-        store_user: '门店用户',
-        salesperson: '销售员',
-      };
-      const head = '<table><thead><tr><th>账号</th><th>角色</th><th>状态</th></tr></thead><tbody>';
-      const body = rows.map((u) => '<tr><td>' + u.username + '</td><td>' + (roleMap[u.role] || u.role) + '</td><td>' + (u.enabled ? '启用' : '停用') + '</td></tr>').join('');
-      wrap.innerHTML = head + body + '</tbody></table><div class=\"meta\">当前为只读占位，后续支持编辑。</div>';
+      msg.className = 'meta ok';
+      msg.textContent = '创建成功';
+      document.getElementById('createUsername').value = '';
+      document.getElementById('createDisplayName').value = '';
+      document.getElementById('createPassword').value = '';
+      await loadUsers();
+    }
+
+    async function saveUser(userId) {
+      const msg = document.getElementById(`msg-${userId}`);
+      msg.className = 'meta';
+      msg.textContent = '保存中...';
+      const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
+      const enabled = !!document.querySelector(`[data-field="enabled"][data-id="${userId}"]`)?.checked;
+      const storesRaw = document.querySelector(`[data-field="stores"][data-id="${userId}"]`)?.value;
+      const salespeopleRaw = document.querySelector(`[data-field="salespeople"][data-id="${userId}"]`)?.value;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role,
+          enabled,
+          allowedStores: splitCsv(storesRaw),
+          allowedSalespeople: splitCsv(salespeopleRaw),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.className = 'meta err';
+        msg.textContent = data.error || '保存失败';
+        return;
+      }
+      msg.className = 'meta ok';
+      msg.textContent = '已保存';
+      await loadUsers();
+    }
+
+    async function resetPassword(userId) {
+      const password = window.prompt('请输入新密码（至少 8 位）：');
+      if (!password) return;
+      const msg = document.getElementById(`msg-${userId}`);
+      msg.className = 'meta';
+      msg.textContent = '重置中...';
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msg.className = 'meta err';
+        msg.textContent = data.error || '重置失败';
+        return;
+      }
+      msg.className = 'meta ok';
+      msg.textContent = '密码已重置';
+    }
+
+    async function uploadImportFile() {
+      const file = document.getElementById('adminImportFile').files?.[0];
+      const status = document.getElementById('adminImportStatus');
+      if (!file) {
+        status.className = 'meta err';
+        status.textContent = '请先选择文件';
+        return;
+      }
+      status.className = 'meta';
+      status.textContent = '上传中...';
+      const form = new FormData();
+      form.append('file', file);
+      form.append('mapping', JSON.stringify({}));
+      const uploadRes = await fetch('/api/v2/uploads', { method: 'POST', body: form });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) {
+        status.className = 'meta err';
+        status.textContent = uploadData.error || '上传失败';
+        return;
+      }
+      const jobId = uploadData.jobId;
+      for (let i = 0; i < 300; i += 1) {
+        const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
+        const jobData = await jobRes.json();
+        const job = jobData.job || {};
+        status.textContent = `导入状态：${job.status || 'running'}（${job.progress || 0}%）`;
+        if (job.status === 'completed') {
+          status.className = 'meta ok';
+          status.textContent = `导入完成：${job.datasetId || ''}`;
+          await refreshLatestImportMeta();
+          return;
+        }
+        if (job.status === 'failed') {
+          status.className = 'meta err';
+          status.textContent = job.error || '导入失败';
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      status.className = 'meta err';
+      status.textContent = '导入超时，请稍后在任务状态中查看';
+    }
+
+    document.getElementById('toDashboardBtn').addEventListener('click', () => {
+      window.location.href = '/dashboard';
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+    document.getElementById('createUserBtn').addEventListener('click', () => { void createUser(); });
+    document.getElementById('adminImportBtn').addEventListener('click', () => { void uploadImportFile(); });
+    document.getElementById('userListWrap').addEventListener('click', (event) => {
+      const target = event.target.closest('[data-action]');
+      if (!target) return;
+      const userId = target.getAttribute('data-id');
+      const action = target.getAttribute('data-action');
+      if (!userId) return;
+      if (action === 'save') void saveUser(userId);
+      if (action === 'reset') void resetPassword(userId);
+    });
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) {
+        window.location.href = '/login';
+        return;
+      }
+      await Promise.all([loadUsers(), loadPermissionOptions(), refreshLatestImportMeta()]);
     })();
   </script>
 </body>

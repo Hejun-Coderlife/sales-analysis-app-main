@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
 import FileStoreFactory from "session-file-store";
-import { getV2Router, initV2AnalyticsModule } from "./backend/src/app.js";
+import { getV2Router, getV2Services, initV2AnalyticsModule } from "./backend/src/app.js";
 import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
@@ -21,6 +21,17 @@ const salesContexts = new Map();
 const MAX_TOOL_CALL_STEPS = 4;
 const authService = new AuthService({ usersPath: env.usersPath });
 const { requireAuthApi, requireAuthPage, requireRole } = createAuthMiddleware(authService);
+const { analyticsService } = getV2Services();
+
+function requireAdminApi(req, res, next) {
+  if (!req.session?.user) return res.status(401).json({ error: "请先登录" });
+  if (String(req.session.user.role || "") !== "admin") {
+    return res.status(403).json({ error: "仅管理员可访问" });
+  }
+  req.currentUser = req.session.user;
+  req.accessScope = authService.deriveAccessScope(req.currentUser);
+  return next();
+}
 
 function getConversationId(rawValue) {
   const value = String(rawValue || "").trim();
@@ -1047,9 +1058,75 @@ app.get("/api/auth/me", (req, res) => {
   return res.json({ ok: true, user: req.session.user });
 });
 
-app.get("/api/admin/users", requireRole("admin"), async (_req, res) => {
+app.get("/api/admin/users", requireAdminApi, async (_req, res) => {
   const users = await authService.listUsers();
   return res.json({ ok: true, users });
+});
+
+app.post("/api/admin/users", requireAdminApi, async (req, res) => {
+  try {
+    const user = await authService.createUser({
+      username: req.body?.username,
+      displayName: req.body?.displayName,
+      role: req.body?.role,
+      password: req.body?.password,
+      enabled: req.body?.enabled !== false,
+      allowedStores: req.body?.allowedStores,
+      allowedSalespeople: req.body?.allowedSalespeople,
+    });
+    return res.status(201).json({ ok: true, user });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "创建用户失败" });
+  }
+});
+
+app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
+  try {
+    const user = await authService.updateUser(req.params.id, {
+      displayName: req.body?.displayName,
+      role: req.body?.role,
+      enabled: req.body?.enabled,
+      allowedStores: req.body?.allowedStores,
+      allowedSalespeople: req.body?.allowedSalespeople,
+    });
+    return res.json({ ok: true, user });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "更新用户失败" });
+  }
+});
+
+app.post("/api/admin/users/:id/reset-password", requireAdminApi, async (req, res) => {
+  try {
+    const user = await authService.resetPassword(req.params.id, req.body?.password);
+    return res.json({ ok: true, user });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "重置密码失败" });
+  }
+});
+
+app.get("/api/admin/permission-options", requireAdminApi, async (_req, res) => {
+  const latest = await analyticsService.getLatestDatasetSummary();
+  if (!latest?.dataset_id) {
+    return res.json({
+      ok: true,
+      latestDataset: null,
+      options: { stores: [], salespeople: [] },
+    });
+  }
+  const options = await analyticsService.getFilterOptions(latest.dataset_id, { filters: {} });
+  return res.json({
+    ok: true,
+    latestDataset: latest,
+    options: {
+      stores: options.stores || [],
+      salespeople: options.salespeople || [],
+    },
+  });
+});
+
+app.get("/api/admin/import/latest", requireAdminApi, async (_req, res) => {
+  const latest = await analyticsService.getLatestDatasetSummary();
+  return res.json({ ok: true, latest: latest || null });
 });
 
 app.use("/api/v2", (req, res, next) => {
