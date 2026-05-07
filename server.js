@@ -6,7 +6,7 @@ import FileStoreFactory from "session-file-store";
 import { getV2Router, getV2Services, initV2AnalyticsModule } from "./backend/src/app.js";
 import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
-import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
+import { createAuthMiddleware, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
@@ -1164,7 +1164,6 @@ if (env.sessionStore === "file") {
 
 app.use(express.json({ limit: "20mb" }));
 app.use(session(sessionOptions));
-app.use(express.static(__dirname));
 
 app.post("/api/auth/login", async (req, res) => {
   const username = String(req.body?.username || "");
@@ -1574,6 +1573,8 @@ app.post("/api/chat/reset", requireAuthApi, (req, res) => {
 
 app.get("/login", (req, res) => {
   if (req.session?.user) {
+    const next = safeLoginNextPath(String(req.query.next || ""));
+    if (next) return res.redirect(next);
     return res.redirect(hasPermission(req.session.user, "canAccessAdmin") ? "/admin" : "/dashboard");
   }
   res.sendFile(path.join(__dirname, "login.html"));
@@ -1584,6 +1585,13 @@ app.get("/dashboard", requireAuthPage, (_req, res) => {
 });
 app.get("/index.html", requireAuthPage, (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.get("/mobile", requireAuthPage, (_req, res) => {
+  res.sendFile(path.join(__dirname, "mobile.html"));
+});
+app.get("/mobile.html", requireAuthPage, (_req, res) => {
+  res.sendFile(path.join(__dirname, "mobile.html"));
 });
 
 app.get("/admin", requirePermission("canAccessAdmin", { asPage: true }), (_req, res) => {
@@ -1597,6 +1605,8 @@ app.get("/", (req, res) => {
   if (!req.session?.user) return res.redirect("/login");
   return res.redirect("/dashboard");
 });
+
+app.use(express.static(__dirname, { index: false }));
 
 Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init()])
   .catch((error) => {

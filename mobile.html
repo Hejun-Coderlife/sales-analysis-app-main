@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>手机看板 - 销售数据分析系统</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 12px 14px 96px;
+      padding-bottom: calc(96px + var(--safe-bottom));
+      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
+    header.top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+    .sub { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .btn {
+      border: none;
+      border-radius: 10px;
+      min-height: 38px;
+      padding: 0 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-light { background: #e5e7eb; color: #111827; }
+    .banner {
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .banner-warn { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
+    .banner-info { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }
+    .hidden { display: none !important; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 14px rgba(2, 6, 23, 0.06);
+    }
+    .card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+    .filters label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .filters .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .filters input[type="date"],
+    .filters select {
+      width: 100%;
+      min-height: 42px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .kpi {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .kpi .val { font-size: 15px; font-weight: 700; word-break: break-all; }
+    .kpi .lab { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .mini {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 13px;
+    }
+    .mini .t { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+    .ol { margin: 0; padding: 0; list-style: none; counter-reset: r; }
+    .ol li {
+      counter-increment: r;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .ol li:last-child { border-bottom: none; }
+    .ol li::before {
+      content: counter(r) ".";
+      flex: 0 0 22px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .perm-tip { font-size: 13px; color: var(--muted); padding: 8px 0; }
+    #chatFab {
+      position: fixed;
+      right: 16px;
+      bottom: calc(16px + var(--safe-bottom));
+      z-index: 9998;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px solid rgba(37, 99, 235, 0.35);
+      background: #fff url("favicon.png") center/70% no-repeat;
+      box-shadow: 0 8px 24px rgba(2, 6, 23, 0.15);
+      cursor: pointer;
+      padding: 0;
+    }
+    #chatPanel {
+      display: none;
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(12px + var(--safe-bottom));
+      max-height: min(64vh, 520px);
+      z-index: 9999;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      flex-direction: column;
+      box-shadow: 0 12px 40px rgba(2, 6, 23, 0.18);
+    }
+    #chatPanel.open { display: flex; }
+    .chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .chat-body { flex: 1; overflow: auto; padding: 10px 12px; font-size: 14px; }
+    .chat-msg { margin-bottom: 10px; line-height: 1.45; word-break: break-word; }
+    .chat-msg.user { text-align: right; color: #1d4ed8; }
+    .chat-msg.agent { text-align: left; color: #111827; }
+    .chat-msg.err { color: #b91c1c; }
+    .chat-foot { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
+    .chat-foot input { flex: 1; min-height: 42px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); padding: 0 10px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>数据看板（手机版）</h1>
+      <p class="sub" id="userLabel">加载中…</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-light" href="/dashboard">电脑版看板</a>
+      <button type="button" class="btn btn-light" id="logoutBtn">退出登录</button>
+    </div>
+  </header>
+
+  <div id="globalBanner" class="banner hidden"></div>
+
+  <section class="card filters" id="filterCard">
+    <h2>筛选</h2>
+    <div class="grid">
+      <div>
+        <label for="startDate">开始日期</label>
+        <input type="date" id="startDate" />
+      </div>
+      <div>
+        <label for="endDate">结束日期</label>
+        <input type="date" id="endDate" />
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <label for="storeSelect">门店</label>
+      <select id="storeSelect"></select>
+    </div>
+    <button type="button" class="btn btn-primary" style="margin-top:12px;width:100%" id="applyFiltersBtn">应用筛选</button>
+  </section>
+
+  <section class="card hidden" id="coreKpiCard">
+    <h2>核心 KPI</h2>
+    <div class="kpi-grid" id="coreKpis"></div>
+  </section>
+
+  <section class="card hidden" id="overviewCard">
+    <h2>今日 / 本月概览</h2>
+    <div class="mini-grid" id="todayMonth"></div>
+  </section>
+
+  <section class="card hidden" id="rankStoresCard">
+    <h2>门店排行 Top 10</h2>
+    <ol class="ol" id="listStores"></ol>
+  </section>
+  <section class="card hidden" id="rankSalesCard">
+    <h2>销售员排行 Top 10</h2>
+    <ol class="ol" id="listSales"></ol>
+  </section>
+  <section class="card hidden" id="rankProductsCard">
+    <h2>商品排行 Top 10</h2>
+    <ol class="ol" id="listProducts"></ol>
+  </section>
+
+  <section class="card hidden" id="memberCard">
+    <h2>会员维护摘要</h2>
+    <div id="memberSummary"></div>
+  </section>
+
+  <section class="card hidden" id="sleepCard">
+    <h2>沉睡会员摘要</h2>
+    <div id="sleepSummary"></div>
+  </section>
+
+  <section class="card hidden" id="agentCard">
+    <h2>数据助手</h2>
+    <p class="muted" style="margin:0 0 10px">点击下方浮动按钮打开对话，数据与权限与当前账号一致。</p>
+  </section>
+
+  <button type="button" id="chatFab" aria-label="打开数据助手"></button>
+  <div id="chatPanel">
+    <div class="chat-head">
+      <span>数据助手</span>
+      <button type="button" class="btn btn-light" id="chatClose" style="min-height:32px;padding:0 10px">关闭</button>
+    </div>
+    <div class="chat-body" id="chatMessages"></div>
+    <div class="chat-foot">
+      <input type="text" id="chatInput" placeholder="请输入你的问题…" autocomplete="off" />
+      <button type="button" class="btn btn-primary" id="chatSend">发送</button>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  const NO_PERM_DATA = "当前账号暂无可查看数据，请联系管理员配置权限。";
+  const NO_IMPORT = "暂无数据，请管理员先在后台导入 Excel。";
+  const MOD_FORBIDDEN = "暂无权限查看此模块";
+
+  const sleepLabels = {
+    "Analysis Cutoff Date": "评估截止日",
+    "Sleeping Members": "沉睡会员人数",
+    "Sleeping Members Historical Spend": "沉睡会员历史消费额",
+    "A-Class Members": "A 类会员人数",
+    "A-Class Historical Spend": "A 类历史消费额",
+    "B-Class Members": "B 类会员人数",
+    "C-Class Members": "C 类会员人数",
+  };
+
+  let user = null;
+  let datasetId = null;
+  let dateBounds = { min: "", max: "" };
+  let state = {
+    startDate: "",
+    endDate: "",
+    store: "",
+  };
+
+  const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const chatMessages = [];
+
+  function hasPerm(key) {
+    return Boolean(user && user.permissions && user.permissions[key]);
+  }
+
+  function showBanner(kind, text) {
+    const el = document.getElementById("globalBanner");
+    el.className = "banner " + (kind === "warn" ? "banner-warn" : "banner-info");
+    el.textContent = text;
+    el.classList.remove("hidden");
+  }
+  function hideBanner() {
+    document.getElementById("globalBanner").classList.add("hidden");
+  }
+
+  function fmtMoney(n) {
+    const x = Number(n) || 0;
+    return x.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " 元";
+  }
+  function fmtInt(n) {
+    return String(Math.round(Number(n) || 0));
+  }
+
+  function qs(obj) {
+    const u = new URLSearchParams();
+    for (const [k, v] of Object.entries(obj)) {
+      if (v == null || v === "") continue;
+      if (Array.isArray(v)) {
+        if (v.length) u.set(k, v.join(","));
+      } else {
+        u.set(k, String(v));
+      }
+    }
+    return u.toString();
+  }
+
+  async function fetchJson(url, opt) {
+    const res = await fetch(url, { credentials: "same-origin", ...opt });
+    const data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+    return data;
+  }
+
+  function setSectionVisible(id, show) {
+    document.getElementById(id).classList.toggle("hidden", !show);
+  }
+
+  function renderKpiGrid(containerId, kpis) {
+    const el = document.getElementById(containerId);
+    el.innerHTML =
+      '<div class="kpi"><div class="val">' +
+      fmtMoney(kpis.totalSales) +
+      '</div><div class="lab">销售额</div></div>' +
+      '<div class="kpi"><div class="val">' +
+      fmtInt(kpis.totalOrders) +
+      '</div><div class="lab">订单数</div></div>' +
+      '<div class="kpi"><div class="val">' +
+      fmtInt(kpis.uniqueMembers) +
+      '</div><div class="lab">会员数</div></div>';
+  }
+
+  function renderOl(id, rows, fmtVal) {
+    const el = document.getElementById(id);
+    if (!rows.length) {
+      el.innerHTML = '<li class="muted">无数据</li>';
+      return;
+    }
+    el.innerHTML = rows
+      .map(function (r) {
+        return (
+          '<li><span class="name">' +
+          escapeHtml(r.name) +
+          "</span><span>" +
+          fmtVal(r.val) +
+          "</span></li>"
+        );
+      })
+      .join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s != null ? s : "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function ymd(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+
+  async function loadLatestDataset() {
+    const data = await fetchJson("/api/v2/datasets/latest");
+    return data.dataset && data.dataset.dataset_id ? String(data.dataset.dataset_id) : null;
+  }
+
+  async function loadFilterOptions() {
+    if (!datasetId || !hasPerm("canUseFilters")) return null;
+    const q = qs({ startDate: state.startDate, endDate: state.endDate });
+    const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/filters/options" + (q ? "?" + q : "");
+    return fetchJson(url);
+  }
+
+  function populateStoreSelect(stores) {
+    const sel = document.getElementById("storeSelect");
+    const cur = state.store;
+    sel.innerHTML = '<option value="">全部门店</option>';
+    (stores || []).forEach(function (s) {
+            const o = document.createElement("option");
+            o.value = s;
+            o.textContent = s;
+            sel.appendChild(o);
+          });
+    if (cur && stores && stores.indexOf(cur) >= 0) sel.value = cur;
+    else sel.value = "";
+  }
+
+  async function fetchKpis(extra) {
+    if (!datasetId || !hasPerm("canViewKpi")) return null;
+    const f = {
+      startDate: extra.startDate != null ? extra.startDate : state.startDate,
+      endDate: extra.endDate != null ? extra.endDate : state.endDate,
+      stores: state.store ? [state.store] : [],
+    };
+    const q = qs(f);
+    const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/kpis?" + q;
+    const data = await fetchJson(url);
+    return data.kpis || null;
+  }
+
+  async function fetchRank(path, perm) {
+    if (!datasetId || !hasPerm(perm)) return [];
+    const f = { startDate: state.startDate, endDate: state.endDate, stores: state.store ? [state.store] : [] };
+    const q = qs(f) + "&limit=10&offset=0";
+    const url =
+      "/api/v2/datasets/" + encodeURIComponent(datasetId) + path + (q ? "?" + q : "");
+    const data = await fetchJson(url);
+    return data.rows || [];
+  }
+
+  async function loadAllData() {
+    hideBanner();
+    if (!datasetId) {
+      showBanner("warn", NO_IMPORT);
+      [
+        "coreKpiCard",
+        "overviewCard",
+        "rankStoresCard",
+        "rankSalesCard",
+        "rankProductsCard",
+        "memberCard",
+        "sleepCard",
+      ].forEach(function (id) { setSectionVisible(id, false); });
+      setSectionVisible("agentCard", hasPerm("canUseAgentChat"));
+      document.getElementById("chatFab").style.display = hasPerm("canUseAgentChat") ? "block" : "none";
+      return;
+    }
+
+    const filterBase = { startDate: state.startDate, endDate: state.endDate };
+    const storeParam = state.store ? { stores: [state.store] } : {};
+
+    let coreKpis = null;
+    let todayK = null;
+    let monthK = null;
+    let stores = [];
+    let sales = [];
+    let products = [];
+    let members = [];
+    let sleeping = null;
+
+    const today = ymd(new Date());
+    const now = new Date();
+    const monthStart = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+
+    try {
+      if (hasPerm("canViewKpi")) {
+        coreKpis = await fetchKpis({});
+        todayK = await fetchKpis({ startDate: today, endDate: today });
+        monthK = await fetchKpis({ startDate: monthStart, endDate: today });
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    try {
+      stores = await fetchRank("/rankings/stores", "canViewStoreRanking");
+    } catch (e) {
+      stores = [];
+    }
+    try {
+      sales = await fetchRank("/rankings/salespeople", "canViewSalespersonRanking");
+    } catch (e) {
+      sales = [];
+    }
+    try {
+      products = await fetchRank("/rankings/products", "canViewProductRanking");
+    } catch (e) {
+      products = [];
+    }
+    try {
+      if (hasPerm("canViewMemberAnalysis")) {
+        const q =
+          qs(Object.assign({}, filterBase, storeParam, { limit: 20, offset: 0 })) || "";
+        const url =
+          "/api/v2/datasets/" +
+          encodeURIComponent(datasetId) +
+          "/members/top?" +
+          q;
+        const data = await fetchJson(url);
+        members = data.rows || [];
+      }
+    } catch (e) {
+      members = [];
+    }
+    try {
+      if (hasPerm("canViewSleepingMembers")) {
+        const q =
+          qs(
+            Object.assign(
+              {},
+              filterBase,
+              storeParam,
+              {
+                sleepDays: 90,
+                sleepMinOrders: 2,
+                sleepMinAmount: 1000,
+                aclassMinAmount: 3000,
+                aclassMinOrders: 5,
+                analysisDate: state.endDate || "",
+                limit: 20,
+                offset: 0,
+              }
+            )
+          ) || "";
+        const url =
+          "/api/v2/datasets/" +
+          encodeURIComponent(datasetId) +
+          "/members/sleeping?" +
+          q;
+        sleeping = await fetchJson(url);
+      }
+    } catch (e) {
+      sleeping = null;
+    }
+
+    const totalRows = coreKpis ? Number(coreKpis.totalRows || 0) : 0;
+    const fullRange =
+      Boolean(dateBounds.min) &&
+      Boolean(dateBounds.max) &&
+      state.startDate === dateBounds.min &&
+      state.endDate === dateBounds.max;
+    if (totalRows === 0 && fullRange && datasetId) {
+      showBanner("warn", NO_PERM_DATA);
+    }
+
+    if (hasPerm("canViewKpi") && coreKpis) {
+      setSectionVisible("coreKpiCard", true);
+      renderKpiGrid("coreKpis", {
+        totalSales: coreKpis.totalsales !== undefined ? coreKpis.totalsales : coreKpis.totalSales,
+        totalOrders: coreKpis.totalorders !== undefined ? coreKpis.totalorders : coreKpis.totalOrders,
+        uniqueMembers: coreKpis.uniqueMembers != null ? coreKpis.uniqueMembers : 0,
+      });
+    } else {
+      setSectionVisible("coreKpiCard", false);
+      if (!hasPerm("canViewKpi")) {
+        document.getElementById("coreKpis").innerHTML = '<p class="perm-tip">' + MOD_FORBIDDEN + "</p>";
+        setSectionVisible("coreKpiCard", true);
+      }
+    }
+
+    if (hasPerm("canViewKpi") && (todayK || monthK)) {
+      setSectionVisible("overviewCard", true);
+      const tEl = document.getElementById("todayMonth");
+      const tSales = todayK
+        ? Number(
+            todayK.totalsales !== undefined && todayK.totalsales !== null
+              ? todayK.totalsales
+              : todayK.totalSales || 0
+          )
+        : 0;
+      const tOrd = todayK
+        ? Number(
+            todayK.totalorders !== undefined && todayK.totalorders !== null
+              ? todayK.totalorders
+              : todayK.totalOrders || 0
+          )
+        : 0;
+      const mSales = monthK
+        ? Number(
+            monthK.totalsales !== undefined && monthK.totalsales !== null
+              ? monthK.totalsales
+              : monthK.totalSales || 0
+          )
+        : 0;
+      const mOrd = monthK
+        ? Number(
+            monthK.totalorders !== undefined && monthK.totalorders !== null
+              ? monthK.totalorders
+              : monthK.totalOrders || 0
+          )
+        : 0;
+      tEl.innerHTML =
+        '<div class="mini"><div class="t">今日销售额</div><div>' +
+        fmtMoney(tSales) +
+        '</div><div class="t" style="margin-top:6px">今日订单</div><div>' +
+        fmtInt(tOrd) +
+        "</div></div>" +
+        '<div class="mini"><div class="t">本月销售额（截至今日）</div><div>' +
+        fmtMoney(mSales) +
+        '</div><div class="t" style="margin-top:6px">本月订单</div><div>' +
+        fmtInt(mOrd) +
+        "</div></div>";
+    } else {
+      setSectionVisible("overviewCard", false);
+    }
+
+    if (hasPerm("canViewStoreRanking")) {
+      setSectionVisible("rankStoresCard", true);
+      renderOl(
+        "listStores",
+        stores.map(function (r) {
+          return { name: r.store, val: Number(r.performance || 0) };
+        }),
+        function (v) { return fmtMoney(v); }
+      );
+    } else {
+      setSectionVisible("rankStoresCard", false);
+    }
+
+    if (hasPerm("canViewSalespersonRanking")) {
+      setSectionVisible("rankSalesCard", true);
+      renderOl(
+        "listSales",
+        sales.map(function (r) {
+          return { name: r.salesperson, val: Number(r.performance || 0) };
+        }),
+        function (v) { return fmtMoney(v); }
+      );
+    } else {
+      setSectionVisible("rankSalesCard", false);
+    }
+
+    if (hasPerm("canViewProductRanking")) {
+      setSectionVisible("rankProductsCard", true);
+      renderOl(
+        "listProducts",
+        products.map(function (r) {
+          return { name: r.product, val: Number(r.sales_amount || 0) };
+        }),
+        function (v) { return fmtMoney(v); }
+      );
+    } else {
+      setSectionVisible("rankProductsCard", false);
+    }
+
+    if (hasPerm("canViewMemberAnalysis")) {
+      setSectionVisible("memberCard", true);
+      const ms = document.getElementById("memberSummary");
+      const uq = coreKpis ? fmtInt(coreKpis.uniqueMembers || 0) : "—";
+      var topMembers = members.slice(0, 5);
+      if (!topMembers.length) {
+        ms.innerHTML =
+          '<p class="muted">区间内去重会员约 <b>' +
+          uq +
+          "</b> 人。</p><p class=\"muted\">暂无会员排行明细。</p>";
+      } else {
+        ms.innerHTML =
+          '<p class="muted">区间内去重会员约 <b>' +
+          uq +
+          "</b> 人。消费前列：</p><ol class=\"ol\">" +
+          topMembers
+            .map(function (m, i) {
+                    return (
+                      "<li style=\"padding-left:4px\"><span class=\"name\">" +
+                      (i + 1) +
+                      ". " +
+                      escapeHtml(m.member_name || m.member_id || "") +
+                      "</span><span>" +
+                      fmtMoney(m.total_spend) +
+                      "</span></li>"
+                    );
+                  })
+            .join("") +
+          "</ol>";
+      }
+    } else {
+      setSectionVisible("memberCard", false);
+    }
+
+    if (hasPerm("canViewSleepingMembers") && sleeping && sleeping.sleepSummary) {
+      setSectionVisible("sleepCard", true);
+      const lines = (sleeping.sleepSummary || [])
+        .map(function (row) {
+          const lab = sleepLabels[row.metric] || row.metric;
+          const val = row.value;
+          const disp =
+            typeof val === "number" && String(row.metric).indexOf("Spend") >= 0
+              ? fmtMoney(val)
+              : typeof val === "number"
+                ? fmtInt(val)
+                : escapeHtml(String(val));
+          return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb;font-size:13px\"><span>" +
+            lab +
+            "</span><span>" +
+            disp +
+            "</span></div>";
+        })
+        .join("");
+      document.getElementById("sleepSummary").innerHTML =
+        lines || '<p class="muted">暂无沉睡会员统计</p>';
+    } else {
+      setSectionVisible("sleepCard", false);
+    }
+
+    setSectionVisible("agentCard", hasPerm("canUseAgentChat"));
+    document.getElementById("chatFab").style.display = hasPerm("canUseAgentChat") ? "block" : "none";
+
+    cacheForChat.coreKpis = coreKpis;
+    cacheForChat.stores = stores;
+    cacheForChat.sales = sales;
+    cacheForChat.products = products;
+    cacheForChat.members = members;
+    cacheForChat.sleeping = sleeping;
+  }
+
+  function buildSalesContext(coreKpis, stores, sales, products, members, sleeping) {
+    const ts = coreKpis
+      ? Number(
+          coreKpis.totalsales !== undefined && coreKpis.totalsales !== null
+            ? coreKpis.totalsales
+            : coreKpis.totalSales || 0
+        )
+      : 0;
+    const to = coreKpis
+      ? Number(
+          coreKpis.totalorders !== undefined && coreKpis.totalorders !== null
+            ? coreKpis.totalorders
+            : coreKpis.totalOrders || 0
+        )
+      : 0;
+    let sleepN = 0;
+    let sleepA = 0;
+    ((sleeping && sleeping.sleepSummary) || []).forEach(function (r) {
+      if (r.metric === "Sleeping Members") sleepN = Number(r.value || 0);
+      if (r.metric === "A-Class Members") sleepA = Number(r.value || 0);
+    });
+    return {
+      updatedAt: new Date().toISOString(),
+      filters: {
+        startDate: state.startDate,
+        endDate: state.endDate,
+        stores: state.store ? [state.store] : [],
+        salespeople: [],
+        products: [],
+        sleepingSalesperson: "",
+      },
+      kpis: {
+        totalSales: ts,
+        totalOrders: to,
+        memberRegistrationRate: 0,
+        repurchaseRate: 0,
+        averageRepurchaseTimes: 0,
+        sleepingMembers: sleepN,
+        aClassSleepingMembers: sleepA,
+        filesLoaded: 1,
+      },
+      topStores: (stores || []).map(function (r) {
+        return { store: r.store, performance: Number(r.performance || 0) };
+      }),
+      topSalespeople: (sales || []).map(function (r) {
+        return { salesperson: r.salesperson, performance: Number(r.performance || 0) };
+      }),
+      topProducts: (products || []).map(function (r) {
+        return {
+          product: r.product,
+          sales_amount: Number(r.sales_amount || 0),
+          sales_qty: Number(r.sales_qty || 0),
+          sales_orders: Number(r.sales_orders || 0),
+        };
+      }),
+      memberRank: (members || []).map(function (m) {
+        const orders = Number(m.order_count || 0);
+        const spend = Number(m.total_spend || 0);
+        return {
+          member_key: String(m.member_id || m.member_name || ""),
+          member_name: String(m.member_name || ""),
+          total_spend: spend,
+          order_count: orders,
+          avg_ticket: orders ? spend / orders : 0,
+          repurchase_times: Math.max(0, orders - 1),
+          phone: String(m.phone || ""),
+          latest_store: "",
+          latest_salesperson: "",
+        };
+      }),
+      sleepList: ((sleeping && sleeping.rows) || []).slice(0, 120).map(function (r) {
+        return {
+          member_key: String(r.member_key || ""),
+          member_name: String(r.member_name || ""),
+          total_spend: Number(r.total_spend || 0),
+          order_count: Number(r.order_count || 0),
+          sleep_days: Number(r.sleep_days || 0),
+          priority: String(r.priority || ""),
+          risk_level: String(r.risk_level || ""),
+          last_store: String(r.last_store || ""),
+          last_salesperson: String(r.last_salesperson || ""),
+          phone: String(r.phone || ""),
+        };
+      }),
+    };
+  }
+
+  let cacheForChat = {
+    coreKpis: null,
+    stores: [],
+    sales: [],
+    products: [],
+    members: [],
+    sleeping: null,
+  };
+
+  async function syncChatContext() {
+    if (!datasetId || !hasPerm("canUseAgentChat")) return { ok: false, error: "未开放数据助手" };
+    const ctx = buildSalesContext(
+      cacheForChat.coreKpis,
+      cacheForChat.stores,
+      cacheForChat.sales,
+      cacheForChat.products,
+      cacheForChat.members,
+      cacheForChat.sleeping
+    );
+    const res = await fetch("/api/chat/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ conversationId: conversationId, salesContext: ctx }),
+    });
+    const data = await res.json().catch(function () { return {}; });
+    if (!res.ok) return { ok: false, error: data.error || "上下文同步失败" };
+    return { ok: true };
+  }
+
+  function renderChat() {
+    const el = document.getElementById("chatMessages");
+    el.innerHTML = chatMessages
+      .map(function (m) {
+        return (
+          '<div class="chat-msg ' +
+          (m.role === "user" ? "user" : m.role === "err" ? "err" : "agent") +
+          '">' +
+          escapeHtml(m.text) +
+          "</div>"
+        );
+      })
+      .join("");
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function sendChat() {
+    const input = document.getElementById("chatInput");
+    const btn = document.getElementById("chatSend");
+    const t = input.value.trim();
+    if (!t) return;
+    input.value = "";
+    chatMessages.push({ role: "user", text: t });
+    renderChat();
+    btn.disabled = true;
+    try {
+      const sync = await syncChatContext();
+      if (!sync.ok) {
+        chatMessages.push({ role: "err", text: sync.error || "同步失败" });
+        renderChat();
+        return;
+      }
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ message: t, conversationId: conversationId }),
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        chatMessages.push({ role: "err", text: data.error || "请求失败" });
+      } else {
+        chatMessages.push({ role: "agent", text: data.reply || "暂无回复" });
+      }
+    } catch (e) {
+      chatMessages.push({ role: "err", text: e.message || "网络异常" });
+    }
+    btn.disabled = false;
+    renderChat();
+  }
+
+  async function init() {
+    const me = await fetch("/api/auth/me", { credentials: "same-origin" });
+    if (!me.ok) {
+      window.location.href = "/login?next=/mobile";
+      return;
+    }
+    const meData = await me.json();
+    user = meData.user;
+    if (!user) {
+      window.location.href = "/login?next=/mobile";
+      return;
+    }
+
+    const roleMap = {
+      admin: "管理员",
+      manager: "经理",
+      store_user: "门店用户",
+      salesperson: "销售员",
+      viewer: "查看者",
+    };
+    document.getElementById("userLabel").textContent =
+      (user.displayName || user.username) + "（" + (roleMap[user.role] || user.role) + "）";
+
+    document.getElementById("filterCard").style.display = hasPerm("canUseFilters") ? "" : "none";
+
+    document.getElementById("logoutBtn").addEventListener("click", async function () {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+      window.location.href = "/login";
+    });
+
+    datasetId = await loadLatestDataset();
+    if (!datasetId) {
+      await loadAllData();
+      wireChat();
+      return;
+    }
+
+    if (hasPerm("canUseFilters")) {
+      const opt = await loadFilterOptions().catch(function () { return null; });
+      const dr = opt && opt.options ? opt.options.dateRange : null;
+      dateBounds.min = (dr && dr.minDate) || "";
+      dateBounds.max = (dr && dr.maxDate) || "";
+      state.startDate = dateBounds.min;
+      state.endDate = dateBounds.max;
+      document.getElementById("startDate").value = state.startDate;
+      document.getElementById("endDate").value = state.endDate;
+      populateStoreSelect((opt && opt.options && opt.options.stores) || []);
+    } else {
+      document.getElementById("startDate").disabled = true;
+      document.getElementById("endDate").disabled = true;
+      document.getElementById("storeSelect").disabled = true;
+    }
+
+    document.getElementById("applyFiltersBtn").addEventListener("click", async function () {
+      if (hasPerm("canUseFilters")) {
+        state.startDate = document.getElementById("startDate").value || "";
+        state.endDate = document.getElementById("endDate").value || "";
+        state.store = document.getElementById("storeSelect").value || "";
+      }
+      await loadAllData();
+    });
+
+    await loadAllData();
+    wireChat();
+  }
+
+  function wireChat() {
+    const fab = document.getElementById("chatFab");
+    const panel = document.getElementById("chatPanel");
+    const close = document.getElementById("chatClose");
+    const send = document.getElementById("chatSend");
+    const input = document.getElementById("chatInput");
+    fab.addEventListener("click", function () {
+      panel.classList.add("open");
+    });
+    close.addEventListener("click", function () {
+      panel.classList.remove("open");
+    });
+    send.addEventListener("click", sendChat);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") sendChat();
+    });
+  }
+
+  init().catch(function (e) {
+    console.error(e);
+    showBanner("warn", e.message || "加载失败");
+  });
+})();
+  </script>
+</body>
+</html>

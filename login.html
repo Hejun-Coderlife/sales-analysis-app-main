@@ -93,7 +93,20 @@
         }
         msg.textContent = '登录成功，正在跳转...';
         msg.classList.add('ok');
-        window.location.href = data.user?.role === 'admin' ? '/admin' : '/dashboard';
+        const params = new URLSearchParams(window.location.search);
+        const nextRaw = params.get('next') || '';
+        const allowed = new Set(["/dashboard", "/admin", "/mobile", "/mobile.html", "/index.html"]);
+        const nextPath = (() => {
+          const p = String(nextRaw || '').split('?')[0].split('#')[0];
+          return allowed.has(p) ? p : '';
+        })();
+        if (nextPath) {
+          window.location.href = nextPath;
+        } else if (data.user?.role === 'admin') {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/dashboard';
+        }
       } catch (error) {
         msg.textContent = error?.message || '网络异常，请稍后重试';
       } finally {

@@ -17,6 +17,16 @@ function ensureAuthActions() {
   const actions = document.createElement("div");
   actions.style.display = "flex";
   actions.style.gap = "8px";
+  actions.style.flexWrap = "wrap";
+
+  const mobileLink = document.createElement("a");
+  mobileLink.id = "authMobileDashBtn";
+  mobileLink.href = "/mobile";
+  mobileLink.className = "light btn";
+  mobileLink.style.minHeight = "34px";
+  mobileLink.style.padding = "6px 10px";
+  mobileLink.style.display = "none";
+  mobileLink.textContent = "打开手机版看板";
 
   const adminLink = document.createElement("button");
   adminLink.id = "authAdminBtn";
@@ -39,12 +49,22 @@ function ensureAuthActions() {
     window.location.href = "/login";
   });
 
+  actions.appendChild(mobileLink);
   actions.appendChild(adminLink);
   actions.appendChild(logout);
   row.appendChild(userText);
   row.appendChild(actions);
   top.insertAdjacentElement("afterend", row);
-}
+
+  function syncMobileEntryVisibility() {
+    const btn = document.getElementById("authMobileDashBtn");
+    if (!btn) return;
+    const narrow = window.matchMedia("(max-width: 768px)").matches;
+    const ua = /Mobile|Android|iPhone|iPad|DingTalk/i.test(navigator.userAgent || "");
+    btn.style.display = narrow || ua ? "inline-flex" : "none";
+  }
+  syncMobileEntryVisibility();
+  window.addEventListener("resize", syncMobileEntryVisibility);
 
 function applyRoleUi(role, user) {
   const roleMap = {

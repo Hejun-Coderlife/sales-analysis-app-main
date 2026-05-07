@@ -1,3 +1,18 @@
+/** Allowed post-login paths for ?next= (open redirect hardening). */
+export const LOGIN_REDIRECT_ALLOWLIST = new Set([
+  "/dashboard",
+  "/admin",
+  "/mobile",
+  "/mobile.html",
+  "/index.html",
+]);
+
+export function safeLoginNextPath(raw) {
+  const pathOnly = String(raw || "").split("?")[0].split("#")[0];
+  if (!pathOnly.startsWith("/") || pathOnly.startsWith("//")) return "";
+  return LOGIN_REDIRECT_ALLOWLIST.has(pathOnly) ? pathOnly : "";
+}
+
 export function createAuthMiddleware(authService) {
   const getCurrentUser = async (req) => {
     const sessionUser = req.session?.user;
@@ -31,7 +46,10 @@ export function createAuthMiddleware(authService) {
   const attachUserContext = async (req, res, asPage = false) => {
     const user = await getCurrentUser(req);
     if (!user) {
-      if (asPage) return res.redirect("/login");
+      if (asPage) {
+        const next = safeLoginNextPath(req.path || "");
+        return res.redirect(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
+      }
       return res.status(401).json({ error: "请先登录" });
     }
     if (!user.enabled || String(user.role || "") === "disabled") {
