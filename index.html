@@ -228,33 +228,46 @@
     .grid-4{grid-template-columns:repeat(4,1fr)}
     .dashboard-lower{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
     .dashboard-lower-left{display:contents}
-    .control-panel{padding:22px 20px}
+    .control-panel{padding:14px 16px}
 .control-top{
   display:grid;
-  grid-template-columns:minmax(300px,1fr) minmax(520px,1.75fr);
-  gap:28px;
+  gap:10px;
   align-items:start
 }
-.control-left{
+.control-head{
   display:grid;
-  grid-template-rows:auto auto auto;
-  gap:14px;
-  align-content:start
+  grid-template-columns:minmax(240px,1fr) minmax(300px,420px);
+  gap:12px;
+  align-items:end
 }
-.upload-box{display:grid;gap:10px;align-content:start}
+.control-left{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 12px;
+  align-items:flex-end
+}
+.control-left:empty{display:none}
+.upload-box{
+  display:grid;
+  gap:6px;
+  align-content:start;
+  min-width:280px
+}
+.upload-box label{margin:0}
+.upload-box input[type="file"]{min-height:38px}
 .field-grid{
   display:grid;
-  grid-template-columns:repeat(4,minmax(150px,1fr));
-  gap:14px 16px;
+  grid-template-columns:repeat(5,minmax(140px,1fr));
+  gap:10px 12px;
   align-items:start
 }
 .control-field.hidden-control,.field-grid > .control-field.hidden-control,.multi-grid.control-field.hidden-control{display:none !important}
-.button-group{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
-.status-row{display:flex;align-items:center;justify-content:flex-start;min-height:24px}
+.button-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{min-height:38px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.status-row{display:flex;align-items:center;justify-content:flex-start;min-height:20px}
 #status{font-size:12px;color:#6b7280}
 input[type="date"], select.control-select{
-  border:1px solid #7690f3;border-radius:12px;padding:10px 12px;background:#ffffff;color:var(--text);min-width:120px;box-shadow:0 0 12px rgba(105,105,159,.18);height:44px
+  border:1px solid #7690f3;border-radius:12px;padding:8px 10px;background:#ffffff;color:var(--text);min-width:120px;box-shadow:0 0 12px rgba(105,105,159,.18);height:38px
 }
 .store-multi{display:flex;flex-direction:column;gap:8px;min-width:0}
 .store-search-input{
@@ -289,10 +302,10 @@ input[type="date"], select.control-select{
 .filter-dropdown{position:relative}
 .filter-trigger{
   width:100%;
-  min-height:44px;
+  min-height:38px;
   border:1px solid #7690f3;
   border-radius:12px;
-  padding:10px 12px;
+  padding:8px 10px;
   background:#ffffff;
   color:var(--text);
   box-shadow:0 0 12px rgba(105,105,159,.18);
@@ -350,12 +363,13 @@ input[type="date"], select.control-select{
   .multi-grid{grid-template-columns:1fr}
 }
 @media (max-width: 1180px){
-  .control-top{grid-template-columns:1fr;gap:20px}
-  .field-grid{grid-template-columns:repeat(2,minmax(150px,1fr))}
+  .control-head{grid-template-columns:1fr}
+  .field-grid{grid-template-columns:repeat(3,minmax(150px,1fr))}
 }
 @media (max-width: 700px){
   .field-grid{grid-template-columns:1fr}
   .button-group{gap:12px}
+  .upload-box{min-width:0}
 }
 
     .sleep-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
@@ -673,30 +687,12 @@ input[type="date"], select.control-select{
   
 <div class="card control-panel">
     <div class="control-top">
-      <div class="control-left">
-        <div class="upload-box">
-          <label for="files">上传 Excel 文件（.xls / .xlsx）</label>
-          <input id="files" type="file" accept=".xls,.xlsx" multiple />
-          <div class="small">可上传一个或多个文件，然后开始分析。</div>
-        </div>
-
-        <div class="button-group">
-          <div class="analyze-wrap">
-            <div class="analyze-spinner" aria-hidden="true"></div>
-            <button id="analyzeBtn" class="btn">开始分析</button>
-          </div>
-          <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
-        </div>
-
+      <div class="control-head">
         <div class="status-row">
           <span id="status"></span>
         </div>
-      </div>
-
-      
-<div class="field-grid">
-          
-<div class="col control-field" data-control="dashboardDateRange" style="grid-column: span 2;">
+        
+<div class="col control-field control-date-field" data-control="dashboardDateRange">
   <label>评估时间</label>
   <div class="filter-dropdown" id="dashboardDateDropdown">
     <button type="button" class="filter-trigger" id="dashboardDateTrigger">
@@ -720,7 +716,23 @@ input[type="date"], select.control-select{
     </div>
   </div>
 </div>
-          <div class="multi-grid control-field" data-control="dashboardMultiFilters">
+      </div>
+      <div class="control-left">
+        <div class="upload-box">
+          <label for="files">上传 Excel 文件（.xls / .xlsx）</label>
+          <input id="files" type="file" accept=".xls,.xlsx" multiple />
+          <div class="small">可上传一个或多个文件，然后开始分析。</div>
+        </div>
+
+        <div class="button-group">
+          <div class="analyze-wrap">
+            <div class="analyze-spinner" aria-hidden="true"></div>
+            <button id="analyzeBtn" class="btn">开始分析</button>
+          </div>
+          <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
+        </div>
+      </div>
+      <div class="multi-grid control-field" data-control="dashboardMultiFilters">
             <div class="col">
               <label>门店</label>
               <div class="filter-dropdown" id="dashboardStoreDropdown">
@@ -763,7 +775,9 @@ input[type="date"], select.control-select{
                 </div>
               </div>
             </div>
-          </div>
+      </div>
+
+<div class="field-grid">
 
           <div class="col control-field" data-control="sleepDays">
             <label for="sleepDays">沉睡天数</label>
