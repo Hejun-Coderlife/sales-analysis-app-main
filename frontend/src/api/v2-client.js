@@ -87,6 +87,18 @@ export async function getSalespersonRankings(datasetId, { filters = {}, limit = 
   return data.rows || [];
 }
 
+export async function getProductRankings(datasetId, { filters = {}, limit = 200, offset = 0 } = {}) {
+  const url = new URL(
+    `/api/v2/datasets/${encodeURIComponent(datasetId)}/rankings/products`,
+    window.location.origin
+  );
+  withFilterParams(url, filters);
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
+  const data = await fetchJson(url.pathname + url.search);
+  return data.rows || [];
+}
+
 export async function getMemberRankings(
   datasetId,
   { filters = {}, limit = 500, offset = 0, keyword = "" } = {}
@@ -143,4 +155,16 @@ export async function getFilterOptions(datasetId, filters = {}) {
 export async function getLatestDatasetSummary() {
   const data = await fetchJson("/api/v2/datasets/latest");
   return data.dataset || null;
+}
+
+export async function getTrendSeries(datasetId, filters = {}) {
+  const url = new URL(`/api/v2/datasets/${encodeURIComponent(datasetId)}/trends`, window.location.origin);
+  withFilterParams(url, filters);
+  return fetchJson(url.pathname + url.search);
+}
+
+export async function getDataQualityReport(datasetId, filters = {}) {
+  const url = new URL(`/api/v2/datasets/${encodeURIComponent(datasetId)}/data-quality`, window.location.origin);
+  withFilterParams(url, filters);
+  return fetchJson(url.pathname + url.search);
 }

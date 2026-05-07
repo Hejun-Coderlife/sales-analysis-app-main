@@ -117,6 +117,7 @@ function managerTemplate() {
     "canViewTrendCharts",
     "canViewRepurchaseAnalysis",
     "canUseFilters",
+    "canViewDataQuality",
     "canUseAgentChat",
     "canAskStoreQuestions",
     "canAskSalespersonQuestions",

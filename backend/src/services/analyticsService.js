@@ -60,7 +60,7 @@ export class AnalyticsService {
 
   async getDatasetSummary(datasetId) {
     const rows = await this.duckdbService.query(
-      `SELECT dataset_id, source_name, row_count, created_at, status
+      `SELECT dataset_id, source_name, row_count, created_at, status, mapping_json, validation_json
        FROM datasets WHERE dataset_id = $dataset_id LIMIT 1`,
       { dataset_id: datasetId }
     );
@@ -207,6 +207,142 @@ export class AnalyticsService {
         minDate: String(dateRange?.[0]?.min_date || ""),
         maxDate: String(dateRange?.[0]?.max_date || ""),
       },
+    };
+  }
+
+  async getTrendSeries(datasetId, { filters = {} } = {}) {
+    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+    const [daily, weekly, monthly] = await Promise.all([
+      this.duckdbService.query(
+        `SELECT
+           day_key AS day,
+           SUM(amount) AS sales_amount,
+           COUNT(DISTINCT store) AS store_count
+         FROM fact_sales
+         WHERE ${whereSql}
+         GROUP BY day_key
+         ORDER BY day_key ASC`,
+        params
+      ),
+      this.duckdbService.query(
+        `SELECT
+           CAST(week_start AS VARCHAR) AS weekStart,
+           SUM(amount) AS sales_amount,
+           COUNT(DISTINCT store) AS store_count
+         FROM fact_sales
+         WHERE ${whereSql}
+         GROUP BY week_start
+         ORDER BY week_start ASC`,
+        params
+      ),
+      this.duckdbService.query(
+        `SELECT
+           month_key AS year_month,
+           SUM(amount) AS sales_amount,
+           COUNT(DISTINCT store) AS store_count
+         FROM fact_sales
+         WHERE ${whereSql}
+         GROUP BY month_key
+         ORDER BY month_key ASC`,
+        params
+      ),
+    ]);
+    return { daily, weekly, monthly };
+  }
+
+  async getDataQualityReport(datasetId, { filters = {} } = {}) {
+    const summary = await this.getDatasetSummary(datasetId);
+    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+    const [fileCheckRows, unknownStats] = await Promise.all([
+      this.duckdbService.query(
+        `SELECT
+           COUNT(*) AS included_rows,
+           COUNT(DISTINCT order_no) AS order_count,
+           SUM(amount) AS q_sum,
+           SUM(CASE WHEN amount < 0 THEN 1 ELSE 0 END) AS negative_rows,
+           SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS negative_sum
+         FROM fact_sales
+         WHERE ${whereSql}`,
+        params
+      ),
+      this.duckdbService.query(
+        `SELECT
+           COUNT(*) AS total_rows,
+           SUM(CASE WHEN COALESCE(TRIM(salesperson), '') = '' OR salesperson IN ('Unknown', 'Unregistered') THEN 1 ELSE 0 END) AS unknown_salesperson_rows,
+           SUM(CASE WHEN COALESCE(TRIM(product), '') = '' OR product IN ('Unknown', 'Unregistered') THEN 1 ELSE 0 END) AS unknown_product_rows,
+           SUM(CASE WHEN COALESCE(TRIM(member_name), '') = '' THEN 1 ELSE 0 END) AS empty_member_rows
+         FROM fact_sales
+         WHERE ${whereSql}`,
+        params
+      ),
+    ]);
+
+    let mappingRaw = {};
+    let validation = {};
+    try {
+      mappingRaw = JSON.parse(String(summary?.mapping_json || "{}"));
+    } catch (_error) {
+      mappingRaw = {};
+    }
+    const mapping =
+      Array.isArray(mappingRaw) && mappingRaw.length && mappingRaw[0] && typeof mappingRaw[0] === "object"
+        ? mappingRaw[0].mapping || {}
+        : mappingRaw && typeof mappingRaw === "object"
+          ? mappingRaw.mapping || mappingRaw
+          : {};
+    try {
+      validation = JSON.parse(String(summary?.validation_json || "{}"));
+    } catch (_error) {
+      validation = {};
+    }
+    const warnings = Array.isArray(validation?.warnings) ? validation.warnings.map((x) => String(x)) : [];
+    const stat = unknownStats?.[0] || {};
+    const totalRows = Number(stat.total_rows || 0);
+    const unknownSalespersonRows = Number(stat.unknown_salesperson_rows || 0);
+    const unknownProductRows = Number(stat.unknown_product_rows || 0);
+    const emptyMemberRows = Number(stat.empty_member_rows || 0);
+    const messages = [];
+
+    const hasSalespersonMapping = Boolean(mapping?.salesperson);
+    const hasProductMapping = Boolean(mapping?.product);
+    const hasMemberMapping = Boolean(mapping?.member_name || mapping?.member_id || mapping?.phone);
+    if (!hasSalespersonMapping || (totalRows > 0 && unknownSalespersonRows >= totalRows)) {
+      messages.push("销售员字段未识别");
+    }
+    if (!hasProductMapping || (totalRows > 0 && unknownProductRows >= totalRows)) {
+      messages.push("商品字段未识别或无商品数据");
+    }
+    if (!hasMemberMapping || (totalRows > 0 && emptyMemberRows >= totalRows)) {
+      messages.push("会员字段未识别或无会员数据");
+    }
+
+    const sourceName = String(summary?.source_name || "当前数据集");
+    const statRow = fileCheckRows?.[0] || {};
+    const fileCheck = [
+      {
+        source_file: sourceName,
+        included_rows: Number(statRow.included_rows || 0),
+        order_count: Number(statRow.order_count || 0),
+        q_sum: Number(statRow.q_sum || 0),
+        negative_rows: Number(statRow.negative_rows || 0),
+        negative_sum: Number(statRow.negative_sum || 0),
+      },
+    ];
+
+    return {
+      summary: {
+        source_file: String(summary?.source_name || ""),
+        included_rows: Number(summary?.row_count || 0),
+        metric: "后端数据集",
+        value: String(summary?.dataset_id || ""),
+      },
+      fileCheck,
+      mappingRows: Object.entries(mapping || {}).map(([target, source]) => ({
+        target_field: String(target),
+        source_field: String(source || ""),
+      })),
+      warnings,
+      messages,
     };
   }
 

@@ -1,13 +1,16 @@
 import { featureFlags } from "../config/feature-flags.js";
 import {
+  getDataQualityReport,
   getDatasetKpis,
   getFilterOptions,
   getLatestDatasetSummary,
   getMemberRankings,
   getPagedTable,
+  getProductRankings,
   getSalespersonRankings,
   getSleepingMembers,
   getStoreRankings,
+  getTrendSeries,
   startUploadJob,
   waitForJob,
 } from "../api/v2-client.js";
@@ -72,6 +75,18 @@ function getSleepingConfig() {
   };
 }
 
+async function optionalSection(promiseFactory, fallbackValue) {
+  try {
+    return await promiseFactory();
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("你没有权限查看该范围的数据。") || message.includes("无权限访问")) {
+      return fallbackValue;
+    }
+    throw error;
+  }
+}
+
 function mapMemberRows(rows) {
   return (rows || []).map((row) => {
     const totalSpend = Number(row.total_spend || 0);
@@ -91,6 +106,69 @@ function mapMemberRows(rows) {
   });
 }
 
+function buildTicketRankRows(salespersonRank = []) {
+  return (salespersonRank || [])
+    .map((row) => {
+      const totalSales = Number(row.performance || 0);
+      const orderCount = Number(row.order_count || row.orderCount || 0);
+      return {
+        salesperson: String(row.salesperson || ""),
+        total_sales: totalSales,
+        order_count: orderCount,
+        avg_ticket: orderCount > 0 ? totalSales / orderCount : 0,
+      };
+    })
+    .sort((a, b) => b.avg_ticket - a.avg_ticket);
+}
+
+function buildRepurchaseDistribution(memberRows = []) {
+  const buckets = [
+    { key: "6+ orders", min: 6, max: Infinity },
+    { key: "4-5 orders", min: 4, max: 5 },
+    { key: "3 orders", min: 3, max: 3 },
+    { key: "2 orders", min: 2, max: 2 },
+    { key: "1 order", min: 1, max: 1 },
+  ];
+  return buckets.map((bucket) => ({
+    order_bucket: bucket.key,
+    member_count: (memberRows || []).filter((m) => {
+      const c = Number(m.order_count || 0);
+      return c >= bucket.min && c <= bucket.max;
+    }).length,
+  }));
+}
+
+function renderUnavailableMessage(containerId, message) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = `<p class="small" style="padding:12px">${message}</p>`;
+}
+
+function applyQualityMessages(results, qualityMessages = []) {
+  const hasSalespersonMessage = qualityMessages.includes("销售员字段未识别");
+  const hasProductMessage = qualityMessages.includes("商品字段未识别或无商品数据");
+  const hasMemberMessage = qualityMessages.includes("会员字段未识别或无会员数据");
+
+  if (hasSalespersonMessage || !(results.salespersonRank || []).length) {
+    const msg = hasSalespersonMessage ? "销售员字段未识别" : "暂无销售员数据";
+    ["salesRankTable", "rankingsSalespersonMini", "topSalespeople"].forEach((id) =>
+      renderUnavailableMessage(id, msg)
+    );
+  }
+  if (hasProductMessage || !(results.productRank || []).length) {
+    const msg = hasProductMessage ? "商品字段未识别或无商品数据" : "暂无商品数据";
+    ["productRankTable", "rankingsProductMini", "topProducts"].forEach((id) =>
+      renderUnavailableMessage(id, msg)
+    );
+  }
+  if (hasMemberMessage || !(results.memberRank || []).length) {
+    const msg = hasMemberMessage ? "会员字段未识别或无会员数据" : "暂无会员数据";
+    ["memberRankTable", "sleepListTable", "sleepByStoreTable"].forEach((id) =>
+      renderUnavailableMessage(id, msg)
+    );
+  }
+}
+
 function mergeV2IntoLegacyResults(payload) {
   const appState = window.appState || {};
   const prev = appState?.results?.results || {};
@@ -108,6 +186,13 @@ function mergeV2IntoLegacyResults(payload) {
     sleepList: payload.sleepList || [],
     sleepByStore: payload.sleepByStore || [],
     sleepSummary: payload.sleepSummary || [],
+    productRank: payload.productRank || [],
+    ticketRank: payload.ticketRank || [],
+    daily: payload.daily || [],
+    weekly: payload.weekly || [],
+    monthly: payload.monthly || [],
+    repurchaseDistribution: payload.repurchaseDistribution || [],
+    fileCheck: payload.fileCheck || [],
   };
   const container = {
     ...(appState.results || {}),
@@ -115,6 +200,8 @@ function mergeV2IntoLegacyResults(payload) {
     originalCleaned: Array.isArray(appState.results?.originalCleaned)
       ? appState.results.originalCleaned
       : [],
+    mappings: payload.mappingRows || appState.results?.mappings || [],
+    qualityMessages: payload.qualityMessages || [],
     isV2Backed: true,
   };
   appState.results = container;
@@ -131,6 +218,7 @@ function renderFromResults(results, keepDropdownOpen = false) {
   window.renderRankingTabCharts?.(window.appState?.rankingsMode || "store");
   window.renderMembersTabCharts?.(window.appState?.membersMode || "spend");
   window.renderSleepingTabCharts?.(window.appState?.sleepingMode || "store");
+  applyQualityMessages(results, window.appState?.results?.qualityMessages || []);
   if (!keepDropdownOpen) {
     window.updateControlVisibility?.(document.querySelector(".tab.active")?.dataset.tab || "dashboard");
   }
@@ -139,17 +227,51 @@ function renderFromResults(results, keepDropdownOpen = false) {
 async function fetchV2ResultBundle(datasetId) {
   const filters = getV2Filters();
   const sleepConfig = getSleepingConfig();
-  const [kpis, storeRank, salespersonRank, memberRankRaw, sleepingData] = await Promise.all([
-    getDatasetKpis(datasetId, filters),
-    getStoreRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
-    getSalespersonRankings(datasetId, { filters, ...v2State.pagination.salespersonRank }),
-    getMemberRankings(datasetId, { filters, ...v2State.pagination.memberRank }),
-    getSleepingMembers(datasetId, {
-      filters,
-      ...sleepConfig,
-      ...v2State.pagination.sleepList,
-    }),
-  ]);
+  const [kpis, storeRank, salespersonRank, productRank, memberRankRaw, sleepingData, trends, quality] =
+    await Promise.all([
+      optionalSection(() => getDatasetKpis(datasetId, filters), { totalSales: 0, totalOrders: 0 }),
+      optionalSection(
+        () => getStoreRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
+        []
+      ),
+      optionalSection(
+        () => getSalespersonRankings(datasetId, { filters, ...v2State.pagination.salespersonRank }),
+        []
+      ),
+      optionalSection(
+        () => getProductRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
+        []
+      ),
+      optionalSection(() => getMemberRankings(datasetId, { filters, ...v2State.pagination.memberRank }), []),
+      optionalSection(
+        () =>
+          getSleepingMembers(datasetId, {
+            filters,
+            ...sleepConfig,
+            ...v2State.pagination.sleepList,
+          }),
+        { rows: [], sleepByStore: [], sleepSummary: [] }
+      ),
+      optionalSection(() => getTrendSeries(datasetId, filters), { daily: [], weekly: [], monthly: [] }),
+      optionalSection(
+        () => getDataQualityReport(datasetId, filters),
+        { fileCheck: [], mappingRows: [], messages: [] }
+      ),
+    ]);
+  const mappedSalespersonRows = salespersonRank.map((row) => ({
+    salesperson: String(row.salesperson || ""),
+    performance: Number(row.performance || 0),
+    order_count: Number(row.orderCount || row.order_count || 0),
+  }));
+  const memberRank = mapMemberRows(memberRankRaw);
+  const ticketRank = buildTicketRankRows(mappedSalespersonRows);
+  const repurchaseDistribution = buildRepurchaseDistribution(memberRank);
+  const monthlyRows = Array.isArray(trends?.monthly) ? trends.monthly : [];
+  const dailyRows = Array.isArray(trends?.daily) ? trends.daily : [];
+  const safeMonthlyRows =
+    monthlyRows.length || Number(kpis?.totalSales || 0) <= 0
+      ? monthlyRows
+      : [{ year_month: getDateFilters().startDate || "当前区间", sales_amount: Number(kpis?.totalSales || 0), store_count: 0 }];
   return {
     kpis: mapKpisToLegacyShape(kpis),
     storeRank: storeRank.map((row) => ({
@@ -157,15 +279,25 @@ async function fetchV2ResultBundle(datasetId) {
       performance: Number(row.performance || 0),
       order_count: Number(row.orderCount || row.order_count || 0),
     })),
-    salespersonRank: salespersonRank.map((row) => ({
-      salesperson: String(row.salesperson || ""),
-      performance: Number(row.performance || 0),
-      order_count: Number(row.orderCount || row.order_count || 0),
+    salespersonRank: mappedSalespersonRows,
+    productRank: (productRank || []).map((row) => ({
+      product: String(row.product || ""),
+      sales_amount: Number(row.sales_amount || 0),
+      sales_qty: Number(row.sales_qty || 0),
+      sales_orders: Number(row.sales_orders || 0),
     })),
-    memberRank: mapMemberRows(memberRankRaw),
+    ticketRank,
+    memberRank,
     sleepList: sleepingData.rows || [],
     sleepByStore: sleepingData.sleepByStore || [],
     sleepSummary: sleepingData.sleepSummary || [],
+    daily: dailyRows,
+    weekly: trends?.weekly || [],
+    monthly: safeMonthlyRows,
+    repurchaseDistribution,
+    fileCheck: quality?.fileCheck || [],
+    mappingRows: quality?.mappingRows || [],
+    qualityMessages: quality?.messages || [],
   };
 }
 
@@ -295,7 +427,10 @@ async function refreshV2Results(keepDropdownOpen = false) {
     const merged = mergeV2IntoLegacyResults(payload);
     setLatestResults(merged);
     renderFromResults(merged, keepDropdownOpen);
-    setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。`);
+    const messageAddon = (payload.qualityMessages || []).length
+      ? `（${payload.qualityMessages.join("；")}）`
+      : "";
+    setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。${messageAddon}`);
   } catch (error) {
     console.error("[v2-bridge] refresh failed:", error);
     setStatus(error?.message || "v2 分析刷新失败", true);

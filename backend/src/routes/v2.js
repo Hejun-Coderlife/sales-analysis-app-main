@@ -209,6 +209,22 @@ export function createV2Router({
     return res.json({ ok: true, options });
   });
 
+  router.get("/datasets/:datasetId/trends", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewTrendCharts")) return;
+    const trends = await analyticsService.getTrendSeries(req.params.datasetId, {
+      filters: parseFilters(req.query, req.accessScope),
+    });
+    return res.json({ ok: true, ...trends });
+  });
+
+  router.get("/datasets/:datasetId/data-quality", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewDataQuality")) return;
+    const report = await analyticsService.getDataQualityReport(req.params.datasetId, {
+      filters: parseFilters(req.query, req.accessScope),
+    });
+    return res.json({ ok: true, ...report });
+  });
+
   router.get("/datasets/:datasetId/members/sleeping", async (req, res) => {
     if (!ensurePermission(req, res, "canViewSleepingMembers")) return;
     const result = await analyticsService.getSleepingAnalytics(req.params.datasetId, {
