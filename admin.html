@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Console - Sales Analysis</title>
+  <style>
+    body{
+      margin:0;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      background:#f3f6fb;
+      color:#111827;
+    }
+    .wrap{ max-width:1100px; margin:24px auto; padding:0 16px; }
+    .top{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:16px;
+    }
+    .btn{
+      border:none;
+      border-radius:10px;
+      min-height:38px;
+      padding:0 14px;
+      cursor:pointer;
+      font-weight:600;
+    }
+    .btn-primary{ background:#2563eb; color:#fff; }
+    .btn-light{ background:#e5e7eb; color:#111827; }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+      gap:14px;
+    }
+    .card{
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      padding:16px;
+      box-shadow:0 10px 24px rgba(2,6,23,.06);
+    }
+    h1{ margin:0; font-size:22px; }
+    h2{ margin:0 0 8px; font-size:17px; }
+    p{ margin:0; color:#4b5563; font-size:13px; line-height:1.45; }
+    table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+    th,td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
+    .meta{ font-size:12px; color:#6b7280; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <h1>Admin Console</h1>
+        <p>Phase 1 placeholders for user/permission/import management.</p>
+      </div>
+      <div>
+        <button id="toDashboardBtn" class="btn btn-light">Dashboard</button>
+        <button id="logoutBtn" class="btn btn-primary">Logout</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>User List (placeholder)</h2>
+        <p>This placeholder shows current seeded users and role/enable status.</p>
+        <div id="userListWrap" class="meta">Loading...</div>
+      </article>
+      <article class="card">
+        <h2>Permission Management (placeholder)</h2>
+        <p>Role and scope editor UI will be added in next phase.</p>
+      </article>
+      <article class="card">
+        <h2>Data Import (placeholder)</h2>
+        <p>Admin-only import panel will be connected to controlled upload workflow in next phase.</p>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    document.getElementById('toDashboardBtn').addEventListener('click', () => {
+      window.location.href = '/dashboard';
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) {
+        window.location.href = '/login';
+        return;
+      }
+      const usersRes = await fetch('/api/admin/users');
+      const usersData = await usersRes.json();
+      const wrap = document.getElementById('userListWrap');
+      if (!usersRes.ok) {
+        wrap.textContent = usersData.error || 'Failed to load users.';
+        return;
+      }
+      const rows = usersData.users || [];
+      if (!rows.length) {
+        wrap.textContent = 'No users.';
+        return;
+      }
+      const head = '<table><thead><tr><th>Username</th><th>Role</th><th>Enabled</th></tr></thead><tbody>';
+      const body = rows.map((u) => '<tr><td>' + u.username + '</td><td>' + u.role + '</td><td>' + (u.enabled ? 'Yes' : 'No') + '</td></tr>').join('');
+      wrap.innerHTML = head + body + '</tbody></table><div class=\"meta\">Read-only placeholder for now.</div>';
+    })();
+  </script>
+</body>
+</html>

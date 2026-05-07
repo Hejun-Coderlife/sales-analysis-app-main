@@ -7,18 +7,30 @@ function clamp(value, fallback, min = 1, max = 1000) {
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-function parseFilters(query = {}) {
+function parseFilters(query = {}, scope = null) {
   const pickCsv = (value) =>
     String(value || "")
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
 
-  return {
+  const parsed = {
     startDate: String(query.startDate || ""),
     endDate: String(query.endDate || ""),
     stores: pickCsv(query.stores),
     salespeople: pickCsv(query.salespeople),
+  };
+  if (!scope || scope.unrestricted) return parsed;
+  const scopedValues = (requested, allowed) => {
+    if (!Array.isArray(allowed) || !allowed.length) return requested;
+    if (!Array.isArray(requested) || !requested.length) return allowed.slice();
+    const allowedSet = new Set(allowed);
+    return requested.filter((x) => allowedSet.has(x));
+  };
+  return {
+    ...parsed,
+    stores: scopedValues(parsed.stores, scope.allowedStores),
+    salespeople: scopedValues(parsed.salespeople, scope.allowedSalespeople),
   };
 }
 
@@ -40,6 +52,9 @@ export function createV2Router({
   });
 
   router.post("/uploads", upload.single("file"), async (req, res) => {
+    if (String(req.currentUser?.role || "") !== "admin") {
+      return res.status(403).json({ error: "Only admin can upload/import data" });
+    }
     if (!req.file) {
       return res.status(400).json({ error: "file is required (multipart field name: file)" });
     }
@@ -110,13 +125,13 @@ export function createV2Router({
   });
 
   router.get("/datasets/:datasetId/kpis", async (req, res) => {
-    const kpis = await analyticsService.getKpis(req.params.datasetId, parseFilters(req.query));
+    const kpis = await analyticsService.getKpis(req.params.datasetId, parseFilters(req.query, req.accessScope));
     return res.json({ ok: true, kpis });
   });
 
   router.get("/datasets/:datasetId/rankings/stores", async (req, res) => {
     const rows = await analyticsService.getTopStores(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
     });
@@ -125,7 +140,7 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/rankings/salespeople", async (req, res) => {
     const rows = await analyticsService.getTopSalespeople(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
     });
@@ -134,7 +149,7 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/rankings/products", async (req, res) => {
     const rows = await analyticsService.getTopProducts(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
     });
@@ -143,7 +158,7 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/members/top", async (req, res) => {
     const rows = await analyticsService.getTopMembers(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
       keyword: String(req.query.keyword || ""),
@@ -153,14 +168,14 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/filters/options", async (req, res) => {
     const options = await analyticsService.getFilterOptions(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
     });
     return res.json({ ok: true, options });
   });
 
   router.get("/datasets/:datasetId/members/sleeping", async (req, res) => {
     const result = await analyticsService.getSleepingAnalytics(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       sleepDays: Number(req.query.sleepDays || 90),
       sleepMinOrders: Number(req.query.sleepMinOrders || 2),
       sleepMinAmount: Number(req.query.sleepMinAmount || 1000),
@@ -175,14 +190,14 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/orders/highest", async (req, res) => {
     const row = await analyticsService.getHighestOrder(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
     });
     return res.json({ ok: true, row });
   });
 
   router.get("/datasets/:datasetId/orders/top", async (req, res) => {
     const rows = await analyticsService.getOrders(req.params.datasetId, {
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
     });
@@ -193,7 +208,7 @@ export function createV2Router({
     const granularity = String(req.query.granularity || "month");
     const rows = await analyticsService.getLeadersByGranularity(req.params.datasetId, {
       granularity,
-      filters: parseFilters(req.query),
+      filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
     });
     return res.json({ ok: true, granularity, rows });

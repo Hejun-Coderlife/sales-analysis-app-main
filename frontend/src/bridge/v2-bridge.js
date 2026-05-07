@@ -353,6 +353,8 @@ function wireV2FilterRefreshHooks() {
 
 export function initV2Bridge() {
   if (!featureFlags.enableV2Upload) return;
+  const currentUser = window.__CURRENT_USER || null;
+  if (!currentUser || currentUser.role !== "admin") return;
   const analyzeBtn = document.getElementById("analyzeBtn");
   if (!analyzeBtn) return;
   wireV2FilterRefreshHooks();

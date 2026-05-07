@@ -2,7 +2,12 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import session from "express-session";
+import FileStoreFactory from "session-file-store";
 import { getV2Router, initV2AnalyticsModule } from "./backend/src/app.js";
+import { env } from "./backend/src/config/env.js";
+import { AuthService } from "./backend/src/auth/authService.js";
+import { createAuthMiddleware } from "./backend/src/auth/middleware.js";
 
 dotenv.config();
 
@@ -14,6 +19,8 @@ const MAX_HISTORY_MESSAGES = 24;
 const sessions = new Map();
 const salesContexts = new Map();
 const MAX_TOOL_CALL_STEPS = 4;
+const authService = new AuthService({ usersPath: env.usersPath });
+const { requireAuthApi, requireAuthPage, requireRole } = createAuthMiddleware(authService);
 
 function getConversationId(rawValue) {
   const value = String(rawValue || "").trim();
@@ -996,11 +1003,62 @@ function runToolCall(conversationId, toolName, toolArgs) {
   return { ok: false, error: `Unknown tool: ${toolName}` };
 }
 
+const FileStore = FileStoreFactory(session);
 app.use(express.json({ limit: "20mb" }));
+app.use(
+  session({
+    name: "sales.sid",
+    secret: env.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    store: new FileStore({
+      path: env.sessionDir,
+      retries: 1,
+      ttl: Math.floor(env.sessionMaxAgeMs / 1000),
+    }),
+    cookie: {
+      maxAge: env.sessionMaxAgeMs,
+      httpOnly: true,
+      sameSite: "lax",
+    },
+  })
+);
 app.use(express.static(__dirname));
+
+app.post("/api/auth/login", async (req, res) => {
+  const username = String(req.body?.username || "");
+  const password = String(req.body?.password || "");
+  const result = await authService.authenticate(username, password);
+  if (!result.ok) return res.status(401).json({ error: result.error || "Login failed" });
+  req.session.user = result.user;
+  return res.json({ ok: true, user: result.user });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("sales.sid");
+    return res.json({ ok: true });
+  });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ error: "Not logged in" });
+  return res.json({ ok: true, user: req.session.user });
+});
+
+app.get("/api/admin/users", requireRole("admin"), async (_req, res) => {
+  const users = await authService.listUsers();
+  return res.json({ ok: true, users });
+});
+
+app.use("/api/v2", (req, res, next) => {
+  if (req.path === "/health") return next();
+  return requireAuthApi(req, res, next);
+});
 app.use("/api/v2", getV2Router());
 
-app.post("/api/chat/context", (req, res) => {
+app.post("/api/chat/context", requireAuthApi, (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
   if (!conversationId) {
     return res.status(400).json({ error: "conversationId is required" });
@@ -1010,7 +1068,7 @@ app.post("/api/chat/context", (req, res) => {
   return res.json({ ok: true, conversationId });
 });
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", requireAuthApi, async (req, res) => {
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.AI_MODEL || "gpt-4o-mini";
@@ -1134,7 +1192,7 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.post("/api/chat/reset", (req, res) => {
+app.post("/api/chat/reset", requireAuthApi, (req, res) => {
   const conversationId = getConversationId(req.body?.conversationId);
   if (!conversationId) {
     return res.status(400).json({ error: "conversationId is required" });
@@ -1144,13 +1202,35 @@ app.post("/api/chat/reset", (req, res) => {
   return res.json({ ok: true, conversationId });
 });
 
-app.get("/", (_req, res) => {
+app.get("/login", (req, res) => {
+  if (req.session?.user) {
+    return res.redirect(req.session.user.role === "admin" ? "/admin" : "/dashboard");
+  }
+  res.sendFile(path.join(__dirname, "login.html"));
+});
+
+app.get("/dashboard", requireAuthPage, (_req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+app.get("/index.html", requireAuthPage, (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-initV2AnalyticsModule()
+app.get("/admin", requireRole("admin"), (_req, res) => {
+  res.sendFile(path.join(__dirname, "admin.html"));
+});
+app.get("/admin.html", requireRole("admin"), (_req, res) => {
+  res.sendFile(path.join(__dirname, "admin.html"));
+});
+
+app.get("/", (req, res) => {
+  if (!req.session?.user) return res.redirect("/login");
+  return res.redirect("/dashboard");
+});
+
+Promise.all([initV2AnalyticsModule(), authService.init()])
   .catch((error) => {
-    console.error("[analytics-v2] init failed:", error?.message || error);
+    console.error("[startup] init failed:", error?.message || error);
   })
   .finally(() => {
     app.listen(port, () => {

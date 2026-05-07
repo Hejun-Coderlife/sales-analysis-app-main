@@ -11,9 +11,12 @@
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
     "@duckdb/node-api": "^1.5.2-r.1",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
+    "express-session": "^1.19.0",
     "multer": "^2.1.1",
+    "session-file-store": "^1.5.0",
     "uuid": "^14.0.0",
     "xlsx": "^0.18.5"
   }

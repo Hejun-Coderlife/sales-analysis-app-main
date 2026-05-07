@@ -1,0 +1,59 @@
+[
+  {
+    "id": "u-admin-001",
+    "username": "admin",
+    "displayName": "System Admin",
+    "role": "admin",
+    "enabled": true,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [],
+    "allowedSalespeople": []
+  },
+  {
+    "id": "u-manager-001",
+    "username": "manager_demo",
+    "displayName": "Manager Demo",
+    "role": "manager",
+    "enabled": true,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [
+      "门店1",
+      "门店2"
+    ],
+    "allowedSalespeople": []
+  },
+  {
+    "id": "u-store-001",
+    "username": "store_demo",
+    "displayName": "Store User Demo",
+    "role": "store_user",
+    "enabled": true,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [
+      "门店1"
+    ],
+    "allowedSalespeople": []
+  },
+  {
+    "id": "u-sales-001",
+    "username": "sales_demo",
+    "displayName": "Salesperson Demo",
+    "role": "salesperson",
+    "enabled": true,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [],
+    "allowedSalespeople": [
+      "销售1"
+    ]
+  },
+  {
+    "id": "u-disabled-001",
+    "username": "disabled_demo",
+    "displayName": "Disabled Demo",
+    "role": "store_user",
+    "enabled": false,
+    "passwordHash": "$2b$10$EeJEnGf83jwpWCm/2sZL1eg5P2cWtGKlc/0NzJI1cnstHLvjat0BS",
+    "allowedStores": [],
+    "allowedSalespeople": []
+  }
+]
