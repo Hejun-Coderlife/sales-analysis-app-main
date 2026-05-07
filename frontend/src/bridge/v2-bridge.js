@@ -85,6 +85,13 @@ function isPermissionDeniedError(error) {
   );
 }
 
+function normalizeQualityMessages(messages = []) {
+  const normalized = (messages || []).map((msg) =>
+    msg === "销售员字段未识别" ? "销售员字段未识别，无法生成销售员排行" : msg
+  );
+  return [...new Set(normalized)];
+}
+
 const MODULE_FORBIDDEN_HTML = '<p class="small" style="padding:12px">暂无权限查看此模块</p>';
 const forbiddenRenderIds = new Set();
 
@@ -172,11 +179,10 @@ function renderUnavailableMessage(containerId, message) {
 }
 
 function applyQualityMessages(results, qualityMessages = []) {
-  const hasSalespersonMessage =
-    qualityMessages.includes("销售员字段未识别") ||
-    qualityMessages.includes("销售员字段未识别，无法生成销售员排行");
-  const hasProductMessage = qualityMessages.includes("商品字段未识别或无商品数据");
-  const hasMemberMessage = qualityMessages.includes("会员字段未识别或无会员数据");
+  const normalizedMessages = normalizeQualityMessages(qualityMessages);
+  const hasSalespersonMessage = normalizedMessages.includes("销售员字段未识别，无法生成销售员排行");
+  const hasProductMessage = normalizedMessages.includes("商品字段未识别或无商品数据");
+  const hasMemberMessage = normalizedMessages.includes("会员字段未识别或无会员数据");
 
   if (hasSalespersonMessage || !(results.salespersonRank || []).length) {
     const msg = hasSalespersonMessage ? "销售员字段未识别，无法生成销售员排行" : "暂无销售员数据";
@@ -370,8 +376,8 @@ async function fetchV2ResultBundle(datasetId) {
     fileCheck: quality?.fileCheck || [],
     mappingRows: quality?.mappingRows || [],
     qualityMessages: salespersonMissing
-      ? [...new Set([...(quality?.messages || []), "销售员字段未识别，无法生成销售员排行"])]
-      : quality?.messages || [],
+      ? normalizeQualityMessages([...(quality?.messages || []), "销售员字段未识别，无法生成销售员排行"])
+      : normalizeQualityMessages(quality?.messages || []),
   };
 }
 
@@ -394,6 +400,7 @@ function renderCheckboxOptions({
   selectedSet,
   allId,
   allLabel,
+  emptyInScopeMessage,
   searchValue,
   onChange,
 }) {
@@ -411,7 +418,7 @@ function renderCheckboxOptions({
   setHtml(
     wrap,
     `<label class="store-option"><input type="checkbox" id="${allId}"> <span>${allLabel}</span></label>${
-      optionsHtml || '<div class="small">暂无匹配结果</div>'
+      optionsHtml || `<div class="small">${values.length ? "暂无匹配结果" : emptyInScopeMessage}</div>`
     }`
   );
   const allOpt = document.getElementById(allId);
@@ -448,6 +455,7 @@ function wireV2FilterMenus() {
       selectedSet: appState.selectedStores,
       allId: "dashboardStoreAllOptionV2",
       allLabel: "全部门店",
+      emptyInScopeMessage: "当前账号暂无可选门店",
       searchValue: storeSearch?.value || "",
       onChange: async () => {
         window.updateDashboardStoreSelectedText?.();
@@ -460,6 +468,7 @@ function wireV2FilterMenus() {
       selectedSet: appState.selectedSalespeople,
       allId: "dashboardSalespeopleAllOptionV2",
       allLabel: "全部销售员",
+      emptyInScopeMessage: "当前账号暂无可选销售员",
       searchValue: salespersonSearch?.value || "",
       onChange: async () => {
         window.updateDashboardSalespersonSelectedText?.();
@@ -472,6 +481,7 @@ function wireV2FilterMenus() {
       selectedSet: appState.selectedProducts,
       allId: "dashboardProductAllOptionV2",
       allLabel: "全部商品",
+      emptyInScopeMessage: "当前账号暂无可选商品",
       searchValue: productSearch?.value || "",
       onChange: async () => {
         window.updateDashboardProductSelectedText?.();
@@ -482,7 +492,6 @@ function wireV2FilterMenus() {
 
   const safeRedraw = (event) => {
     if (!v2State.activeDatasetId) return;
-    event?.stopImmediatePropagation?.();
     redraw();
   };
   document.getElementById("dashboardStoreTrigger")?.addEventListener("click", safeRedraw, true);

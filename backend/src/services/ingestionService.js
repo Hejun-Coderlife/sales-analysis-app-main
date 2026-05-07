@@ -5,7 +5,22 @@ import { randomUUID } from "crypto";
 
 const HEADER_CANDIDATES = {
   store: ["store", "门店", "店铺", "门店名称", "所属门店"],
-  salesperson: ["salesperson", "sales", "导购", "销售员", "销售人员", "员工", "姓名"],
+  salesperson: [
+    "salesperson",
+    "sales",
+    "seller",
+    "staff",
+    "销售员",
+    "销售人员",
+    "导购",
+    "导购员",
+    "专属导购",
+    "专属导购编号",
+    "店员",
+    "员工",
+    "员工编号",
+    "营业员",
+  ],
   product: ["product", "商品", "品名", "货品", "款号", "货号"],
   amount: ["amount", "实收", "销售额", "金额", "应收", "支付金额", "付款金额"],
   date: ["date", "日期", "销售日期", "下单日期", "订单日期"],
