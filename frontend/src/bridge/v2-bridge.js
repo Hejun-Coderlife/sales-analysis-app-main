@@ -131,17 +131,21 @@ function mapMemberRows(rows) {
   });
 }
 
-function buildTicketRankRows(salespersonRank = []) {
-  return (salespersonRank || [])
+function buildTicketRankRows(storeRank = []) {
+  return (storeRank || [])
     .map((row) => {
       const totalSales = Number(row.performance || 0);
       const orderCount = Number(row.order_count || row.orderCount || 0);
       return {
-        salesperson: String(row.salesperson || ""),
+        store: String(row.store || ""),
         total_sales: totalSales,
         order_count: orderCount,
         avg_ticket: orderCount > 0 ? totalSales / orderCount : 0,
       };
+    })
+    .filter((row) => {
+      const name = String(row.store || "").trim();
+      return name && name !== "Unknown" && name !== "Unregistered";
     })
     .sort((a, b) => b.avg_ticket - a.avg_ticket);
 }
@@ -168,12 +172,14 @@ function renderUnavailableMessage(containerId, message) {
 }
 
 function applyQualityMessages(results, qualityMessages = []) {
-  const hasSalespersonMessage = qualityMessages.includes("销售员字段未识别");
+  const hasSalespersonMessage =
+    qualityMessages.includes("销售员字段未识别") ||
+    qualityMessages.includes("销售员字段未识别，无法生成销售员排行");
   const hasProductMessage = qualityMessages.includes("商品字段未识别或无商品数据");
   const hasMemberMessage = qualityMessages.includes("会员字段未识别或无会员数据");
 
   if (hasSalespersonMessage || !(results.salespersonRank || []).length) {
-    const msg = hasSalespersonMessage ? "销售员字段未识别" : "暂无销售员数据";
+    const msg = hasSalespersonMessage ? "销售员字段未识别，无法生成销售员排行" : "暂无销售员数据";
     ["salesRankTable", "rankingsSalespersonMini", "topSalespeople"].forEach((id) =>
       renderUnavailableMessage(id, msg)
     );
@@ -317,13 +323,24 @@ async function fetchV2ResultBundle(datasetId) {
         qualityForbiddenTargets
       ),
     ]);
-  const mappedSalespersonRows = salespersonRank.map((row) => ({
+  const mappedSalespersonRows = salespersonRank
+    .map((row) => ({
     salesperson: String(row.salesperson || ""),
     performance: Number(row.performance || 0),
     order_count: Number(row.orderCount || row.order_count || 0),
-  }));
+    }))
+    .filter((row) => {
+      const name = String(row.salesperson || "").trim();
+      return name && name !== "Unknown" && name !== "Unregistered";
+    });
+  const salespersonMissing = mappedSalespersonRows.length === 0;
   const memberRank = mapMemberRows(memberRankRaw);
-  const ticketRank = buildTicketRankRows(mappedSalespersonRows);
+  const normalizedStoreRank = storeRank.map((row) => ({
+    store: String(row.store || ""),
+    performance: Number(row.performance || 0),
+    order_count: Number(row.orderCount || row.order_count || 0),
+  }));
+  const ticketRank = buildTicketRankRows(normalizedStoreRank);
   const repurchaseDistribution = buildRepurchaseDistribution(memberRank);
   const monthlyRows = Array.isArray(trends?.monthly) ? trends.monthly : [];
   const dailyRows = Array.isArray(trends?.daily) ? trends.daily : [];
@@ -333,11 +350,7 @@ async function fetchV2ResultBundle(datasetId) {
       : [{ year_month: getDateFilters().startDate || "当前区间", sales_amount: Number(kpis?.totalSales || 0), store_count: 0 }];
   return {
     kpis: mapKpisToLegacyShape(kpis),
-    storeRank: storeRank.map((row) => ({
-      store: String(row.store || ""),
-      performance: Number(row.performance || 0),
-      order_count: Number(row.orderCount || row.order_count || 0),
-    })),
+    storeRank: normalizedStoreRank,
     salespersonRank: mappedSalespersonRows,
     productRank: (productRank || []).map((row) => ({
       product: String(row.product || ""),
@@ -356,7 +369,9 @@ async function fetchV2ResultBundle(datasetId) {
     repurchaseDistribution,
     fileCheck: quality?.fileCheck || [],
     mappingRows: quality?.mappingRows || [],
-    qualityMessages: quality?.messages || [],
+    qualityMessages: salespersonMissing
+      ? [...new Set([...(quality?.messages || []), "销售员字段未识别，无法生成销售员排行"])]
+      : quality?.messages || [],
   };
 }
 

@@ -831,7 +831,7 @@ input[type="date"], select.control-select{
       <div class="tab" data-tab="rankings">排行榜</div>
       <div class="tab" data-tab="members">会员分析</div>
       <div class="tab" data-tab="sleeping">沉睡会员</div>
-      <div class="tab" data-tab="validation">数据校验</div>
+      <div class="tab" data-tab="validation" style="display:none">数据校验</div>
     </div>
 
     <div id="dashboard" class="tab-panel">
@@ -1424,12 +1424,21 @@ function analyze(cleaned, cfg){
     .sort((a,b)=>b.performance-a.performance);
 
   const storeRank = aggregateRank(cleaned, 'store');
-  const salespersonRank = aggregateRank(cleaned, 'salesperson');
+  const salespersonRankRaw = aggregateRank(cleaned, 'salesperson');
+  const salespersonRank = salespersonRankRaw.filter((row) => {
+    const name = normalizeText(row.salesperson || '');
+    return name && name !== 'Unregistered' && name !== 'Unknown';
+  });
+  const salespersonFieldMissing = salespersonRank.length === 0;
   const productRank = [...groupBy(cleaned, r => r.product || 'Unregistered').entries()]
     .map(([product, items]) => ({ product, sales_amount:sum(items,'amount'), sales_qty:sum(items,'qty'), sales_orders:uniqueCount(items,'order_key') }))
     .sort((a,b)=>b.sales_amount-a.sales_amount);
-  const ticketRank = [...groupBy(orders, r => r.salesperson || 'Unregistered').entries()]
-    .map(([salesperson, items]) => ({ salesperson, total_sales:sum(items,'performance'), order_count:items.length, avg_ticket: items.length ? sum(items,'performance')/items.length : 0 }))
+  const ticketRank = [...groupBy(orders, r => r.store || 'Unregistered').entries()]
+    .map(([store, items]) => ({ store, total_sales:sum(items,'performance'), order_count:items.length, avg_ticket: items.length ? sum(items,'performance')/items.length : 0 }))
+    .filter((row) => {
+      const name = normalizeText(row.store || '');
+      return name && name !== 'Unregistered' && name !== 'Unknown';
+    })
     .sort((a,b)=>(b.avg_ticket-a.avg_ticket)||(b.total_sales-a.total_sales));
 
   const memberRank = [...groupBy(memberOrders, r => r.member_key + '|||' + r.member_name).entries()]
@@ -1519,6 +1528,7 @@ function analyze(cleaned, cfg){
       filesLoaded: fileCheck.length
     },
     storeRank, salespersonRank, productRank, ticketRank, memberRank, sleepList, monthly, daily, repurchaseDistribution, fileCheck, sleepByStore,
+    qualityMessages: salespersonFieldMissing ? ['销售员字段未识别，无法生成销售员排行'] : [],
     sleepSummary: [
       { metric:'分析截止日期', value: ymd(analysisDate) },
       { metric:'沉睡会员人数', value: sleepList.length },
@@ -2227,7 +2237,7 @@ function renderRankingTabCharts(mode){
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     miniRows = results.salespersonRank || [];
-    labels = rows.map(x => x.salesperson);
+    labels = rows.map(x => x.store);
     values = rows.map(x => x.performance);
     title1 = '销售员业绩趋势';
     title2 = '销售员业绩对比';
@@ -2245,7 +2255,7 @@ function renderRankingTabCharts(mode){
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
     miniRows = rows;
-    labels = rows.map(x => x.salesperson);
+    labels = rows.map(x => x.store);
     values = rows.map(x => x.avg_ticket);
     title1 = '客单价趋势';
     title2 = '客单价对比';
@@ -2287,7 +2297,7 @@ function renderRankingTabCharts(mode){
     store: { elId:'rankingsStoreMini', keyField:'store', valueField:'performance' },
     salesperson: { elId:'rankingsSalespersonMini', keyField:'salesperson', valueField:'performance' },
     product: { elId:'rankingsProductMini', keyField:'product', valueField:'sales_amount' },
-    ticket: { elId:'rankingsTicketMini', keyField:'salesperson', valueField:'avg_ticket' }
+    ticket: { elId:'rankingsTicketMini', keyField:'store', valueField:'avg_ticket' }
   }[mode || 'store'];
   if (miniConfig) {
     renderMiniList(miniConfig.elId, miniRows, miniConfig.keyField, miniConfig.valueField, fmtCurrency, 0);
@@ -2879,7 +2889,7 @@ function renderAllTablesFromResults(results){
   renderMiniList('rankingsStoreMini', results.storeRank || [], 'store', 'performance', fmtCurrency);
   renderMiniList('rankingsSalespersonMini', results.salespersonRank || [], 'salesperson', 'performance', fmtCurrency);
   renderMiniList('rankingsProductMini', results.productRank || [], 'product', 'sales_amount', fmtCurrency);
-  renderMiniList('rankingsTicketMini', results.ticketRank || [], 'salesperson', 'avg_ticket', fmtCurrency);
+  renderMiniList('rankingsTicketMini', results.ticketRank || [], 'store', 'avg_ticket', fmtCurrency);
 
   renderTable('storeRankTable', results.storeRank || [], {performance:fmtCurrency}, true);
   renderTable('salesRankTable', results.salespersonRank || [], {performance:fmtCurrency}, true);
@@ -2895,6 +2905,11 @@ function renderAllTablesFromResults(results){
   }
   if (appState.results?.mappings) {
     renderTable('mappingTable', appState.results.mappings, {}, true);
+  }
+  if ((results.qualityMessages || []).includes('销售员字段未识别，无法生成销售员排行')) {
+    ['salesRankTable', 'rankingsSalespersonMini', 'topSalespeople'].forEach((id) => {
+      setHtml(id, '<p class="small" style="padding:12px">销售员字段未识别，无法生成销售员排行</p>');
+    });
   }
 }
 function onGlobalFiltersChanged(keepDropdownOpen = false){
@@ -3423,7 +3438,7 @@ function renderRankingOverviewCards(results){
   renderMiniList('rankingsStoreMini', results.storeRank, 'store', 'performance', fmtCurrency);
   renderMiniList('rankingsSalespersonMini', results.salespersonRank, 'salesperson', 'performance', fmtCurrency);
   renderMiniList('rankingsProductMini', results.productRank, 'product', 'sales_amount', fmtCurrency);
-  renderMiniList('rankingsTicketMini', results.ticketRank, 'salesperson', 'avg_ticket', fmtCurrency);
+  renderMiniList('rankingsTicketMini', results.ticketRank, 'store', 'avg_ticket', fmtCurrency);
 }
 
 function hideDuplicateRankingCards(){
