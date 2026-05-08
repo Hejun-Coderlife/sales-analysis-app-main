@@ -349,6 +349,16 @@
     <div class="mini-grid" id="todayMonth"></div>
   </section>
 
+  <section class="card hidden" id="trendCard">
+    <h2>销售趋势</h2>
+    <p class="rank-empty-msg hidden" id="trendEmptyMsg">暂无趋势数据</p>
+    <div class="rank-detail-wrap hidden" id="trendDetail">
+      <div class="rank-chart-box">
+        <canvas id="chartTrend"></canvas>
+      </div>
+    </div>
+  </section>
+
   <section class="card hidden" id="rankStoresCard">
     <h2>门店排行 Top 10</h2>
     <p class="rank-empty-msg hidden" id="rankStoresEmptyMsg">暂无可展示的排行数据</p>
@@ -357,6 +367,9 @@
         <canvas id="chartStores"></canvas>
       </div>
       <ol class="ol rank-list" id="listStores"></ol>
+      <div class="row" style="justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-light" id="toggleStoresBtn">查看全部</button>
+      </div>
     </div>
   </section>
   <section class="card hidden" id="rankSalesCard">
@@ -367,6 +380,9 @@
         <canvas id="chartSales"></canvas>
       </div>
       <ol class="ol rank-list" id="listSales"></ol>
+      <div class="row" style="justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-light" id="toggleSalesBtn">查看全部</button>
+      </div>
     </div>
   </section>
   <section class="card hidden" id="rankProductsCard">
@@ -377,6 +393,9 @@
         <canvas id="chartProducts"></canvas>
       </div>
       <ol class="ol rank-list" id="listProducts"></ol>
+      <div class="row" style="justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-light" id="toggleProductsBtn">查看全部</button>
+      </div>
     </div>
   </section>
 
@@ -453,6 +472,8 @@
   let notifCache = { unread: 0, rows: [] };
 
   const rankCharts = { stores: null, sales: null, products: null };
+  let trendChart = null;
+  const rankExpandState = { stores: false, sales: false, products: false };
   const RANK_BAR_BG = "rgba(118, 144, 243, 0.78)";
   const RANK_BAR_BORDER = "#7690f3";
 
@@ -530,6 +551,77 @@
               },
             },
             border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  function renderTrendLine(labels, values) {
+    var canvas = document.getElementById("chartTrend");
+    var box = canvas && canvas.parentElement;
+    var empty = document.getElementById("trendEmptyMsg");
+    var detail = document.getElementById("trendDetail");
+    if (trendChart) {
+      trendChart.destroy();
+      trendChart = null;
+    }
+    if (!canvas || !box || !labels.length) {
+      if (empty) empty.classList.remove("hidden");
+      if (detail) detail.classList.add("hidden");
+      return;
+    }
+    if (empty) empty.classList.add("hidden");
+    if (detail) detail.classList.remove("hidden");
+    box.style.height = "240px";
+    trendChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: labels.slice(),
+        datasets: [
+          {
+            label: "销售额",
+            data: values.slice(),
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37, 99, 235, 0.12)",
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            fill: true,
+            tension: 0.25,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return fmtMoney(Number(ctx.raw || 0));
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { maxTicksLimit: 7, font: { size: 10 } },
+            grid: { display: false },
+          },
+          y: {
+            ticks: {
+              maxTicksLimit: 6,
+              font: { size: 10 },
+              callback: function (v) {
+                var n = Number(v || 0);
+                if (Math.abs(n) >= 10000) return (n / 10000).toFixed(1) + "万";
+                return Math.round(n).toString();
+              },
+            },
+            grid: { color: "rgba(229,231,235,0.9)" },
           },
         },
       },
@@ -747,11 +839,20 @@
   async function fetchRank(path, perm) {
     if (!datasetId || !hasPerm(perm)) return [];
     const f = { startDate: state.startDate, endDate: state.endDate, stores: state.store ? [state.store] : [] };
-    const q = qs(f) + "&limit=10&offset=0";
+    const q = qs(f) + "&limit=500&offset=0";
     const url =
       "/api/v2/datasets/" + encodeURIComponent(datasetId) + path + (q ? "?" + q : "");
     const data = await fetchJson(url);
     return data.rows || [];
+  }
+
+  async function fetchTrend() {
+    if (!datasetId || !hasPerm("canViewTrendCharts")) return [];
+    const f = { startDate: state.startDate, endDate: state.endDate, stores: state.store ? [state.store] : [] };
+    const q = qs(f);
+    const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/trends" + (q ? "?" + q : "");
+    const data = await fetchJson(url);
+    return Array.isArray(data.daily) ? data.daily : [];
   }
 
   async function loadAllData() {
@@ -786,6 +887,7 @@
     let products = [];
     let members = [];
     let sleeping = null;
+    let trendDaily = [];
 
     const today = ymd(new Date());
     const now = new Date();
@@ -815,6 +917,11 @@
       products = await fetchRank("/rankings/products", "canViewProductRanking");
     } catch (e) {
       products = [];
+    }
+    try {
+      trendDaily = await fetchTrend();
+    } catch (e) {
+      trendDaily = [];
     }
     try {
       if (hasPerm("canViewMemberAnalysis")) {
@@ -933,13 +1040,31 @@
       setSectionVisible("overviewCard", false);
     }
 
+    if (hasPerm("canViewTrendCharts")) {
+      setSectionVisible("trendCard", true);
+      var trendRows = (trendDaily || []).map(function (r) {
+        return { day: String(r.day || ""), sales: Number(r.sales_amount || 0) };
+      });
+      renderTrendLine(
+        trendRows.map(function (r) { return r.day; }),
+        trendRows.map(function (r) { return r.sales; })
+      );
+    } else {
+      setSectionVisible("trendCard", false);
+      if (trendChart) {
+        trendChart.destroy();
+        trendChart = null;
+      }
+    }
+
     if (hasPerm("canViewStoreRanking")) {
       setSectionVisible("rankStoresCard", true);
       var storeRows = stores.map(function (r) {
         return { name: r.store, val: Number(r.performance || 0) };
       });
-      var storeLabels = storeRows.map(function (r) { return r.name; });
-      var storeVals = storeRows.map(function (r) { return r.val; });
+      var storeTopRows = storeRows.slice(0, 10);
+      var storeLabels = storeTopRows.map(function (r) { return r.name; });
+      var storeVals = storeTopRows.map(function (r) { return r.val; });
       if (!storeRows.length) {
         destroyRankChart("stores");
         document.getElementById("rankStoresEmptyMsg").classList.remove("hidden");
@@ -951,7 +1076,16 @@
         renderRankHorizontalBar("stores", "chartStores", storeLabels, storeVals, function (v) {
           return fmtMoney(v);
         });
-        renderOl("listStores", storeRows, function (v) { return fmtMoney(v); });
+        var listRows = rankExpandState.stores ? storeRows : storeTopRows;
+        renderOl("listStores", listRows, function (v) { return fmtMoney(v); });
+        var listElStores = document.getElementById("listStores");
+        if (listElStores) {
+          listElStores.style.maxHeight = rankExpandState.stores ? "420px" : "";
+          listElStores.style.overflowY = rankExpandState.stores ? "auto" : "";
+          listElStores.style.display = "block";
+        }
+        var toggleStoresBtn = document.getElementById("toggleStoresBtn");
+        if (toggleStoresBtn) toggleStoresBtn.textContent = rankExpandState.stores ? "收起" : "查看全部";
       }
     } else {
       destroyRankChart("stores");
@@ -963,8 +1097,9 @@
       var salesRows = sales.map(function (r) {
         return { name: r.salesperson, val: Number(r.performance || 0) };
       });
-      var salesLabels = salesRows.map(function (r) { return r.name; });
-      var salesVals = salesRows.map(function (r) { return r.val; });
+      var salesTopRows = salesRows.slice(0, 10);
+      var salesLabels = salesTopRows.map(function (r) { return r.name; });
+      var salesVals = salesTopRows.map(function (r) { return r.val; });
       if (!salesRows.length) {
         destroyRankChart("sales");
         document.getElementById("rankSalesEmptyMsg").classList.remove("hidden");
@@ -976,7 +1111,16 @@
         renderRankHorizontalBar("sales", "chartSales", salesLabels, salesVals, function (v) {
           return fmtMoney(v);
         });
-        renderOl("listSales", salesRows, function (v) { return fmtMoney(v); });
+        var salesListRows = rankExpandState.sales ? salesRows : salesTopRows;
+        renderOl("listSales", salesListRows, function (v) { return fmtMoney(v); });
+        var listElSales = document.getElementById("listSales");
+        if (listElSales) {
+          listElSales.style.maxHeight = rankExpandState.sales ? "420px" : "";
+          listElSales.style.overflowY = rankExpandState.sales ? "auto" : "";
+          listElSales.style.display = "block";
+        }
+        var toggleSalesBtn = document.getElementById("toggleSalesBtn");
+        if (toggleSalesBtn) toggleSalesBtn.textContent = rankExpandState.sales ? "收起" : "查看全部";
       }
     } else {
       destroyRankChart("sales");
@@ -988,8 +1132,9 @@
       var prodRows = products.map(function (r) {
         return { name: r.product, val: Number(r.sales_amount || 0) };
       });
-      var prodLabels = prodRows.map(function (r) { return r.name; });
-      var prodVals = prodRows.map(function (r) { return r.val; });
+      var prodTopRows = prodRows.slice(0, 10);
+      var prodLabels = prodTopRows.map(function (r) { return r.name; });
+      var prodVals = prodTopRows.map(function (r) { return r.val; });
       if (!prodRows.length) {
         destroyRankChart("products");
         document.getElementById("rankProductsEmptyMsg").classList.remove("hidden");
@@ -1001,7 +1146,16 @@
         renderRankHorizontalBar("products", "chartProducts", prodLabels, prodVals, function (v) {
           return fmtMoney(v);
         });
-        renderOl("listProducts", prodRows, function (v) { return fmtMoney(v); });
+        var prodListRows = rankExpandState.products ? prodRows : prodTopRows;
+        renderOl("listProducts", prodListRows, function (v) { return fmtMoney(v); });
+        var listElProducts = document.getElementById("listProducts");
+        if (listElProducts) {
+          listElProducts.style.maxHeight = rankExpandState.products ? "420px" : "";
+          listElProducts.style.overflowY = rankExpandState.products ? "auto" : "";
+          listElProducts.style.display = "block";
+        }
+        var toggleProductsBtn = document.getElementById("toggleProductsBtn");
+        if (toggleProductsBtn) toggleProductsBtn.textContent = rankExpandState.products ? "收起" : "查看全部";
       }
     } else {
       destroyRankChart("products");
@@ -1398,6 +1552,29 @@
     }
 
     wireFilterUi();
+
+    function wireRankToggleUi() {
+      var mappings = [
+        { key: "stores", id: "toggleStoresBtn" },
+        { key: "sales", id: "toggleSalesBtn" },
+        { key: "products", id: "toggleProductsBtn" },
+      ];
+      mappings.forEach(function (m) {
+        var btn = document.getElementById(m.id);
+        if (!btn || btn.dataset.wired) return;
+        btn.dataset.wired = "1";
+        btn.addEventListener("click", async function () {
+          rankExpandState[m.key] = !rankExpandState[m.key];
+          try {
+            await loadAllData();
+          } catch (e) {
+            showToast((e && e.message) || "加载失败", "error");
+          }
+        });
+      });
+    }
+
+    wireRankToggleUi();
 
     datasetId = await loadLatestDataset();
     wireNotifications();
