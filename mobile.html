@@ -221,17 +221,18 @@
     .perm-tip { font-size: 13px; color: var(--muted); padding: 8px 0; }
     #chatFab {
       position: fixed;
-      right: 16px;
-      bottom: calc(16px + var(--safe-bottom));
+      right: 12px;
+      bottom: calc(12px + var(--safe-bottom));
       z-index: 9998;
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      border: 2px solid rgba(37, 99, 235, 0.35);
-      background: #fff url("favicon.png") center/70% no-repeat;
-      box-shadow: 0 8px 24px rgba(2, 6, 23, 0.15);
+      border: none;
+      background: transparent url("favicon.png") center/52px no-repeat;
+      box-shadow: none;
       cursor: pointer;
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
     #chatPanel {
       display: none;
@@ -257,10 +258,33 @@
       font-weight: 600;
       font-size: 14px;
     }
-    .chat-body { flex: 1; overflow: auto; padding: 10px 12px; font-size: 14px; }
-    .chat-msg { margin-bottom: 10px; line-height: 1.45; word-break: break-word; }
-    .chat-msg.user { text-align: right; color: #1d4ed8; }
-    .chat-msg.agent { text-align: left; color: #111827; }
+    .chat-body { flex: 1; overflow: auto; overflow-x: hidden; padding: 10px 12px; font-size: 14px; }
+    .chat-msg {
+      margin-bottom: 10px;
+      line-height: 1.6;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      white-space: normal;
+      max-width: 94%;
+    }
+    .chat-msg.user {
+      margin-left: auto;
+      text-align: left;
+      color: #1d4ed8;
+      background: rgba(29, 78, 216, 0.08);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .chat-msg.agent {
+      text-align: left;
+      color: #111827;
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .assistant-paragraph { margin: 0 0 7px 0; }
+    .assistant-paragraph:last-child { margin-bottom: 0; }
+    .assistant-subtitle { font-weight: 600; color: #1f2937; margin-right: 4px; }
     .chat-msg.err { color: #b91c1c; }
     .chat-foot { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
     .chat-foot input { flex: 1; min-height: 42px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); padding: 0 10px; }
@@ -410,14 +434,14 @@
   </section>
 
   <section class="card hidden" id="agentCard">
-    <h2>数据助手</h2>
+    <h2>AI助手</h2>
     <p class="muted" style="margin:0 0 10px">点击下方浮动按钮打开对话，数据与权限与当前账号一致。</p>
   </section>
 
-  <button type="button" id="chatFab" aria-label="打开数据助手"></button>
+  <button type="button" id="chatFab" aria-label="打开AI助手"></button>
   <div id="chatPanel">
     <div class="chat-head">
-      <span>数据助手</span>
+      <span>AI助手</span>
       <button type="button" class="btn btn-light" id="chatClose" style="min-height:32px;padding:0 10px">关闭</button>
     </div>
     <div class="chat-body" id="chatMessages"></div>
@@ -1353,16 +1377,97 @@
     const el = document.getElementById("chatMessages");
     el.innerHTML = chatMessages
       .map(function (m) {
+        var role = m.role === "user" ? "user" : m.role === "err" ? "err" : "agent";
+        var body = "";
+        if (role === "agent") {
+          body = formatAssistantMessageForMobile(String(m.text || ""));
+        } else {
+          body = escapeHtml(String(m.text || ""));
+        }
         return (
           '<div class="chat-msg ' +
-          (m.role === "user" ? "user" : m.role === "err" ? "err" : "agent") +
+          role +
           '">' +
-          escapeHtml(m.text) +
+          body +
           "</div>"
         );
       })
       .join("");
     el.scrollTop = el.scrollHeight;
+  }
+
+  function formatAssistantMessageForMobile(text) {
+    var raw = String(text || "").replace(/\r\n?/g, "\n");
+    var lines = raw.split("\n");
+    var cleaned = [];
+    for (var i = 0; i < lines.length; i += 1) {
+      var line = String(lines[i] || "");
+      if (/^\s*```/.test(line)) continue;
+      line = line
+        .replace(/^\s{0,3}#{1,6}\s*/g, "")
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/\*(.*?)\*/g, "$1")
+        .replace(/`+/g, "")
+        .replace(/^\s*[-*•]\s+/g, "")
+        .replace(/^\s*\d+\.\s+/g, "")
+        .replace(/\|/g, " ");
+      if (/^\s*[:\-]{3,}\s*$/.test(line)) continue;
+      line = line.replace(/\s+/g, " ").trim();
+      cleaned.push(line);
+    }
+    var compact = [];
+    for (var j = 0; j < cleaned.length; j += 1) {
+      var curr = cleaned[j];
+      if (!curr) {
+        if (compact.length && compact[compact.length - 1] !== "") compact.push("");
+        continue;
+      }
+      compact.push(curr);
+    }
+    while (compact.length && compact[0] === "") compact.shift();
+    while (compact.length && compact[compact.length - 1] === "") compact.pop();
+    if (!compact.length) return '<p class="assistant-paragraph">暂无回复</p>';
+
+    var sections = [];
+    var sectionTitle = "";
+    var sectionLines = [];
+    function flushSection() {
+      if (!sectionTitle && !sectionLines.length) return;
+      var content = sectionLines.join(" ");
+      sections.push({ title: sectionTitle, content: content });
+      sectionTitle = "";
+      sectionLines = [];
+    }
+    for (var k = 0; k < compact.length; k += 1) {
+      var row = compact[k];
+      if (!row) {
+        flushSection();
+        continue;
+      }
+      var m = row.match(/^(结论|数据依据|建议|风险提示|后续动作)\s*[：:]\s*(.*)$/);
+      if (m) {
+        flushSection();
+        sectionTitle = m[1];
+        if (m[2]) sectionLines.push(m[2]);
+      } else {
+        sectionLines.push(row);
+      }
+    }
+    flushSection();
+    if (!sections.length) {
+      sections = compact.filter(Boolean).map(function (s) {
+        return { title: "", content: s };
+      });
+    }
+
+    return sections
+      .map(function (item) {
+        var titleHtml = item.title
+          ? '<span class="assistant-subtitle">' + escapeHtml(item.title + "：") + "</span>"
+          : "";
+        return '<p class="assistant-paragraph">' + titleHtml + escapeHtml(item.content || "") + "</p>";
+      })
+      .join("");
   }
 
   function setMobileDatePreset(preset) {
