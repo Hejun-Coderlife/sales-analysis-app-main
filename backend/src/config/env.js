@@ -47,6 +47,7 @@ export const env = {
   /** Public site URL for links in outbound notifications (no trailing slash required). */
   publicBaseUrl: String(process.env.PUBLIC_BASE_URL || "").trim(),
   /** DingTalk internal app credentials (server-only; never send to frontend). */
+  dingtalkCorpId: String(process.env.DINGTALK_CORP_ID || "").trim(),
   dingtalkAppKey: String(process.env.DINGTALK_APP_KEY || "").trim(),
   dingtalkAppSecret: String(process.env.DINGTALK_APP_SECRET || "").trim(),
   dingtalkAgentId: String(process.env.DINGTALK_AGENT_ID || "").trim(),

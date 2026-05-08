@@ -300,6 +300,8 @@ export function sanitizeUserWithPermissions(user = {}) {
     createdAt,
     updatedAt: String(user.updatedAt || createdAt),
     lastLoginAt: String(user.lastLoginAt || ""),
+    dingtalkUserId: String(user.dingtalkUserId || ""),
+    dingtalkBoundAt: String(user.dingtalkBoundAt || ""),
   };
 }
 
@@ -321,6 +323,8 @@ export function toPublicUser(user) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt,
+    dingtalkUserId: user.dingtalkUserId || "",
+    dingtalkBoundAt: user.dingtalkBoundAt || "",
   };
 }
 

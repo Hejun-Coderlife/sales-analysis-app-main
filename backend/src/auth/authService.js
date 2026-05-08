@@ -195,6 +195,21 @@ export class AuthService {
     await this.persist();
   }
 
+  async bindDingTalkUser(userId, dingtalkUserId) {
+    await this.init();
+    const user = await this.findById(userId);
+    if (!user) throw new Error("用户不存在");
+    const boundId = String(dingtalkUserId || "").trim();
+    if (!boundId) throw new Error("钉钉用户ID不能为空");
+    user.dingtalkUserId = boundId;
+    user.dingtalkBoundAt = new Date().toISOString();
+    user.updatedAt = new Date().toISOString();
+    const normalized = sanitizeUserWithPermissions(user);
+    Object.assign(user, normalized);
+    await this.persist();
+    return toPublicUser(user);
+  }
+
   deriveAccessScope(user) {
     return buildPermissionScope(user);
   }

@@ -39,6 +39,35 @@ async function appendAuditLog(entry = {}) {
   }
 }
 
+async function getDingTalkAccessToken({ appKey, appSecret }) {
+  const url = new URL("https://oapi.dingtalk.com/gettoken");
+  url.searchParams.set("appkey", String(appKey || ""));
+  url.searchParams.set("appsecret", String(appSecret || ""));
+  const resp = await fetch(url.toString(), { method: "GET" });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error("钉钉令牌请求失败");
+  if (Number(data.errcode || 0) !== 0 || !data.access_token) {
+    throw new Error(data.errmsg || "钉钉令牌获取失败");
+  }
+  return String(data.access_token);
+}
+
+async function getDingTalkUserIdByCode({ accessToken, code }) {
+  const url = new URL("https://oapi.dingtalk.com/topapi/v2/user/getuserinfo");
+  url.searchParams.set("access_token", String(accessToken || ""));
+  const resp = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: String(code || "") }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error("钉钉用户信息请求失败");
+  if (Number(data.errcode || 0) !== 0 || !data.result?.userid) {
+    throw new Error(data.errmsg || "钉钉免登 code 换取 userid 失败");
+  }
+  return String(data.result.userid);
+}
+
 function ensurePermissionOrDeny(res, user, permissionName) {
   if (hasPermission(user, permissionName)) return true;
   res.status(403).json({ error: "无权限访问" });
@@ -1227,6 +1256,39 @@ app.get("/api/auth/me", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "未登录" });
   return res.json({ ok: true, user });
+});
+
+app.get("/api/dingtalk/config", requireAuthApi, (_req, res) => {
+  return res.json({
+    ok: true,
+    corpId: env.dingtalkCorpId || "",
+  });
+});
+
+app.post("/api/dingtalk/bind", requireAuthApi, async (req, res) => {
+  const code = String(req.body?.code || "").trim();
+  if (!code) return res.status(400).json({ error: "code 不能为空" });
+  if (!env.dingtalkAppKey || !env.dingtalkAppSecret || !env.dingtalkCorpId) {
+    return res.status(400).json({ error: "服务端未配置钉钉免登参数" });
+  }
+  try {
+    const accessToken = await getDingTalkAccessToken({
+      appKey: env.dingtalkAppKey,
+      appSecret: env.dingtalkAppSecret,
+    });
+    const dingtalkUserId = await getDingTalkUserIdByCode({
+      accessToken,
+      code,
+    });
+    const updatedUser = await authService.bindDingTalkUser(
+      String(req.currentUser?.id || ""),
+      dingtalkUserId
+    );
+    req.session.user = updatedUser;
+    return res.json({ ok: true, dingtalkUserId: updatedUser.dingtalkUserId || dingtalkUserId });
+  } catch (err) {
+    return res.status(502).json({ error: err?.message || "钉钉绑定失败" });
+  }
 });
 
 app.get("/api/notifications", requireAuthApi, async (req, res) => {

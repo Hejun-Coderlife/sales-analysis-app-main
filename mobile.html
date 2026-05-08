@@ -484,6 +484,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.36/dingtalk.open.js"></script>
   <script src="/frontend/src/visual/galaxy-background.js"></script>
   <script>
 (function () {
@@ -513,6 +514,7 @@
   };
   let dateRefreshTimer = null;
   let toastTimer = null;
+  let dingtalkBindTried = false;
 
   const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const chatMessages = [];
@@ -1664,6 +1666,48 @@
       (user.displayName || user.username) + "（" + (roleMap[user.role] || user.role) + "）";
 
     document.getElementById("filterCard").style.display = hasPerm("canUseFilters") ? "" : "none";
+
+    async function tryBindDingTalkUserId() {
+      if (dingtalkBindTried) return;
+      dingtalkBindTried = true;
+      var ua = String(navigator.userAgent || "").toLowerCase();
+      var inDingTalk = ua.includes("dingtalk");
+      var ddObj = window.dd;
+      if (!inDingTalk || !ddObj || !ddObj.runtime || !ddObj.runtime.permission || !ddObj.runtime.permission.requestAuthCode) {
+        return;
+      }
+      try {
+        const cfg = await fetchJson("/api/dingtalk/config");
+        var corpId = String(cfg.corpId || "").trim();
+        if (!corpId) {
+          showToast("钉钉绑定未配置 corpId", "error");
+          return;
+        }
+        ddObj.runtime.permission.requestAuthCode({
+          corpId: corpId,
+          onSuccess: async function (authRes) {
+            try {
+              var code = String(authRes && authRes.code ? authRes.code : "").trim();
+              if (!code) return;
+              const bindRes = await fetchJson("/api/dingtalk/bind", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: code }),
+              });
+              if (bindRes && bindRes.ok) showToast("已绑定钉钉账号", "success");
+            } catch (e) {
+              showToast((e && e.message) || "钉钉绑定失败", "error");
+            }
+          },
+          onFail: function () {
+            showToast("钉钉授权失败", "error");
+          },
+        });
+      } catch (e) {
+        showToast((e && e.message) || "钉钉绑定失败", "error");
+      }
+    }
+    tryBindDingTalkUserId().catch(function () {});
 
     document.getElementById("logoutBtn").addEventListener("click", async function () {
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });

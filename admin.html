@@ -150,13 +150,15 @@
                   <th>商品权限</th>
                   <th>Agent</th>
                   <th>会员隐私权限</th>
+                  <th>钉钉绑定</th>
+                  <th>DingTalk UserID</th>
                   <th class="sticky-right-2">状态</th>
                   <th>最后登录</th>
                   <th class="sticky-right">操作</th>
                 </tr>
               </thead>
               <tbody id="usersTableBody">
-                <tr><td colspan="11" class="muted">加载中...</td></tr>
+                <tr><td colspan="13" class="muted">加载中...</td></tr>
               </tbody>
             </table>
           </div>
@@ -342,7 +344,7 @@
     function renderUsersTable() {
       const rows = applyFilters(usersCache);
       const tbody = document.getElementById("usersTableBody");
-      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="11" class="muted">暂无匹配员工</td></tr>`; return; }
+      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="13" class="muted">暂无匹配员工</td></tr>`; return; }
       tbody.innerHTML = rows.map((u) => `
         <tr>
           <td class="sticky-left"><b>${u.username || "-"}</b></td>
@@ -353,6 +355,8 @@
           <td>${summarizeCount(u.allowAllProducts, u.allowedProducts, "个")}</td>
           <td>${hasAgentEnabled(u) ? "已开启" : "未开启"}</td>
           <td>${summarizePrivacy(u.allowedMemberFields || {})}</td>
+          <td>${u.dingtalkUserId ? '<span class="badge badge-ok">已绑定</span>' : '<span class="badge">未绑定</span>'}</td>
+          <td>${u.dingtalkUserId || "-"}</td>
           <td class="sticky-right-2"><span class="badge ${u.enabled ? "badge-ok":"badge-off"}">${u.enabled ? "启用":"停用"}</span></td>
           <td>${fmtTime(u.lastLoginAt)}</td>
           <td class="sticky-right">
@@ -434,42 +438,102 @@
       const files = [...(document.getElementById("adminImportFile").files || [])];
       const status = document.getElementById("adminImportStatus");
       if (!files.length) { status.className = "meta err"; status.textContent = "请先选择文件"; showToast("请先选择文件","error"); return; }
+      function summarizeImportFailure(job, fallback) {
+        const parts = [];
+        if (job?.error) parts.push(String(job.error));
+        const failedFiles = Array.isArray(job?.stats?.failedFiles) ? job.stats.failedFiles : [];
+        if (failedFiles.length) {
+          const fileReason = failedFiles
+            .slice(0, 3)
+            .map((f) => `${f.fileName || "文件"}：${f.reason || "导入失败"}`)
+            .join("；");
+          if (fileReason) parts.push(fileReason);
+        }
+        const warnings = Array.isArray(job?.warnings) ? job.warnings.filter(Boolean) : [];
+        if (warnings.length) parts.push(`明细：${warnings.slice(0, 3).join("；")}`);
+        if (!parts.length) return fallback || "导入失败";
+        const text = parts.join("｜");
+        return text.length > 320 ? `${text.slice(0, 320)}...` : text;
+      }
       status.className = "meta";
       status.textContent = `上传中（${files.length} 个文件）...`;
-      const form = new FormData();
-      files.forEach((f) => form.append("files", f));
-      form.append("mapping", JSON.stringify({}));
-      const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
-      const uploadData = await uploadRes.json().catch(() => ({}));
-      if (!uploadRes.ok) { status.className = "meta err"; status.textContent = uploadData.error || "上传失败"; showToast(status.textContent, "error"); return; }
-      const jobId = uploadData.jobId;
-      for (let i = 0; i < 300; i += 1) {
-        const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
-        const jobData = await jobRes.json().catch(() => ({}));
-        const job = jobData.job || {};
-        const p = job?.stats?.importProgress || {};
-        const idx = Number(p.currentFileIndex || 0);
-        const total = Number(p.fileCount || files.length);
-        const name = String(p.currentFileName || "");
-        const rows = Number(p.cumulativeRowCount || 0);
-        status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(idx,total)}/${total} 个｜${name || "处理中"}｜累计 ${rows} 行`;
-        if (job.status === "completed") {
-          const okFiles = job?.stats?.successfulFiles || [];
-          const failFiles = job?.stats?.failedFiles || [];
-          status.className = "meta ok";
-          status.textContent = `导入完成：成功 ${okFiles.length}，失败 ${failFiles.length}，累计 ${Number(job?.stats?.rowCount || 0)} 行`;
-          showToast("导入完成","success");
-          await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadPermissionOptions()]);
-          return;
-        }
-        if (job.status === "failed") {
+      try {
+        const form = new FormData();
+        files.forEach((f) => form.append("files", f));
+        form.append("mapping", JSON.stringify({}));
+        const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
+        const uploadRaw = await uploadRes.text().catch(() => "");
+        let uploadData = {};
+        try { uploadData = uploadRaw ? JSON.parse(uploadRaw) : {}; } catch (_e) { uploadData = {}; }
+        if (!uploadRes.ok) {
+          const rawSummary = String(uploadRaw || "")
+            .replace(/<[^>]*>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 180);
+          const msg = uploadData.error || rawSummary || `上传失败（${uploadRes.status}）`;
           status.className = "meta err";
-          status.textContent = job.error || "导入失败";
-          showToast(status.textContent, "error");
-          await loadImportHistory();
+          status.textContent = msg;
+          showToast(msg, "error");
           return;
         }
-        await new Promise((r) => setTimeout(r, 1200));
+        const jobId = uploadData.jobId;
+        for (let i = 0; i < 300; i += 1) {
+          const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
+          const jobRaw = await jobRes.text().catch(() => "");
+          let jobData = {};
+          try { jobData = jobRaw ? JSON.parse(jobRaw) : {}; } catch (_e) { jobData = {}; }
+          if (!jobRes.ok) {
+            const rawSummary = String(jobRaw || "")
+              .replace(/<[^>]*>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 180);
+            const msg = (jobData && jobData.error) || rawSummary || `任务状态查询失败（${jobRes.status}）`;
+            status.className = "meta err";
+            status.textContent = msg;
+            showToast(msg, "error");
+            return;
+          }
+          const job = jobData.job || {};
+          const p = job?.stats?.importProgress || {};
+          const idx = Number(p.currentFileIndex || 0);
+          const total = Number(p.fileCount || files.length);
+          const name = String(p.currentFileName || "");
+          const rows = Number(p.cumulativeRowCount || 0);
+          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(idx,total)}/${total} 个｜${name || "处理中"}｜累计 ${rows} 行`;
+          if (job.status === "completed") {
+            const okFiles = job?.stats?.successfulFiles || [];
+            const failFiles = job?.stats?.failedFiles || [];
+            if (failFiles.length) {
+              status.className = "meta err";
+              const detail = summarizeImportFailure(job, "部分文件导入失败");
+              status.textContent = `导入完成：成功 ${okFiles.length}，失败 ${failFiles.length}，累计 ${Number(job?.stats?.rowCount || 0)} 行。${detail}`;
+              showToast(`导入完成，但有 ${failFiles.length} 个文件失败`, "error");
+            } else {
+              status.className = "meta ok";
+              status.textContent = `导入完成：成功 ${okFiles.length}，失败 ${failFiles.length}，累计 ${Number(job?.stats?.rowCount || 0)} 行`;
+              showToast("导入完成","success");
+            }
+            await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadPermissionOptions()]);
+            return;
+          }
+          if (job.status === "failed") {
+            status.className = "meta err";
+            const detail = summarizeImportFailure(job, "导入失败");
+            status.textContent = detail;
+            showToast(detail, "error");
+            await loadImportHistory();
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      } catch (error) {
+        status.className = "meta err";
+        const msg = error?.message || "网络异常，上传失败";
+        status.textContent = msg;
+        showToast(msg, "error");
+        return;
       }
       status.className = "meta err";
       status.textContent = "导入超时，请稍后查看导入历史";
