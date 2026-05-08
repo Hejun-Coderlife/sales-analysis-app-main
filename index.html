@@ -238,7 +238,15 @@
     .notif-content{color:rgba(226,232,240,.92);font-size:12px;line-height:1.45;margin-top:4px}
     .notif-time{color:rgba(148,163,184,.9);font-size:11px;margin-top:6px}
     .dashboard-lower-left{display:contents}
-    .control-panel{padding:10px 14px 12px;overflow:visible}
+    .card.control-panel{
+      padding:8px 0 10px;
+      overflow:visible;
+      background:transparent !important;
+      border:none !important;
+      box-shadow:none !important;
+      border-radius:0;
+      backdrop-filter:none;
+    }
 .control-top{display:grid;gap:10px;align-items:start;overflow:visible}
 .toolbar-meta{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .toolbar-meta-left h1{margin:0;font-size:24px}
@@ -246,10 +254,29 @@
 .toolbar-user{display:inline-flex;align-items:center;font-weight:600;color:#111827}
 .toolbar-meta-right{display:flex;align-items:center;gap:8px}
 .toolbar-action-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12)}
-.toolbar-filters{display:grid;grid-template-columns:minmax(230px,1.1fr) repeat(3,minmax(180px,1fr)) minmax(96px,auto);gap:10px;align-items:end;overflow:visible}
+.toolbar-filters{
+  display:grid;
+  grid-template-columns:minmax(170px,.8fr) repeat(3,minmax(180px,1fr)) minmax(96px,auto);
+  gap:10px;
+  align-items:end;
+  overflow:visible;
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(118,144,243,.22);
+  box-shadow:0 8px 24px rgba(2,6,23,.14), 0 0 0 1px rgba(255,255,255,.42) inset;
+  border-radius:12px;
+  backdrop-filter: blur(3px);
+  padding:10px 10px 8px;
+}
 .toolbar-filter-col{display:flex;flex-direction:column;gap:6px;min-width:0}
 .toolbar-filter-col label{font-size:12px;color:#334155;margin:0}
 .toolbar-download-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12);font-weight:600}
+.dashboard-lower #topSalespeopleCard,
+.dashboard-lower #topProductsCard,
+#salespersonRankingCard,
+#productRankingCard{
+  display:block !important;
+  visibility:visible !important;
+}
 .upload-box{
   display:grid;
   gap:6px;
@@ -619,17 +646,6 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
           </div>
         </div>
         <div class="toolbar-meta-right">
-          <div style="position:relative;">
-            <button type="button" class="notif-bell" id="notifBell" aria-label="消息中心">🔔<span class="notif-badge" id="notifBadge">0</span></button>
-            <div class="notif-panel" id="notifPanel">
-              <div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                <b style="color:#fff;font-size:13px;">消息/提醒</b>
-                <button type="button" class="light btn" id="notifRefreshBtn" style="min-height:30px;padding:6px 10px;">刷新</button>
-              </div>
-              <div id="notifList"></div>
-              <div id="notifEmpty" style="padding:12px;color:rgba(148,163,184,.95);font-size:12px;display:none;">暂无消息</div>
-            </div>
-          </div>
           <button type="button" class="toolbar-action-btn" id="dashboardAdminBtn">管理后台</button>
           <button type="button" class="toolbar-action-btn" id="dashboardLogoutBtn">退出登录</button>
         </div>
@@ -763,7 +779,6 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
       <div class="tab" data-tab="rankings">排行榜</div>
       <div class="tab" data-tab="members">会员分析</div>
       <div class="tab" data-tab="sleeping">沉睡会员</div>
-      <div class="tab" data-tab="validation" style="display:none">数据校验</div>
     </div>
 
     <div id="dashboard" class="tab-panel">
@@ -899,16 +914,6 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
       </div>
     </div>
 
-    <div id="validation" class="tab-panel hidden">
-      <div class="card">
-        <div class="section-title">文件校验</div>
-        <div class="table-wrap" id="fileCheckTable"></div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <div class="section-title">字段映射结果</div>
-        <div class="table-wrap" id="mappingTable"></div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -2874,6 +2879,14 @@ function renderAllTablesFromResults(results){
     sideMetricFormatter: fmtInt,
     sideMetricLabel: 'Qty '
   });
+  const topSalesEl = document.getElementById('topSalespeople');
+  const topProductsEl = document.getElementById('topProducts');
+  if (topSalesEl && !String(topSalesEl.innerHTML || '').trim()) {
+    setHtml(topSalesEl, '<p class="small" style="padding:10px 6px;">暂无销售员排行数据。</p>');
+  }
+  if (topProductsEl && !String(topProductsEl.innerHTML || '').trim()) {
+    setHtml(topProductsEl, '<p class="small" style="padding:10px 6px;">暂无商品排行数据。</p>');
+  }
 
   renderMiniList('rankingsStoreMini', results.storeRank || [], 'store', 'performance', fmtCurrency);
   renderMiniList('rankingsSalespersonMini', results.salespersonRank || [], 'salesperson', 'performance', fmtCurrency);
@@ -2889,16 +2902,11 @@ function renderAllTablesFromResults(results){
   renderTable('sleepByStoreTable', results.sleepByStore || [], {sleeping_members:fmtInt, historical_spend:fmtCurrency}, true);
   renderTable('sleepSummary', results.sleepSummary || [], {value:v => typeof v === 'number' ? (String(v).includes('.') ? fmtCurrency(v) : fmtInt(v)) : v}, true);
 
-  if (appState.results?.results?.fileCheck) {
-    renderTable('fileCheckTable', appState.results.results.fileCheck, {included_rows:fmtInt, order_count:fmtInt, q_sum:fmtCurrency, negative_rows:fmtInt, negative_sum:fmtCurrency}, true);
+  if (!(results.salespersonRank || []).length) {
+    setHtml('topSalespeople', '<p class="small" style="padding:12px">暂无销售员排行数据。</p>');
   }
-  if (appState.results?.mappings) {
-    renderTable('mappingTable', appState.results.mappings, {}, true);
-  }
-  if ((results.qualityMessages || []).includes('销售员字段未识别，无法生成销售员排行')) {
-    ['salesRankTable', 'rankingsSalespersonMini', 'topSalespeople'].forEach((id) => {
-      setHtml(id, '<p class="small" style="padding:12px">销售员字段未识别，无法生成销售员排行</p>');
-    });
+  if (!(results.productRank || []).length) {
+    setHtml('topProducts', '<p class="small" style="padding:12px">暂无商品排行数据。</p>');
   }
 }
 function onGlobalFiltersChanged(keepDropdownOpen = false){
@@ -3435,15 +3443,6 @@ function renderRankingOverviewCards(results){
   renderMiniList('rankingsTicketMini', results.ticketRank, 'store', 'avg_ticket', fmtCurrency);
 }
 
-function hideDuplicateRankingCards(){
-  const ids = ['storeRankTable', 'salesRankTable', 'productRankTable', 'ticketRankTable'];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const card = el.closest('.card');
-    if (card) card.style.display = 'none';
-  });
-}
 function renderResults(results, mappings){
   document.getElementById('resultArea')?.classList.remove('hidden');
 
@@ -3461,10 +3460,6 @@ function renderResults(results, mappings){
   populateDashboardSalespersonOptions();
   populateDashboardProductOptions();
 
-  // validation stays from original full run
-  renderTable('fileCheckTable', results.fileCheck || [], {included_rows:fmtInt, order_count:fmtInt, q_sum:fmtCurrency, negative_rows:fmtInt, negative_sum:fmtCurrency}, true);
-  renderTable('mappingTable', mappings || [], {}, true);
-
   // render everything from current filters
       onGlobalFiltersChanged(true);
   updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
@@ -3475,7 +3470,6 @@ function renderResults(results, mappings){
     { name:'复购结构', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
   ]);
 
-  hideDuplicateRankingCards();
   syncResultAreaToControlPanel();
 }
 
@@ -3582,8 +3576,7 @@ function updateControlVisibility(activeTab){
     dashboard: ['dashboardDateRange','dashboardMultiFilters'],
     rankings: ['dashboardDateRange','dashboardMultiFilters'],
     members: ['dashboardDateRange','dashboardMultiFilters'],
-    sleeping: ['dashboardDateRange','dashboardMultiFilters','sleepDays','sleepMinOrders','aclassMinAmount','filterSalesperson'],
-    validation: ['dashboardDateRange','dashboardMultiFilters']
+    sleeping: ['dashboardDateRange','dashboardMultiFilters','sleepDays','sleepMinOrders','aclassMinAmount','filterSalesperson']
   };
   const visible = new Set(visibleMap[activeTab] || []);
   document.querySelectorAll('.control-field').forEach(el => {
@@ -3624,11 +3617,6 @@ document.querySelectorAll('.tab').forEach(tab => {
       populateSleepingSalespersonOptions();
       renderSleepingTabCharts(appState.sleepingMode || 'store');
       refreshSleepingTable(getActiveResults());
-    } else if (tab.dataset.tab === 'validation') {
-      setDownloadTarget('validation.xlsx', [
-        { name:'文件校验', rows: appState.results?.results?.fileCheck || [] },
-        { name:'字段映射结果', rows: appState.results?.mappings || [] }
-      ]);
     }
     hidePageLoading();
   });
@@ -3731,7 +3719,6 @@ document.getElementById('ticketRankingTitle')?.addEventListener('click', () => {
   scrollContainerToTop('ticketRankTable');
   renderRankingTabCharts('ticket');
 });
-hideDuplicateRankingCards();
 document.getElementById('sleepSalespersonTrigger')?.addEventListener('click', () => toggleDropdown('sleepSalespersonMenu'));
 document.getElementById('clearSleepSalespersonBtn')?.addEventListener('click', () => {
   toggleDropdown('sleepSalespersonMenu', false);
@@ -4835,122 +4822,6 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
       userEl.textContent = "当前用户：" + display;
     })
     .catch(function () {});
-})();
-</script>
-
-<script>
-(function () {
-  function escapeHtml(s) {
-    return String(s != null ? s : "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-  var bell = document.getElementById("notifBell");
-  var badge = document.getElementById("notifBadge");
-  var panel = document.getElementById("notifPanel");
-  var list = document.getElementById("notifList");
-  var empty = document.getElementById("notifEmpty");
-  var refreshBtn = document.getElementById("notifRefreshBtn");
-  if (!bell || !badge || !panel || !list || !empty || !refreshBtn) return;
-
-  var cache = { unread: 0, rows: [] };
-
-  function setBadge(n) {
-    var num = Number(n || 0);
-    badge.textContent = String(num);
-    badge.style.display = num > 0 ? "inline-flex" : "none";
-  }
-
-  function render() {
-    var rows = Array.isArray(cache.rows) ? cache.rows : [];
-    if (!rows.length) {
-      list.innerHTML = "";
-      empty.style.display = "block";
-      return;
-    }
-    empty.style.display = "none";
-    list.innerHTML = rows
-      .slice(0, 20)
-      .map(function (n) {
-        var unread = String(n.status || "") === "unread";
-        var createdAt = n.createdAt ? new Date(n.createdAt).toLocaleString("zh-CN") : "";
-        return (
-          '<div class="notif-item ' +
-          (unread ? "unread" : "") +
-          '" data-id="' +
-          escapeHtml(n.id || "") +
-          '" data-link="' +
-          escapeHtml(n.link || "/dashboard") +
-          '">' +
-          '<div class="notif-title">' +
-          escapeHtml(n.title || "") +
-          "</div>" +
-          '<div class="notif-content">' +
-          escapeHtml(n.content || "") +
-          "</div>" +
-          '<div class="notif-time">' +
-          escapeHtml(createdAt) +
-          "</div>" +
-          "</div>"
-        );
-      })
-      .join("");
-  }
-
-  async function fetchNotifications() {
-    var res = await fetch("/api/notifications?limit=50&offset=0", { credentials: "same-origin" });
-    var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) return;
-    cache = { unread: Number(data.unread || 0), rows: data.rows || [] };
-    setBadge(cache.unread);
-    render();
-  }
-
-  async function markRead(id) {
-    if (!id) return;
-    await fetch("/api/notifications/" + encodeURIComponent(id) + "/read", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    }).catch(function () {});
-  }
-
-  function togglePanel(show) {
-    panel.style.display = show ? "block" : "none";
-  }
-
-  bell.addEventListener("click", async function (e) {
-    e.stopPropagation();
-    var nextOpen = panel.style.display !== "block";
-    togglePanel(nextOpen);
-    if (nextOpen) await fetchNotifications();
-  });
-  refreshBtn.addEventListener("click", async function (e) {
-    e.stopPropagation();
-    await fetchNotifications();
-  });
-  document.addEventListener("click", function () {
-    if (panel.style.display === "block") togglePanel(false);
-  });
-  panel.addEventListener("click", function (e) {
-    e.stopPropagation();
-  });
-  list.addEventListener("click", async function (e) {
-    var item = e.target && e.target.closest("[data-id]");
-    if (!item) return;
-    var id = item.getAttribute("data-id");
-    var link = item.getAttribute("data-link") || "/dashboard";
-    await markRead(id);
-    await fetchNotifications();
-    togglePanel(false);
-    if (link) window.location.href = link;
-  });
-
-  fetchNotifications().catch(function () {});
-  setInterval(function () { fetchNotifications().catch(function () {}); }, 20000);
 })();
 </script>
 
