@@ -238,25 +238,18 @@
     .notif-content{color:rgba(226,232,240,.92);font-size:12px;line-height:1.45;margin-top:4px}
     .notif-time{color:rgba(148,163,184,.9);font-size:11px;margin-top:6px}
     .dashboard-lower-left{display:contents}
-    .control-panel{padding:14px 16px}
-.control-top{
-  display:grid;
-  gap:10px;
-  align-items:start
-}
-.control-head{
-  display:grid;
-  grid-template-columns:minmax(240px,1fr) minmax(300px,420px);
-  gap:12px;
-  align-items:end
-}
-.control-left{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px 12px;
-  align-items:flex-end
-}
-.control-left:empty{display:none}
+    .control-panel{padding:10px 14px 12px;overflow:visible}
+.control-top{display:grid;gap:10px;align-items:start;overflow:visible}
+.toolbar-meta{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.toolbar-meta-left h1{margin:0;font-size:24px}
+.toolbar-subline{margin-top:4px;color:#667085;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar-user{display:inline-flex;align-items:center;font-weight:600;color:#111827}
+.toolbar-meta-right{display:flex;align-items:center;gap:8px}
+.toolbar-action-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12)}
+.toolbar-filters{display:grid;grid-template-columns:minmax(230px,1.1fr) repeat(3,minmax(180px,1fr)) minmax(96px,auto);gap:10px;align-items:end;overflow:visible}
+.toolbar-filter-col{display:flex;flex-direction:column;gap:6px;min-width:0}
+.toolbar-filter-col label{font-size:12px;color:#334155;margin:0}
+.toolbar-download-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12);font-weight:600}
 .upload-box{
   display:grid;
   gap:6px;
@@ -275,7 +268,7 @@
 .button-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .btn{min-height:38px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
 .status-row{display:flex;align-items:center;justify-content:flex-start;min-height:20px}
-#status{font-size:12px;color:#6b7280}
+#status{display:none}
 input[type="date"], select.control-select{
   border:1px solid #7690f3;border-radius:12px;padding:8px 10px;background:#ffffff;color:var(--text);min-width:120px;box-shadow:0 0 12px rgba(105,105,159,.18);height:38px
 }
@@ -312,10 +305,10 @@ input[type="date"], select.control-select{
 .filter-dropdown{position:relative}
 .filter-trigger{
   width:100%;
-  min-height:38px;
+  min-height:36px;
   border:1px solid #7690f3;
-  border-radius:12px;
-  padding:8px 10px;
+  border-radius:10px;
+  padding:7px 10px;
   background:#ffffff;
   color:var(--text);
   box-shadow:0 0 12px rgba(105,105,159,.18);
@@ -333,7 +326,7 @@ input[type="date"], select.control-select{
   width:100%;
   min-width:300px;
   max-width:min(420px,calc(100vw - 24px));
-  z-index:80;
+  z-index:1200;
   background:#ffffff;
   border:1px solid #cfd6fb;
   border-radius:14px;
@@ -366,14 +359,14 @@ input[type="date"], select.control-select{
 .active-glow{
   box-shadow:0 0 0 2px #fe70f6, 0 0 24px rgba(254,112,246,.22) !important;
 }
-@media (max-width: 1100px){
-  .multi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width: 1280px){
+  .toolbar-filters{grid-template-columns:repeat(2,minmax(220px,1fr))}
 }
-@media (max-width: 900px){
-  .multi-grid{grid-template-columns:1fr}
+@media (max-width: 980px){
+  .toolbar-meta{flex-direction:column;align-items:flex-start}
+  .toolbar-meta-right{width:100%;justify-content:flex-start;flex-wrap:wrap}
 }
 @media (max-width: 1180px){
-  .control-head{grid-template-columns:1fr}
   .field-grid{grid-template-columns:repeat(3,minmax(150px,1fr))}
 }
 @media (max-width: 700px){
@@ -614,18 +607,19 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
 </script>
 
 <div class="wrap">
-  <h1>赫眉经营助手</h1>
-  <p>经营数据由系统自动导入并展示；如需上传 Excel，请前往管理后台。</p>
-  <p class="small">系统内置规则：支持 <b>Q 列金额逻辑</b>、保留负值、自动识别文本金额，并生成沉睡会员分析。</p>
 
-  
-  
 <div class="card control-panel">
     <div class="control-top">
-      <div class="control-head">
-        <div class="status-row">
-          <span id="status"></span>
-          <div style="margin-left:auto;position:relative;">
+      <div class="toolbar-meta">
+        <div class="toolbar-meta-left">
+          <h1>赫眉经营助手</h1>
+          <div class="toolbar-subline">
+            <span id="dashboardCurrentUser" class="toolbar-user">当前用户：--</span>
+            <span>经营数据由系统自动导入并展示</span>
+          </div>
+        </div>
+        <div class="toolbar-meta-right">
+          <div style="position:relative;">
             <button type="button" class="notif-bell" id="notifBell" aria-label="消息中心">🔔<span class="notif-badge" id="notifBadge">0</span></button>
             <div class="notif-panel" id="notifPanel">
               <div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;gap:10px;align-items:center;">
@@ -636,40 +630,37 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
               <div id="notifEmpty" style="padding:12px;color:rgba(148,163,184,.95);font-size:12px;display:none;">暂无消息</div>
             </div>
           </div>
-        </div>
-        
-<div class="col control-field control-date-field" data-control="dashboardDateRange">
-  <label>评估时间</label>
-  <div class="filter-dropdown" id="dashboardDateDropdown">
-    <button type="button" class="filter-trigger" id="dashboardDateTrigger">
-      <span class="range-trigger-text" id="dashboardDateTriggerText">选择日期范围</span>
-      <span class="filter-caret">▾</span>
-    </button>
-    <div class="filter-menu hidden" id="dashboardDateMenu">
-      <div class="range-grid">
-        <div>
-          <div class="menu-label">开始日期</div>
-          <input id="dashboardStartDate" type="date" />
-        </div>
-        <div>
-          <div class="menu-label">结束日期</div>
-          <input id="dashboardEndDate" type="date" />
+          <button type="button" class="toolbar-action-btn" id="dashboardAdminBtn">管理后台</button>
+          <button type="button" class="toolbar-action-btn" id="dashboardLogoutBtn">退出登录</button>
         </div>
       </div>
-      <div class="range-apply">
-        <button type="button" class="light btn" id="applyDateRangeBtn" style="min-height:38px;padding:8px 12px">应用</button>
-      </div>
-    </div>
-  </div>
-</div>
-      </div>
-      <div class="control-left">
-        <div class="button-group">
-          <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
+
+      <div class="toolbar-filters control-field" data-control="dashboardMultiFilters">
+        <div class="toolbar-filter-col control-field control-date-field" data-control="dashboardDateRange">
+          <label>评估时间</label>
+          <div class="filter-dropdown" id="dashboardDateDropdown">
+            <button type="button" class="filter-trigger" id="dashboardDateTrigger">
+              <span class="range-trigger-text" id="dashboardDateTriggerText">选择日期范围</span>
+              <span class="filter-caret">▾</span>
+            </button>
+            <div class="filter-menu hidden" id="dashboardDateMenu">
+              <div class="range-grid">
+                <div>
+                  <div class="menu-label">开始日期</div>
+                  <input id="dashboardStartDate" type="date" />
+                </div>
+                <div>
+                  <div class="menu-label">结束日期</div>
+                  <input id="dashboardEndDate" type="date" />
+                </div>
+              </div>
+              <div class="range-apply">
+                <button type="button" class="light btn" id="applyDateRangeBtn" style="min-height:36px;padding:7px 12px">应用</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="multi-grid control-field" data-control="dashboardMultiFilters">
-            <div class="col">
+            <div class="toolbar-filter-col">
               <label>门店</label>
               <div class="filter-dropdown" id="dashboardStoreDropdown">
                 <button type="button" class="filter-trigger" id="dashboardStoreTrigger">
@@ -683,7 +674,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
                 </div>
               </div>
             </div>
-            <div class="col">
+            <div class="toolbar-filter-col">
               <label>销售员</label>
               <div class="filter-dropdown" id="dashboardSalespersonDropdown">
                 <button type="button" class="filter-trigger" id="dashboardSalespersonTrigger">
@@ -697,7 +688,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
                 </div>
               </div>
             </div>
-            <div class="col">
+            <div class="toolbar-filter-col">
               <label>商品</label>
               <div class="filter-dropdown" id="dashboardProductDropdown">
                 <button type="button" class="filter-trigger" id="dashboardProductTrigger">
@@ -711,7 +702,12 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
                 </div>
               </div>
             </div>
+            <div class="toolbar-filter-col">
+              <label>&nbsp;</label>
+              <button id="downloadSleepXlsxBtn" class="toolbar-download-btn">下载</button>
+            </div>
       </div>
+      <div class="status-row"><span id="status"></span></div>
 
 <div class="field-grid">
 
@@ -4800,6 +4796,45 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
   });
   applyChatFontScale(1);
   appendLine('System', '数据助手已就绪，支持多轮对话。');
+})();
+</script>
+
+<script>
+(function () {
+  var userEl = document.getElementById("dashboardCurrentUser");
+  var adminBtn = document.getElementById("dashboardAdminBtn");
+  var logoutBtn = document.getElementById("dashboardLogoutBtn");
+  if (adminBtn) {
+    adminBtn.addEventListener("click", function () {
+      window.location.href = "/admin";
+    });
+  }
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async function () {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      } catch (_error) {}
+      window.location.href = "/login";
+    });
+  }
+  fetch("/api/auth/me", { credentials: "same-origin" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (data) {
+      if (!userEl) return;
+      var user = data && data.user ? data.user : null;
+      if (!user) {
+        userEl.textContent = "当前用户：--";
+        return;
+      }
+      var display = String(user.displayName || user.username || "--");
+      userEl.textContent = "当前用户：" + display;
+    })
+    .catch(function () {});
 })();
 </script>
 
