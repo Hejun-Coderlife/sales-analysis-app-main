@@ -9,6 +9,7 @@ import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
+import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
 import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
@@ -26,6 +27,7 @@ const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requ
   createAuthMiddleware(authService);
 const { analyticsService, jobStore } = getV2Services();
 const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
+const agentDatasetToolsService = createAgentDatasetToolsService({ analyticsService });
 
 async function appendAuditLog(entry = {}) {
   try {
@@ -207,6 +209,19 @@ function deriveUiActions(userMessage) {
       mode: "store",
       dateRange,
     });
+  }
+
+  if (storeRankKeywords.some((k) => lower.includes(k)) || lower.includes("门店排行")) {
+    actions.push({ type: "mobile_scroll_to", targetId: "rankStoresCard" });
+  }
+  if ((hasSalespersonIntent && hasRankIntent) || lower.includes("销售员排行")) {
+    actions.push({ type: "mobile_scroll_to", targetId: "rankSalesCard" });
+  }
+  if (sleepingKeywords.some((k) => lower.includes(k))) {
+    actions.push({ type: "mobile_scroll_to", targetId: "sleepCard" });
+  }
+  if (/(最近7天|近7天|过去7天|last\s*7\s*days?)/i.test(raw)) {
+    actions.push({ type: "mobile_set_date_preset", preset: "last7d" });
   }
 
   return actions;
@@ -802,10 +817,18 @@ function getToolDefinitions() {
         },
       },
     },
+    ...agentDatasetToolsService.getToolDefinitions(),
   ];
 }
 
-function runToolCall(contextEntry, currentUser, toolName, toolArgs) {
+async function runToolCall(contextEntry, currentUser, accessScope, toolName, toolArgs) {
+  const datasetToolResult = await agentDatasetToolsService.runToolCall({
+    currentUser,
+    accessScope,
+    toolName,
+    toolArgs,
+  });
+  if (datasetToolResult) return datasetToolResult;
   const context = contextEntry?.context || null;
   if (!context) {
     return {
@@ -1498,19 +1521,12 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
     const systemMessage = {
       role: "system",
       content:
-        "You are a helpful sales analytics assistant. " +
-        "When user asks for numbers, rankings, or KPI values, call available tools first and answer using tool results. " +
-        "When user asks which store a salesperson belongs to or where their sales happened, call getSalespersonStores. " +
-        "When user asks for all salespeople, call getAllSalespeoplePerformance and do not claim a top-20 system limit. " +
-        "When user asks yearly ranking questions (for example 2024 vs 2025, or whether a store is first every year), call getTopStoresByYear or getStoreYearlyRanks first. " +
-        "When user asks weekly or monthly questions, call getWeeklySales/getMonthlySales or getTopStoresByWeek/getTopStoresByMonth first. " +
-        "When user asks member questions, call getMemberSummary/getTopMembers/findMember first. " +
-        "When user asks about members handled by a salesperson, call getMembersBySalesperson first. " +
-        "When user asks for best members in a specific store, call getTopMembersByStore with that store name. " +
-        "When user asks highest/single-order questions, call getHighestOrder/getTopOrders first. " +
-        "When user asks salesperson ranking by year/month/week/day, call the corresponding salesperson period tools first. " +
-        "Do not say period ranking is unsupported if these tools can answer it. " +
-        "Do not invent sales figures.",
+        "You are an operations advisor for retail business users. " +
+        "Always answer in Chinese and in this order: 先给结论，再给数据依据，最后给可执行建议。 " +
+        "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
+        "When data is not enough, explicitly say: 当前数据不足以判断。 " +
+        "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
+        "Never invent numbers.",
     };
     const workingMessages = [systemMessage, ...getSessionMessages(conversationId), { role: "user", content: userMessage }];
     const tools = getToolDefinitions();
@@ -1575,7 +1591,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
         if (contextEntry?.userId && contextEntry.userId !== String(req.currentUser?.id || "")) {
           return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
         }
-        const toolResult = runToolCall(contextEntry, req.currentUser, toolName, parsedArgs);
+        const toolResult = await runToolCall(contextEntry, req.currentUser, req.accessScope, toolName, parsedArgs);
         workingMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,

@@ -1193,6 +1193,40 @@
     el.scrollTop = el.scrollHeight;
   }
 
+  function setMobileDatePreset(preset) {
+    if (!hasPerm("canUseFilters")) return;
+    var startInput = document.getElementById("startDate");
+    var endInput = document.getElementById("endDate");
+    if (!startInput || !endInput) return;
+    var end = new Date();
+    var start = new Date();
+    if (preset === "last30d") {
+      start.setDate(end.getDate() - 29);
+    } else if (preset === "thisMonth") {
+      start = new Date(end.getFullYear(), end.getMonth(), 1);
+    } else {
+      start.setDate(end.getDate() - 6);
+    }
+    startInput.value = ymd(start);
+    endInput.value = ymd(end);
+    applyDateRangeFromInputs();
+  }
+
+  function applyMobileUiActions(actions) {
+    if (!Array.isArray(actions) || !actions.length) return;
+    actions.forEach(function (action) {
+      if (action && action.type === "mobile_scroll_to" && action.targetId) {
+        var target = document.getElementById(String(action.targetId));
+        if (target && !target.classList.contains("hidden")) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+      if (action && action.type === "mobile_set_date_preset") {
+        setMobileDatePreset(String(action.preset || "last7d"));
+      }
+    });
+  }
+
   async function sendChat() {
     const input = document.getElementById("chatInput");
     const btn = document.getElementById("chatSend");
@@ -1222,6 +1256,7 @@
         showToast(data.error || "发送失败", "error");
       } else {
         chatMessages.push({ role: "agent", text: data.reply || "暂无回复" });
+        applyMobileUiActions(data.uiActions);
         showToast("发送成功", "success");
       }
     } catch (e) {
