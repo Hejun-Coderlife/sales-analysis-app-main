@@ -10,6 +10,7 @@
       margin:0;
       min-height:100vh;
       display:flex;
+      flex-direction:column;
       align-items:center;
       justify-content:center;
       font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -211,6 +212,24 @@
   <script src="/frontend/src/visual/galaxy-background.js"></script>
   <script>
     window.initGalaxyBackground({ includeEarth: true, mapAssistantButton: false });
+    function syncLoginEarthLayout() {
+      var layout = document.querySelector('.login-layout');
+      var earthSection = document.querySelector('.earth-section');
+      if (!layout || !earthSection) return false;
+      if (earthSection.parentElement !== layout) layout.appendChild(earthSection);
+      var caption = earthSection.querySelector('.earth-caption');
+      if (caption) {
+        caption.innerHTML = 'GLOBAL BUSINESS NETWORK<span class="earth-hint">DRAG TO ROTATE · SCROLL TO ZOOM</span>';
+      }
+      return true;
+    }
+    if (!syncLoginEarthLayout()) {
+      var observer = new MutationObserver(function () {
+        if (syncLoginEarthLayout()) observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function () { observer.disconnect(); }, 3000);
+    }
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('submitBtn');
     const msg = document.getElementById('message');
