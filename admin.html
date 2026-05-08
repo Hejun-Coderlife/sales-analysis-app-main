@@ -201,6 +201,7 @@
             <button id="saveNotifConfigBtn" class="btn btn-light">保存配置</button>
             <button id="dingtalkTestBtn" class="btn btn-light">发送钉钉测试通知</button>
           </div>
+          <div id="currentAdminBindingStatus" class="meta" style="margin-top:8px;"></div>
           <div id="dingtalkEnvStatus" class="meta" style="margin-top:8px;">加载中...</div>
           <div id="dingtalkTestMsg" class="meta"></div>
         </article>
@@ -802,18 +803,18 @@
     async function sendDingTalkTestNotification() {
       const msgEl = document.getElementById("dingtalkTestMsg");
       msgEl.textContent = "";
-      const testUserId = String(document.getElementById("dingtalkTestUserIdInput")?.value || "").trim();
       const res = await fetch("/api/v2/admin/notifications/test-dingtalk", {
         method:"POST",
         credentials:"same-origin",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ testUserId }),
+        body: JSON.stringify({}),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok !== false) {
         const code = Number(data?.dingtalk?.errcode ?? 0);
         const errmsg = String(data?.dingtalk?.errmsg || "ok");
-        msgEl.textContent = `发送成功（errcode=${code}, errmsg=${errmsg}）`;
+        const extra = String(data?.message || "").trim();
+        msgEl.textContent = `发送成功（errcode=${code}, errmsg=${errmsg}）${extra ? `｜${extra}` : ""}`;
         msgEl.className = "meta ok";
         showToast("已发送钉钉测试通知","success");
         return;
@@ -825,11 +826,22 @@
 
     function applyNotificationConfig(config, envStatus) {
       const cfg = config || {};
+      const binding = cfg?.currentAdminBinding || envStatus?.currentAdminBinding || {
+        bound: !!String(currentUser?.dingtalkUserId || currentUser?.dingTalkUserId || "").trim(),
+      };
       document.getElementById("dingtalkEnabledCheckbox").checked = cfg?.channels?.dingtalkEnabled !== false;
       document.getElementById("dingtalkTestUserIdInput").value = String(cfg?.recipients?.dingtalkTestUserId || "");
       document.getElementById("ruleDailySummaryCheckbox").checked = !!cfg?.rules?.dailySummaryEnabled;
       document.getElementById("ruleSleepingCheckbox").checked = !!cfg?.rules?.sleepingMemberAlertEnabled;
       document.getElementById("ruleSalespersonCheckbox").checked = !!cfg?.rules?.salespersonAlertEnabled;
+      const bindingEl = document.getElementById("currentAdminBindingStatus");
+      if (bindingEl) {
+        const isBound = !!binding?.bound;
+        bindingEl.className = isBound ? "meta ok" : "meta err";
+        bindingEl.textContent = isBound
+          ? "当前账号已绑定钉钉"
+          : "当前账号未绑定钉钉，请在钉钉内打开 /mobile 完成绑定";
+      }
       const envEl = document.getElementById("dingtalkEnvStatus");
       if (!envEl) return;
       const status = envStatus || {};
@@ -845,7 +857,10 @@
         showToast(data.error || "通知配置加载失败", "error");
         return;
       }
-      applyNotificationConfig(data.config, data.envStatus);
+      applyNotificationConfig(
+        { ...(data.config || {}), currentAdminBinding: data.currentAdminBinding || {} },
+        data.envStatus
+      );
     }
 
     async function saveNotificationConfig() {

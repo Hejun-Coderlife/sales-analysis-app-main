@@ -5,6 +5,7 @@
 
 const GET_TOKEN_URL = "https://oapi.dingtalk.com/gettoken";
 const ASYNC_SEND_V2_URL = "https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2";
+const GET_SEND_RESULT_URL = "https://oapi.dingtalk.com/topapi/message/corpconversation/getsendresult";
 
 let tokenCache = { accessToken: null, expiresAt: 0 };
 
@@ -16,6 +17,14 @@ function buildTestMessage(publicBaseUrl) {
     "这是一条来自赫眉经营助手的测试通知。",
     `点击进入手机版看板：${mobileUrl}`,
   ].join("\n");
+}
+
+function maskUserId(userId) {
+  const raw = String(userId || "").trim();
+  if (!raw) return "";
+  if (raw.length <= 2) return `${raw[0] || "*"}*`;
+  if (raw.length <= 6) return `${raw.slice(0, 1)}***${raw.slice(-1)}`;
+  return `${raw.slice(0, 2)}***${raw.slice(-2)}`;
 }
 
 async function dingtalkFetchJson(url) {
@@ -67,6 +76,21 @@ async function postAsyncSendV2(accessToken, payload) {
   return { ok: res.ok, data };
 }
 
+async function querySendResult(accessToken, payload) {
+  const url = `${GET_SEND_RESULT_URL}?access_token=${encodeURIComponent(accessToken)}`;
+  const body = new URLSearchParams({
+    agent_id: String(payload.agentId),
+    task_id: String(payload.taskId || ""),
+  });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: body.toString(),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
 /**
  * @param {object} config
  * @param {string} config.appKey
@@ -82,6 +106,7 @@ export async function sendDingTalkTestWorkNotification(config) {
   const agentId = config?.agentId;
   const testUserId = String(config?.testUserId || "").trim();
   const publicBaseUrl = String(config?.publicBaseUrl || "").trim();
+  const shouldCheckSendResult = config?.checkSendResult !== false;
 
   if (!appKey || !appSecret) {
     return { ok: false, error: "未配置钉钉应用凭证（DINGTALK_APP_KEY / DINGTALK_APP_SECRET）" };
@@ -113,6 +138,7 @@ export async function sendDingTalkTestWorkNotification(config) {
     errcode: data.errcode,
     errmsg: data.errmsg,
     task_id: data.task_id,
+    receiver: maskUserId(testUserId),
   });
 
   if (!sendResult.ok || Number(data.errcode) !== 0) {
@@ -124,8 +150,37 @@ export async function sendDingTalkTestWorkNotification(config) {
     };
   }
 
+  let sendResultDetail = null;
+  if (shouldCheckSendResult && data.task_id) {
+    const resultResp = await querySendResult(tokenResult.accessToken, {
+      agentId: Number(agentId),
+      taskId: String(data.task_id),
+    });
+    const resultData = resultResp.data || {};
+    const invalidList = String(resultData?.send_result?.invalid_user_id_list || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    sendResultDetail = {
+      httpOk: !!resultResp.ok,
+      errcode: Number(resultData?.errcode || 0),
+      errmsg: String(resultData?.errmsg || ""),
+      invalidUserIdList: invalidList.map((x) => maskUserId(x)),
+      invalidUserIdCount: invalidList.length,
+    };
+    console.log("[dingtalk] getsendresult response", {
+      httpOk: !!resultResp.ok,
+      errcode: sendResultDetail.errcode,
+      errmsg: sendResultDetail.errmsg,
+      invalidUserIdCount: sendResultDetail.invalidUserIdCount,
+      invalidUserIdList: sendResultDetail.invalidUserIdList,
+      task_id: data.task_id,
+    });
+  }
+
   return {
     ok: true,
     dingtalk: { errcode: data.errcode, task_id: data.task_id },
+    sendResult: sendResultDetail,
   };
 }

@@ -33,6 +33,16 @@ function collectUploadedFiles(req) {
   return [...fromAny, ...fromFields];
 }
 
+function pickTestReceiverUserId({ configUserId, currentUser, envUserId }) {
+  const fromConfig = String(configUserId || "").trim();
+  if (fromConfig) return { userId: fromConfig, source: "config" };
+  const fromCurrentUser = String(currentUser?.dingtalkUserId || currentUser?.dingTalkUserId || "").trim();
+  if (fromCurrentUser) return { userId: fromCurrentUser, source: "currentAdmin" };
+  const fromEnv = String(envUserId || "").trim();
+  if (fromEnv) return { userId: fromEnv, source: "env" };
+  return { userId: "", source: "none" };
+}
+
 function stableJson(value) {
   if (value == null) return "null";
   if (typeof value !== "object") return JSON.stringify(value);
@@ -716,6 +726,9 @@ export function createV2Router({
         appSecretConfigured: !!env.dingtalkAppSecret,
         agentIdConfigured: !!env.dingtalkAgentId,
       },
+      currentAdminBinding: {
+        bound: !!String(req.currentUser?.dingtalkUserId || req.currentUser?.dingTalkUserId || "").trim(),
+      },
     });
   });
 
@@ -737,13 +750,24 @@ export function createV2Router({
     if (!cfg?.channels?.dingtalkEnabled) {
       return res.status(400).json({ ok: false, error: "钉钉通知渠道未启用，请先开启后再测试" });
     }
-    const preferredUserId = String(req.body?.testUserId || cfg?.recipients?.dingtalkTestUserId || env.dingtalkTestUserId || "");
+    const receiver = pickTestReceiverUserId({
+      configUserId: cfg?.recipients?.dingtalkTestUserId,
+      currentUser: req.currentUser,
+      envUserId: env.dingtalkTestUserId,
+    });
+    if (!receiver.userId) {
+      return res.status(400).json({
+        ok: false,
+        error: "当前账号未绑定钉钉用户，请先在钉钉内打开手机版完成绑定，或在后台配置测试接收人。",
+      });
+    }
     const result = await sendDingTalkTestWorkNotification({
       appKey: env.dingtalkAppKey,
       appSecret: env.dingtalkAppSecret,
       agentId: env.dingtalkAgentId,
-      testUserId: preferredUserId,
+      testUserId: receiver.userId,
       publicBaseUrl: env.publicBaseUrl,
+      checkSendResult: true,
     });
     if (!result.ok) {
       return res.status(400).json({
@@ -755,9 +779,26 @@ export function createV2Router({
         },
       });
     }
+    if (Number(result?.sendResult?.invalidUserIdCount || 0) > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "钉钉已受理任务，但接收人 userid 无效，请检查是否属于当前企业或当前应用可见范围。",
+        dingtalk: {
+          errcode: result?.dingtalk?.errcode ?? 0,
+          errmsg: "ok",
+          task_id: result?.dingtalk?.task_id || "",
+          invalidUserIdCount: Number(result?.sendResult?.invalidUserIdCount || 0),
+        },
+      });
+    }
+    const sourceHint =
+      receiver.source === "env"
+        ? "当前使用环境变量测试接收人，建议绑定当前管理员钉钉账号。"
+        : "";
     return res.json({
       ok: true,
-      message: "已发送钉钉测试通知",
+      message: sourceHint || "已发送钉钉测试通知",
+      receiverSource: receiver.source,
       dingtalk: {
         errcode: result?.dingtalk?.errcode ?? 0,
         errmsg: "ok",
