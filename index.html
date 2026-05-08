@@ -1992,6 +1992,27 @@ function renderKpisFromResults(results){
   setText('kpiFiles', fmtInt(results.kpis.filesLoaded));
 }
 
+function toggleChartNoData(canvasId, message, show) {
+  const canvas = document.getElementById(canvasId);
+  const parent = canvas?.parentElement;
+  if (!canvas || !parent) return;
+  let hint = parent.querySelector('.chart-empty-hint');
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.className = 'small chart-empty-hint';
+    hint.style.cssText = 'padding:12px 4px;color:#6b7280;';
+    parent.appendChild(hint);
+  }
+  if (show) {
+    hint.textContent = String(message || '暂无数据');
+    hint.style.display = 'block';
+    canvas.style.display = 'none';
+  } else {
+    hint.style.display = 'none';
+    canvas.style.display = '';
+  }
+}
+
 function toggleDropdown(menuId, forceOpen){
   const menu = document.getElementById(menuId);
   if (!menu) return;
@@ -2231,7 +2252,7 @@ function renderRankingTabCharts(mode){
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     miniRows = results.salespersonRank || [];
-    labels = rows.map(x => x.store);
+    labels = rows.map(x => x.salesperson);
     values = rows.map(x => x.performance);
     title1 = '销售员业绩趋势';
     title2 = '销售员业绩对比';
@@ -2239,7 +2260,7 @@ function renderRankingTabCharts(mode){
     setDownloadTarget('product_ranking.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#rankingsProductCard');
     rows = results.productRank.slice(0, 10);
-    miniRows = rows;
+    miniRows = results.productRank || [];
     labels = rows.map(x => x.product);
     values = rows.map(x => x.sales_amount);
     title1 = '商品销售趋势';
@@ -2248,7 +2269,7 @@ function renderRankingTabCharts(mode){
     setDownloadTarget('average_ticket_ranking.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
-    miniRows = rows;
+    miniRows = results.ticketRank || [];
     labels = rows.map(x => x.store);
     values = rows.map(x => x.avg_ticket);
     title1 = '客单价趋势';
@@ -2299,6 +2320,13 @@ function renderRankingTabCharts(mode){
   const rankingsLineEl = document.getElementById('rankingsLineChart');
   const rankingsBarEl = document.getElementById('rankingsBarChart');
   if (!rankingsLineEl || !rankingsBarEl) return;
+  if (!rows.length) {
+    toggleChartNoData('rankingsLineChart', '暂无排行趋势数据', true);
+    toggleChartNoData('rankingsBarChart', '暂无排行对比数据', true);
+    return;
+  }
+  toggleChartNoData('rankingsLineChart', '', false);
+  toggleChartNoData('rankingsBarChart', '', false);
 
   const basePalette = getChartPalette(values.length);
   const applyRankingHover = (hoverIndex, sourceChart, pointerEvt) => {
@@ -3128,6 +3156,13 @@ function updateDashboardCharts(mode){
     const monthlyCanvas = document.getElementById('monthlyChart');
     const repurchaseCanvas = document.getElementById('repurchaseChart');
     if (!monthlyCanvas || !repurchaseCanvas) return;
+    if (!trendRows.length) {
+      toggleChartNoData('monthlyChart', '暂无趋势数据', true);
+      toggleChartNoData('repurchaseChart', '暂无复购结构数据', true);
+      return;
+    }
+    toggleChartNoData('monthlyChart', '', false);
+    toggleChartNoData('repurchaseChart', '', false);
 
     appState.charts.monthly = new Chart(monthlyCanvas, {
       type:'line',
@@ -3638,8 +3673,6 @@ populateDashboardProductOptions();
 populateSleepingSalespersonOptions();
 
 document.getElementById('topStoresCard')?.addEventListener('click', () => updateDashboardCharts('stores'));
-document.getElementById('topSalespeopleCard')?.addEventListener('click', () => updateDashboardCharts('salespeople'));
-document.getElementById('topProductsCard')?.addEventListener('click', () => updateDashboardCharts('products'));
 document.getElementById('topSalespeopleCard')?.addEventListener('click', () => updateDashboardCharts('salespeople'));
 document.getElementById('topProductsCard')?.addEventListener('click', () => updateDashboardCharts('products'));
 document.querySelector('#topStoresCard .section-title')?.addEventListener('click', (e) => {
