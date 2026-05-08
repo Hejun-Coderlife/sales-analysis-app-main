@@ -12,13 +12,13 @@ Script path:
 
 The script copies the following paths (if present):
 
+- `data/`
 - `backend/data/`
-- `backend/data/uploads/`
-- `backend/data/analytics.duckdb`
+- `.env`
 
 Backups are stored under:
 
-- `C:\sales-analysis-backups\backup-<timestamp>`
+- `C:\apps\backups\sales-app-<timestamp>`
 
 You can override this with `-BackupRoot`.
 

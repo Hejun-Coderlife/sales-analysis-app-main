@@ -1,19 +1,19 @@
 Param(
   [string]$ProjectRoot = ".",
-  [string]$BackupRoot = "C:\sales-analysis-backups"
+  [string]$BackupRoot = "C:\apps\backups"
 )
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $sourceRoot = Resolve-Path $ProjectRoot
-$target = Join-Path $BackupRoot "backup-$timestamp"
+$target = Join-Path $BackupRoot "sales-app-$timestamp"
 
 Write-Host "Preparing backup target: $target"
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 
 $pathsToBackup = @(
+  "data",
   "backend\data",
-  "backend\data\uploads",
-  "backend\data\analytics.duckdb"
+  ".env"
 )
 
 foreach ($relativePath in $pathsToBackup) {
