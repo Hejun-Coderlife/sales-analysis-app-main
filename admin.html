@@ -115,7 +115,9 @@
       <article class="card">
         <h2>数据导入</h2>
         <p>仅管理员可导入 Excel，显示实时状态、最新更新时间与历史记录。</p>
-        <div class="field"><label for="adminImportFile">选择 Excel 文件（.xls / .xlsx）</label><input id="adminImportFile" type="file" accept=".xls,.xlsx" /></div>
+        <div class="field"><label for="adminImportFile">选择 Excel 文件（.xls / .xlsx，可多选）</label><input id="adminImportFile" type="file" accept=".xls,.xlsx" multiple /></div>
+        <div id="adminImportFileMeta" class="meta">已选择 0 个文件</div>
+        <div id="adminImportFileList" class="meta"></div>
         <div class="row"><button id="adminImportBtn" class="btn btn-primary">开始导入</button><span id="adminImportStatus" class="meta">待上传</span></div>
         <div id="latestImportMeta" class="meta">最新数据更新时间：暂无</div>
       </article>
@@ -612,18 +614,18 @@
     }
 
     async function uploadImportFile() {
-      const file = document.getElementById("adminImportFile").files?.[0];
+      const files = [...(document.getElementById("adminImportFile").files || [])];
       const status = document.getElementById("adminImportStatus");
-      if (!file) {
+      if (!files.length) {
         status.className = "meta err";
         status.textContent = "请先选择文件";
         showToast("请先选择文件", "error");
         return;
       }
       status.className = "meta";
-      status.textContent = "上传中...";
+      status.textContent = `上传中（${files.length} 个文件）...`;
       const form = new FormData();
-      form.append("file", file);
+      files.forEach((file) => form.append("files", file));
       form.append("mapping", JSON.stringify({}));
       const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
       const uploadData = await uploadRes.json();
@@ -638,17 +640,43 @@
         const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
         const jobData = await jobRes.json();
         const job = jobData.job || {};
-        status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）`;
+        const importProgress = job?.stats?.importProgress || {};
+        const currentFileIndex = Number(importProgress.currentFileIndex || 0);
+        const fileCount = Number(importProgress.fileCount || 0);
+        const currentFileName = String(importProgress.currentFileName || "");
+        const cumulativeRowCount = Number(importProgress.cumulativeRowCount || 0);
+        const phase = String(job.phase || "");
+        if (fileCount > 0) {
+          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(currentFileIndex, fileCount)}/${fileCount} 个｜${currentFileName || "处理中"}｜累计 ${cumulativeRowCount} 行${phase ? `｜${phase}` : ""}`;
+        } else {
+          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）${phase ? `｜${phase}` : ""}`;
+        }
         if (job.status === "completed") {
+          const successfulFiles = job?.stats?.successfulFiles || [];
+          const failedFiles = job?.stats?.failedFiles || [];
           status.className = "meta ok";
-          status.textContent = `导入完成：${job.datasetId || ""}`;
+          status.textContent = `导入完成：成功 ${successfulFiles.length} 个，失败 ${failedFiles.length} 个，累计 ${Number(job?.stats?.rowCount || 0)} 行（dataset: ${job.datasetId || ""}）`;
+          if (failedFiles.length) {
+            const reasonText = failedFiles
+              .map((item) => `${item.fileName || "未知文件"}：${item.reason || "失败"}`)
+              .join("；");
+            status.textContent += `；失败原因：${reasonText}`;
+          }
           showToast("导入完成", "success");
           await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs(), loadPermissionOptions()]);
           return;
         }
         if (job.status === "failed") {
+          const successfulFiles = job?.stats?.successfulFiles || [];
+          const failedFiles = job?.stats?.failedFiles || [];
           status.className = "meta err";
-          status.textContent = job.error || "导入失败";
+          status.textContent = `导入失败：成功 ${successfulFiles.length} 个，失败 ${failedFiles.length} 个。${job.error || ""}`;
+          if (failedFiles.length) {
+            const reasonText = failedFiles
+              .map((item) => `${item.fileName || "未知文件"}：${item.reason || "失败"}`)
+              .join("；");
+            status.textContent += ` 失败原因：${reasonText}`;
+          }
           showToast(status.textContent, "error");
           await Promise.all([loadImportHistory(), loadAuditLogs()]);
           return;
@@ -658,6 +686,22 @@
       status.className = "meta err";
       status.textContent = "导入超时，请稍后查看导入历史";
       showToast(status.textContent, "error");
+    }
+
+    function renderImportFileSelection() {
+      const input = document.getElementById("adminImportFile");
+      const files = [...(input?.files || [])];
+      const metaEl = document.getElementById("adminImportFileMeta");
+      const listEl = document.getElementById("adminImportFileList");
+      if (!metaEl || !listEl) return;
+      metaEl.textContent = `已选择 ${files.length} 个文件`;
+      if (!files.length) {
+        listEl.textContent = "";
+        return;
+      }
+      listEl.innerHTML = files
+        .map((file) => `<div>${file.name}（${Math.ceil((Number(file.size) || 0) / 1024)} KB）</div>`)
+        .join("");
     }
 
     document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
@@ -673,6 +717,9 @@
       void withLoading(btn, "导入中...", async () => {
         await uploadImportFile();
       });
+    });
+    document.getElementById("adminImportFile").addEventListener("change", () => {
+      renderImportFileSelection();
     });
     document.getElementById("userListWrap").addEventListener("click", (event) => {
       const target = event.target.closest("[data-action]");

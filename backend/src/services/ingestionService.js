@@ -106,6 +106,42 @@ function cleanText(value, fallback = "Unknown") {
   return out || fallback;
 }
 
+function createRowDedupKey(row) {
+  const orderNo = String(row?.order_no || "").trim();
+  const orderDate = String(row?.order_date || "").trim();
+  const store = String(row?.store || "").trim();
+  const salesperson = String(row?.salesperson || "").trim();
+  const product = String(row?.product || "").trim();
+  const qty = Number(row?.qty || 0);
+  const amount = Number(row?.amount || 0);
+  const memberId = String(row?.member_id || "").trim();
+  if (orderNo) {
+    return [
+      "order",
+      orderNo,
+      orderDate,
+      store,
+      salesperson,
+      product,
+      qty,
+      amount,
+      memberId,
+    ].join("|");
+  }
+  return [
+    "row",
+    orderDate,
+    store,
+    salesperson,
+    product,
+    qty,
+    amount,
+    memberId,
+    String(row?.member_name || "").trim(),
+    String(row?.phone || "").trim(),
+  ].join("|");
+}
+
 export class IngestionService {
   constructor({ duckdbService, uploadsDir }) {
     this.duckdbService = duckdbService;
@@ -246,6 +282,161 @@ export class IngestionService {
       rowCount: rows.length,
       mapping: parsed.mappingBySheet,
       validation,
+    };
+  }
+
+  async ingestMultiFileDataset({ sourceNames = [], filePaths = [], overrides = {}, onProgress }) {
+    const entries = (Array.isArray(filePaths) ? filePaths : [])
+      .map((filePath, index) => ({
+        filePath: String(filePath || ""),
+        sourceName: String(sourceNames[index] || path.basename(String(filePath || "")) || `file-${index + 1}`),
+      }))
+      .filter((entry) => entry.filePath);
+    if (!entries.length) {
+      throw new Error("未收到可导入的文件");
+    }
+
+    const datasetId = randomUUID();
+    await this.duckdbService.ensureSchema();
+    const allRows = [];
+    const seenRows = new Set();
+    const mapping = [];
+    const warnings = [];
+    const successfulFiles = [];
+    const failedFiles = [];
+
+    let cumulativeRows = 0;
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const fileNo = index + 1;
+      const fileCount = entries.length;
+      try {
+        onProgress?.(
+          5 + Math.floor((index / Math.max(1, fileCount)) * 35),
+          `正在导入第 ${fileNo}/${fileCount} 个文件`,
+          {
+            currentFileIndex: fileNo,
+            fileCount,
+            currentFileName: entry.sourceName,
+            cumulativeRowCount: cumulativeRows,
+          }
+        );
+        const parsed = await this.parseWorkbook(entry.filePath, overrides);
+        const before = seenRows.size;
+        for (const row of parsed.cleanedRows) {
+          const rowKey = createRowDedupKey(row);
+          if (seenRows.has(rowKey)) continue;
+          seenRows.add(rowKey);
+          allRows.push(row);
+        }
+        const uniqueAdded = seenRows.size - before;
+        cumulativeRows += uniqueAdded;
+        successfulFiles.push({
+          fileName: entry.sourceName,
+          rawRows: parsed.cleanedRows.length,
+          uniqueRowsAdded: uniqueAdded,
+        });
+        mapping.push({
+          fileName: entry.sourceName,
+          sheets: parsed.mappingBySheet,
+        });
+        warnings.push(
+          ...parsed.warnings.map((w) => `[${entry.sourceName}] ${w}`)
+        );
+      } catch (error) {
+        failedFiles.push({
+          fileName: entry.sourceName,
+          reason: String(error?.message || "解析失败"),
+        });
+      }
+    }
+
+    const validation = {
+      rowCount: allRows.length,
+      warnings: [...new Set(warnings)].slice(0, 200),
+      valid: allRows.length > 0,
+      fileCount: entries.length,
+      successFileCount: successfulFiles.length,
+      failedFileCount: failedFiles.length,
+      successfulFiles,
+      failedFiles,
+    };
+
+    onProgress?.(45, "正在写入 DuckDB", {
+      currentFileIndex: entries.length,
+      fileCount: entries.length,
+      currentFileName: "",
+      cumulativeRowCount: allRows.length,
+    });
+
+    await this.duckdbService.run(
+      `INSERT OR REPLACE INTO datasets(dataset_id, source_name, row_count, created_at, status, mapping_json, validation_json)
+       VALUES ($dataset_id, $source_name, $row_count, NOW(), 'loading', $mapping_json, $validation_json)`,
+      {
+        dataset_id: datasetId,
+        source_name: successfulFiles.length
+          ? `多文件导入（${successfulFiles.length}/${entries.length}）`
+          : `多文件导入（0/${entries.length}）`,
+        row_count: allRows.length,
+        mapping_json: JSON.stringify(mapping),
+        validation_json: JSON.stringify(validation),
+      }
+    );
+
+    await this.duckdbService.run("DELETE FROM fact_sales WHERE dataset_id = $dataset_id", {
+      dataset_id: datasetId,
+    });
+
+    let inserted = 0;
+    for (const row of allRows) {
+      await this.duckdbService.run(
+        `INSERT INTO fact_sales (
+            dataset_id, order_no, order_date, year, month_key, week_start, day_key, store, salesperson,
+            product, qty, amount, member_id, member_name, phone
+         ) VALUES (
+            $dataset_id, $order_no, $order_date, $year, $month_key, $week_start, $day_key, $store, $salesperson,
+            $product, $qty, $amount, $member_id, $member_name, $phone
+         )`,
+        { dataset_id: datasetId, ...row }
+      );
+      inserted += 1;
+      if (inserted % 500 === 0) {
+        const pct = 45 + Math.floor((inserted / Math.max(1, allRows.length)) * 45);
+        onProgress?.(Math.min(90, pct), `已写入 ${inserted}/${allRows.length} 行`, {
+          currentFileIndex: entries.length,
+          fileCount: entries.length,
+          currentFileName: "",
+          cumulativeRowCount: inserted,
+        });
+      }
+    }
+
+    await this.duckdbService.run(
+      `UPDATE datasets
+       SET row_count = $row_count, status = 'ready', mapping_json = $mapping_json, validation_json = $validation_json
+       WHERE dataset_id = $dataset_id`,
+      {
+        dataset_id: datasetId,
+        row_count: allRows.length,
+        mapping_json: JSON.stringify(mapping),
+        validation_json: JSON.stringify(validation),
+      }
+    );
+
+    onProgress?.(100, "导入完成", {
+      currentFileIndex: entries.length,
+      fileCount: entries.length,
+      currentFileName: "",
+      cumulativeRowCount: allRows.length,
+    });
+
+    return {
+      datasetId,
+      rowCount: allRows.length,
+      mapping,
+      validation,
+      successfulFiles,
+      failedFiles,
     };
   }
 }

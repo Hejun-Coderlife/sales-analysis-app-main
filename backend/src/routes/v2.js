@@ -194,6 +194,10 @@ export function createV2Router({
     storage: multer.memoryStorage(),
     limits: { fileSize: Math.max(1, maxUploadSizeMb) * 1024 * 1024 },
   });
+  const uploadFields = upload.fields([
+    { name: "file", maxCount: 20 },
+    { name: "files", maxCount: 20 },
+  ]);
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true, service: "analytics-v2", now: new Date().toISOString() });
@@ -205,12 +209,16 @@ export function createV2Router({
     return res.json({ ok: true, dataset: dataset || null });
   });
 
-  router.post("/uploads", upload.single("file"), async (req, res) => {
+  router.post("/uploads", uploadFields, async (req, res) => {
     if (!hasPermission(req.currentUser, "canImportExcel")) {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });
     }
-    if (!req.file) {
-      return res.status(400).json({ error: "file is required (multipart field name: file)" });
+    const fileList = [
+      ...((req.files && Array.isArray(req.files.file) ? req.files.file : []) || []),
+      ...((req.files && Array.isArray(req.files.files) ? req.files.files : []) || []),
+    ].filter(Boolean);
+    if (!fileList.length) {
+      return res.status(400).json({ error: "file/files is required (multipart field name: file or files)" });
     }
     let overrides = {};
     try {
@@ -219,13 +227,19 @@ export function createV2Router({
       return res.status(400).json({ error: "mapping must be valid JSON" });
     }
 
-    const uploadedPath = await ingestionService.persistUploadBuffer(req.file);
+    const uploadedPaths = [];
+    for (const file of fileList) {
+      const uploadedPath = await ingestionService.persistUploadBuffer(file);
+      uploadedPaths.push(uploadedPath);
+    }
     const importedBy = String(req.currentUser?.username || "");
     const job = await jobStore.createJob({
       type: "ingest",
       payload: {
-        sourceName: req.file.originalname || "upload.xlsx",
-        path: uploadedPath,
+        sourceName: fileList.length === 1 ? fileList[0].originalname || "upload.xlsx" : `multi-file-${fileList.length}`,
+        fileNames: fileList.map((f) => String(f.originalname || "upload.xlsx")),
+        paths: uploadedPaths,
+        fileCount: fileList.length,
         importedBy,
       },
     });
@@ -233,35 +247,58 @@ export function createV2Router({
       adminUsername: importedBy,
       actionType: "import_excel",
       targetType: "file",
-      targetId: req.file.originalname || "upload.xlsx",
-      summary: `提交导入任务：${req.file.originalname || "upload.xlsx"}（job: ${job.id.slice(0, 8)}）`,
+      targetId: fileList.length === 1 ? fileList[0].originalname || "upload.xlsx" : `multi-file-${fileList.length}`,
+      summary: `提交导入任务：${fileList.length} 个文件（job: ${job.id.slice(0, 8)}）`,
       meta: {
         jobId: job.id,
-        filename: req.file.originalname || "upload.xlsx",
+        fileCount: fileList.length,
+        fileNames: fileList.map((f) => String(f.originalname || "upload.xlsx")),
       },
     });
 
     jobQueue.enqueue(async () => {
       await jobStore.updateJob(job.id, { status: "running", progress: 5, error: null });
       try {
-        const result = await ingestionService.ingestDataset({
-          sourceName: req.file.originalname,
-          filePath: uploadedPath,
+        const result = await ingestionService.ingestMultiFileDataset({
+          sourceNames: fileList.map((f) => String(f.originalname || "upload.xlsx")),
+          filePaths: uploadedPaths,
           overrides,
-          onProgress: async (progress, phase) => {
-            await jobStore.updateJob(job.id, { progress, phase });
+          onProgress: async (progress, phase, importProgress = {}) => {
+            await jobStore.updateJob(job.id, {
+              progress,
+              phase,
+              stats: {
+                ...(job.stats || {}),
+                importProgress: {
+                  currentFileIndex: Number(importProgress.currentFileIndex || 0),
+                  fileCount: Number(importProgress.fileCount || fileList.length),
+                  currentFileName: String(importProgress.currentFileName || ""),
+                  cumulativeRowCount: Number(importProgress.cumulativeRowCount || 0),
+                },
+              },
+            });
           },
         });
+        const allFailed = Array.isArray(result.failedFiles) && result.failedFiles.length >= fileList.length;
         await jobStore.updateJob(job.id, {
-          status: "completed",
+          status: allFailed ? "failed" : "completed",
           progress: 100,
           datasetId: result.datasetId,
           stats: {
             rowCount: result.rowCount,
             mapping: result.mapping,
             validation: result.validation,
+            successfulFiles: result.successfulFiles || [],
+            failedFiles: result.failedFiles || [],
+            importProgress: {
+              currentFileIndex: fileList.length,
+              fileCount: fileList.length,
+              currentFileName: "",
+              cumulativeRowCount: Number(result.rowCount || 0),
+            },
           },
           warnings: result.validation?.warnings || [],
+          error: allFailed ? "所有文件均导入失败，请检查文件格式和字段映射" : null,
         });
         responseCache.clear();
         analyticsService?.queryCache?.clear?.();
