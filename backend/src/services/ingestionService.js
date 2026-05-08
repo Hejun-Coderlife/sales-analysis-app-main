@@ -31,6 +31,23 @@ const HEADER_CANDIDATES = {
   phone: ["phone", "手机号", "电话", "联系电话", "手机号码"],
 };
 
+const REQUIRED_MAPPINGS = ["store", "salesperson", "product", "amount", "date", "order_no"];
+
+const STRICT_HEADER_ALIASES = {
+  store: ["门店名称", "门店", "店铺", "所属门店", "store"],
+  salesperson: ["营业员", "销售员", "销售人员", "导购员", "导购", "专属导购名称", "salesperson"],
+  product: ["商品名称", "品名", "商品", "货品名称", "product"],
+  amount: ["总金额", "实收价", "实收", "销售额", "金额", "支付金额", "付款金额", "amount"],
+  date: ["日期", "销售日期", "下单日期", "订单日期", "消费时间", "date"],
+  order_no: ["单号", "订单号", "流水号", "小票号", "order"],
+  qty: ["数量", "件数", "销售数量", "qty"],
+  member_id: ["会员编号", "会员id", "客户编号", "member_id"],
+  member_name: ["会员名称", "会员姓名", "会员名", "客户姓名", "客户名称", "member_name"],
+  phone: ["手机", "手机号", "手机号码", "联系电话", "电话", "phone"],
+};
+
+const CODE_LIKE_HEADER_RE = /(编号|code|id)/i;
+
 function normalizeHeader(value) {
   return String(value || "")
     .trim()
@@ -52,24 +69,50 @@ function detectColumnMap(headers, overrides = {}) {
         mapping[target] = exact.raw;
         continue;
       }
+      warnings.push(`Override column not found for ${target}: ${String(overrides[target])}`);
     }
-    const matched = normalizedHeaders.find((h) =>
-      candidates.some((candidate) => h.key.includes(normalizeHeader(candidate)))
-    );
-    if (matched) mapping[target] = matched.raw;
+    const strictCandidates = STRICT_HEADER_ALIASES[target] || [];
+    let strictMatched = null;
+    for (const candidate of strictCandidates) {
+      const normalizedCandidate = normalizeHeader(candidate);
+      const exact = normalizedHeaders.find((h) => h.key === normalizedCandidate);
+      if (exact) {
+        strictMatched = exact;
+        break;
+      }
+    }
+    if (strictMatched) {
+      mapping[target] = strictMatched.raw;
+      continue;
+    }
+
+    // Strict-first mapping: fallback is constrained and avoids code-like columns for name fields.
+    const fallbackMatched = normalizedHeaders.find((h) => {
+      if (["salesperson", "product", "member_name"].includes(target) && CODE_LIKE_HEADER_RE.test(h.raw)) {
+        return false;
+      }
+      return candidates.some((candidate) => h.key.includes(normalizeHeader(candidate)));
+    });
+    if (fallbackMatched) mapping[target] = fallbackMatched.raw;
   }
 
-  if (!mapping.amount) warnings.push("Unable to auto-detect amount column.");
-  if (!mapping.date) warnings.push("Unable to auto-detect date column.");
-  if (!mapping.store) warnings.push("Unable to auto-detect store column.");
-  if (!mapping.salesperson) warnings.push("Unable to auto-detect salesperson column.");
+  for (const required of REQUIRED_MAPPINGS) {
+    if (!mapping[required]) warnings.push(`Unable to auto-detect required column: ${required}.`);
+  }
   return { mapping, warnings };
 }
 
-function parseNumber(value) {
-  if (value == null || value === "") return 0;
-  const n = Number(String(value).replace(/,/g, "").trim());
-  return Number.isFinite(n) ? n : 0;
+function parseNumber(value, { allowEmpty = true } = {}) {
+  if (value == null || value === "") {
+    return { value: 0, valid: !!allowEmpty, empty: true };
+  }
+  let text = String(value).trim();
+  if (!text) return { value: 0, valid: !!allowEmpty, empty: true };
+  text = text.replace(/[，,]/g, "");
+  if (text.startsWith("¥") || text.startsWith("￥")) text = text.slice(1);
+  if (text.startsWith("(") && text.endsWith(")")) text = `-${text.slice(1, -1)}`;
+  const n = Number(text);
+  return { value: Number.isFinite(n) ? n : 0, valid: Number.isFinite(n), empty: false };
 }
 
 function parseDateValue(value) {
@@ -164,6 +207,7 @@ export class IngestionService {
     const workbook = XLSX.readFile(filePath, { cellDates: true });
     const cleanedRows = [];
     const warnings = [];
+    const hardErrors = [];
     const mappingBySheet = [];
 
     for (const sheetName of workbook.SheetNames) {
@@ -174,11 +218,32 @@ export class IngestionService {
       const { mapping, warnings: sheetWarnings } = detectColumnMap(headers, overrides);
       mappingBySheet.push({ sheet: sheetName, mapping });
       warnings.push(...sheetWarnings.map((w) => `[${sheetName}] ${w}`));
+      const missingRequired = REQUIRED_MAPPINGS.filter((key) => !mapping[key]);
+      if (missingRequired.length) {
+        hardErrors.push(
+          `[${sheetName}] 缺少必填映射字段：${missingRequired.join(", ")}。请在导入时提供严格 mapping。`
+        );
+        continue;
+      }
 
-      for (const row of rows) {
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex];
+        const excelRowNo = rowIndex + 2; // sheet_to_json treats first row as header.
         const orderDate = parseDateValue(row[mapping.date]);
-        const amount = parseNumber(row[mapping.amount]);
-        if (!orderDate || !Number.isFinite(amount)) continue;
+        const amountParsed = parseNumber(row[mapping.amount], { allowEmpty: false });
+        const qtyParsed = parseNumber(row[mapping.qty], { allowEmpty: true });
+        if (!orderDate) {
+          warnings.push(`[${sheetName}] 第 ${excelRowNo} 行日期无效，已跳过。`);
+          continue;
+        }
+        if (!amountParsed.valid) {
+          hardErrors.push(`[${sheetName}] 第 ${excelRowNo} 行金额字段(${mapping.amount})不是数字：${String(row[mapping.amount] ?? "")}`);
+          continue;
+        }
+        if (!qtyParsed.valid) {
+          hardErrors.push(`[${sheetName}] 第 ${excelRowNo} 行数量字段(${mapping.qty})不是数字：${String(row[mapping.qty] ?? "")}`);
+          continue;
+        }
         const weekStart = startOfWeek(orderDate);
         cleanedRows.push({
           order_no: cleanText(row[mapping.order_no] || "", ""),
@@ -190,13 +255,19 @@ export class IngestionService {
           store: cleanText(row[mapping.store]),
           salesperson: cleanText(row[mapping.salesperson]),
           product: cleanText(row[mapping.product]),
-          qty: parseNumber(row[mapping.qty]),
-          amount,
+          qty: qtyParsed.value,
+          amount: amountParsed.value,
           member_id: cleanText(row[mapping.member_id] || "", ""),
           member_name: cleanText(row[mapping.member_name] || "", ""),
           phone: cleanText(row[mapping.phone] || "", ""),
         });
       }
+    }
+
+    if (hardErrors.length) {
+      const shown = hardErrors.slice(0, 20);
+      const suffix = hardErrors.length > shown.length ? `（另有 ${hardErrors.length - shown.length} 条）` : "";
+      throw new Error(`检测到严格映射/数值格式错误：${shown.join("；")}${suffix}`);
     }
 
     return {
