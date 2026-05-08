@@ -11,6 +11,7 @@ import { createAuthMiddleware, safeLoginNextPath } from "./backend/src/auth/midd
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
 import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
+import { NotificationStore } from "./backend/src/services/notificationStore.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
 const app = express();
@@ -28,6 +29,7 @@ const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requ
 const { analyticsService, jobStore } = getV2Services();
 const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
 const agentDatasetToolsService = createAgentDatasetToolsService({ analyticsService });
+const notificationStore = new NotificationStore({ notificationsPath: env.notificationsPath });
 
 async function appendAuditLog(entry = {}) {
   try {
@@ -1227,6 +1229,46 @@ app.get("/api/auth/me", async (req, res) => {
   return res.json({ ok: true, user });
 });
 
+app.get("/api/notifications", requireAuthApi, async (req, res) => {
+  const userId = String(req.currentUser?.id || "");
+  const username = String(req.currentUser?.username || "");
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const data = await notificationStore.listForUser({ userId, username, limit, offset });
+  return res.json({ ok: true, ...data });
+});
+
+app.post("/api/notifications/:id/read", requireAuthApi, async (req, res) => {
+  const userId = String(req.currentUser?.id || "");
+  const username = String(req.currentUser?.username || "");
+  const result = await notificationStore.markRead({ id: req.params.id, userId, username });
+  if (!result.ok) {
+    if (result.code === 404) return res.status(404).json({ error: "消息不存在" });
+    if (result.code === 403) return res.status(403).json({ error: "无权限访问" });
+    return res.status(400).json({ error: "操作失败" });
+  }
+  return res.json({ ok: true, notification: result.notification });
+});
+
+app.post("/api/admin/notifications/test", requireAdminApi, async (req, res) => {
+  if (String(req.currentUser?.role || "") !== "admin") {
+    return res.status(403).json({ ok: false, error: "仅管理员可发送应用内测试通知" });
+  }
+  const userId = String(req.currentUser?.id || "");
+  const username = String(req.currentUser?.username || "");
+  const title = "赫眉经营助手测试提醒";
+  const content = "这是一条应用内测试提醒，说明消息中心已可用。";
+  const created = await notificationStore.create({
+    userId,
+    username,
+    title,
+    content,
+    type: "test",
+    link: "/mobile",
+  });
+  return res.json({ ok: true, notification: { id: created.id, createdAt: created.createdAt } });
+});
+
 app.get("/api/admin/users", requireAdminApi, async (_req, res) => {
   if (!ensurePermissionOrDeny(res, _req.currentUser, "canManageUsers")) return;
   const users = await authService.listUsers();
@@ -1670,7 +1712,7 @@ app.get("/", (req, res) => {
 
 app.use(express.static(__dirname, { index: false }));
 
-Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init()])
+Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init(), notificationStore.init()])
   .catch((error) => {
     console.error("[startup] init failed:", error?.message || error);
   })

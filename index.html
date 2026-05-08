@@ -228,6 +228,15 @@
     .grid-3{grid-template-columns:repeat(3,1fr)}
     .grid-4{grid-template-columns:repeat(4,1fr)}
     .dashboard-lower{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
+    .notif-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(15,23,42,.28);color:#fff;cursor:pointer}
+    .notif-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#ef4444;color:#fff;font-size:12px;font-weight:800;display:none;align-items:center;justify-content:center;line-height:18px}
+    .notif-panel{position:absolute;top:44px;right:0;width:min(420px,92vw);max-height:420px;overflow:auto;background:#0b1220;border:1px solid rgba(255,255,255,.16);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.35);display:none;z-index:99}
+    .notif-item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.12);cursor:pointer}
+    .notif-item:last-child{border-bottom:none}
+    .notif-item.unread{background:rgba(37,99,235,.15)}
+    .notif-title{font-weight:800;color:#fff;font-size:13px}
+    .notif-content{color:rgba(226,232,240,.92);font-size:12px;line-height:1.45;margin-top:4px}
+    .notif-time{color:rgba(148,163,184,.9);font-size:11px;margin-top:6px}
     .dashboard-lower-left{display:contents}
     .control-panel{padding:14px 16px}
 .control-top{
@@ -616,6 +625,17 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
       <div class="control-head">
         <div class="status-row">
           <span id="status"></span>
+          <div style="margin-left:auto;position:relative;">
+            <button type="button" class="notif-bell" id="notifBell" aria-label="消息中心">🔔<span class="notif-badge" id="notifBadge">0</span></button>
+            <div class="notif-panel" id="notifPanel">
+              <div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <b style="color:#fff;font-size:13px;">消息/提醒</b>
+                <button type="button" class="light btn" id="notifRefreshBtn" style="min-height:30px;padding:6px 10px;">刷新</button>
+              </div>
+              <div id="notifList"></div>
+              <div id="notifEmpty" style="padding:12px;color:rgba(148,163,184,.95);font-size:12px;display:none;">暂无消息</div>
+            </div>
+          </div>
         </div>
         
 <div class="col control-field control-date-field" data-control="dashboardDateRange">
@@ -4824,6 +4844,122 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
   });
   applyChatFontScale(1);
   appendLine('System', '数据助手已就绪，支持多轮对话。');
+})();
+</script>
+
+<script>
+(function () {
+  function escapeHtml(s) {
+    return String(s != null ? s : "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  var bell = document.getElementById("notifBell");
+  var badge = document.getElementById("notifBadge");
+  var panel = document.getElementById("notifPanel");
+  var list = document.getElementById("notifList");
+  var empty = document.getElementById("notifEmpty");
+  var refreshBtn = document.getElementById("notifRefreshBtn");
+  if (!bell || !badge || !panel || !list || !empty || !refreshBtn) return;
+
+  var cache = { unread: 0, rows: [] };
+
+  function setBadge(n) {
+    var num = Number(n || 0);
+    badge.textContent = String(num);
+    badge.style.display = num > 0 ? "inline-flex" : "none";
+  }
+
+  function render() {
+    var rows = Array.isArray(cache.rows) ? cache.rows : [];
+    if (!rows.length) {
+      list.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    list.innerHTML = rows
+      .slice(0, 20)
+      .map(function (n) {
+        var unread = String(n.status || "") === "unread";
+        var createdAt = n.createdAt ? new Date(n.createdAt).toLocaleString("zh-CN") : "";
+        return (
+          '<div class="notif-item ' +
+          (unread ? "unread" : "") +
+          '" data-id="' +
+          escapeHtml(n.id || "") +
+          '" data-link="' +
+          escapeHtml(n.link || "/dashboard") +
+          '">' +
+          '<div class="notif-title">' +
+          escapeHtml(n.title || "") +
+          "</div>" +
+          '<div class="notif-content">' +
+          escapeHtml(n.content || "") +
+          "</div>" +
+          '<div class="notif-time">' +
+          escapeHtml(createdAt) +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  async function fetchNotifications() {
+    var res = await fetch("/api/notifications?limit=50&offset=0", { credentials: "same-origin" });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) return;
+    cache = { unread: Number(data.unread || 0), rows: data.rows || [] };
+    setBadge(cache.unread);
+    render();
+  }
+
+  async function markRead(id) {
+    if (!id) return;
+    await fetch("/api/notifications/" + encodeURIComponent(id) + "/read", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).catch(function () {});
+  }
+
+  function togglePanel(show) {
+    panel.style.display = show ? "block" : "none";
+  }
+
+  bell.addEventListener("click", async function (e) {
+    e.stopPropagation();
+    var nextOpen = panel.style.display !== "block";
+    togglePanel(nextOpen);
+    if (nextOpen) await fetchNotifications();
+  });
+  refreshBtn.addEventListener("click", async function (e) {
+    e.stopPropagation();
+    await fetchNotifications();
+  });
+  document.addEventListener("click", function () {
+    if (panel.style.display === "block") togglePanel(false);
+  });
+  panel.addEventListener("click", function (e) {
+    e.stopPropagation();
+  });
+  list.addEventListener("click", async function (e) {
+    var item = e.target && e.target.closest("[data-id]");
+    if (!item) return;
+    var id = item.getAttribute("data-id");
+    var link = item.getAttribute("data-link") || "/dashboard";
+    await markRead(id);
+    await fetchNotifications();
+    togglePanel(false);
+    if (link) window.location.href = link;
+  });
+
+  fetchNotifications().catch(function () {});
+  setInterval(function () { fetchNotifications().catch(function () {}); }, 20000);
 })();
 </script>
 

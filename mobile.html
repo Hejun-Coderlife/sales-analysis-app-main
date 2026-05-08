@@ -330,6 +330,15 @@
     <button type="button" class="btn btn-primary" style="margin-top:12px;width:100%" id="applyFiltersBtn">应用筛选</button>
   </section>
 
+  <section class="card" id="notifEntryCard">
+    <h2>消息 / 提醒</h2>
+    <p class="muted" style="margin:0 0 10px">查看应用内提醒与待办消息。</p>
+    <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+      <button type="button" class="btn btn-light" id="openNotifBtn" style="flex:1">打开消息中心</button>
+      <span id="notifUnreadBadge" class="muted" style="font-weight:700;">未读 0</span>
+    </div>
+  </section>
+
   <section class="card hidden" id="coreKpiCard">
     <h2>核心 KPI</h2>
     <div class="kpi-grid" id="coreKpis"></div>
@@ -398,6 +407,14 @@
       <button type="button" class="btn btn-primary" id="chatSend">发送</button>
     </div>
   </div>
+
+  <div id="notifPanel" style="display:none;position:fixed;left:12px;right:12px;top:12px;bottom:calc(12px + var(--safe-bottom));z-index:10000;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px rgba(2, 6, 23, 0.18);overflow:hidden;flex-direction:column;">
+    <div class="chat-head">
+      <span>消息中心</span>
+      <button type="button" class="btn btn-light" id="notifClose" style="min-height:32px;padding:0 10px">关闭</button>
+    </div>
+    <div class="chat-body" id="notifList" style="padding:10px 12px;"></div>
+  </div>
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -433,6 +450,7 @@
 
   const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const chatMessages = [];
+  let notifCache = { unread: 0, rows: [] };
 
   const rankCharts = { stores: null, sales: null, products: null };
   const RANK_BAR_BG = "rgba(118, 144, 243, 0.78)";
@@ -1404,6 +1422,8 @@
 
     await loadAllData();
     wireChat();
+    wireNotifications();
+    await refreshNotifications();
   }
 
   function wireChat() {
@@ -1421,6 +1441,97 @@
     send.addEventListener("click", sendChat);
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") sendChat();
+    });
+  }
+
+  function setNotifUnreadBadge(n) {
+    var badge = document.getElementById("notifUnreadBadge");
+    if (!badge) return;
+    var num = Number(n || 0);
+    badge.textContent = "未读 " + String(num);
+    badge.style.color = num > 0 ? "#1d4ed8" : "";
+  }
+
+  function renderNotifList() {
+    var el = document.getElementById("notifList");
+    if (!el) return;
+    var rows = Array.isArray(notifCache.rows) ? notifCache.rows : [];
+    if (!rows.length) {
+      el.innerHTML = '<p class="muted">暂无消息</p>';
+      return;
+    }
+    el.innerHTML = rows
+      .map(function (n) {
+        var unread = String(n.status || "") === "unread";
+        var createdAt = n.createdAt ? new Date(n.createdAt).toLocaleString("zh-CN") : "";
+        return (
+          '<div data-notif-id=\"' +
+          escapeHtml(n.id || \"\") +
+          '\" data-notif-link=\"' +
+          escapeHtml(n.link || \"/mobile\") +
+          '\" style=\"border:1px solid #e5e7eb;border-radius:12px;padding:10px 10px;margin-bottom:10px;cursor:pointer;' +
+          (unread ? \"background:#eff6ff;border-color:#bfdbfe;\" : \"background:#fff;\") +
+          '\">' +
+          '<div style=\"display:flex;justify-content:space-between;gap:10px;align-items:center;\">' +
+          '<b style=\"font-size:14px;\">' +
+          escapeHtml(n.title || \"\") +
+          \"</b>\" +
+          (unread
+            ? '<span style=\"font-size:12px;color:#1d4ed8;font-weight:700;\">未读</span>'
+            : '<span class=\"muted\" style=\"font-size:12px;\">已读</span>') +
+          \"</div>\" +
+          '<div class=\"muted\" style=\"margin-top:6px;font-size:13px;line-height:1.45;\">' +
+          escapeHtml(n.content || \"\") +
+          \"</div>\" +
+          '<div class=\"muted\" style=\"margin-top:8px;font-size:12px;\">' +
+          escapeHtml(createdAt) +
+          \"</div>\" +
+          \"</div>\"
+        );
+      })
+      .join(\"\");
+  }
+
+  async function refreshNotifications() {
+    try {
+      var data = await fetchJson(\"/api/notifications?limit=50&offset=0\");
+      notifCache = { unread: Number(data.unread || 0), rows: data.rows || [] };
+      setNotifUnreadBadge(notifCache.unread);
+      renderNotifList();
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  async function markNotifRead(id) {
+    if (!id) return;
+    try {
+      await fetchJson(\"/api/notifications/\" + encodeURIComponent(id) + \"/read\", { method: \"POST\" });
+    } catch (_e) {}
+  }
+
+  function wireNotifications() {
+    var openBtn = document.getElementById(\"openNotifBtn\");
+    var panel = document.getElementById(\"notifPanel\");
+    var closeBtn = document.getElementById(\"notifClose\");
+    var list = document.getElementById(\"notifList\");
+    if (!openBtn || !panel || !closeBtn || !list) return;
+    openBtn.addEventListener(\"click\", async function () {
+      panel.style.display = \"flex\";
+      await refreshNotifications();
+    });
+    closeBtn.addEventListener(\"click\", function () {
+      panel.style.display = \"none\";
+    });
+    list.addEventListener(\"click\", async function (e) {
+      var card = e.target && e.target.closest(\"[data-notif-id]\");
+      if (!card) return;
+      var id = card.getAttribute(\"data-notif-id\");
+      var link = card.getAttribute(\"data-notif-link\") || \"/mobile\";
+      await markNotifRead(id);
+      await refreshNotifications();
+      panel.style.display = \"none\";
+      if (link) window.location.href = link;
     });
   }
 

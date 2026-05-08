@@ -31,6 +31,7 @@ export const env = {
   uploadsDir: path.resolve(backendRoot, "data", "uploads"),
   jobsPath: path.resolve(backendRoot, "data", "jobs.json"),
   auditLogsPath: path.resolve(backendRoot, "data", "audit-logs.json"),
+  notificationsPath: path.resolve(backendRoot, "data", "notifications.json"),
   usersPath: path.resolve(backendRoot, "data", "users.json"),
   sessionDir: path.resolve(backendRoot, "data", "sessions"),
   duckdbPath: process.env.DUCKDB_PATH || path.resolve(backendRoot, "data", "analytics.duckdb"),

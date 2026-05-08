@@ -176,6 +176,15 @@
           </div>
         </article>
 
+        <article class="card side-card" id="inAppNotifCard" hidden>
+          <h3>应用内通知</h3>
+          <p class="meta">给当前管理员账号创建一条应用内测试提醒。</p>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <button id="inAppNotifBtn" class="btn btn-light">发送应用内测试通知</button>
+            <span id="inAppNotifMsg" class="meta"></span>
+          </div>
+        </article>
+
         <article class="card side-card">
           <h3>导入历史</h3>
           <div id="importHistoryWrap" class="meta">加载中...</div>
@@ -763,11 +772,37 @@
     document.getElementById("adminImportFile").addEventListener("change", renderImportFileSelection);
     document.getElementById("dingtalkTestBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "发送中...", sendDingTalkTestNotification));
 
+    async function sendInAppTestNotification() {
+      const msgEl = document.getElementById("inAppNotifMsg");
+      msgEl.textContent = "";
+      const res = await fetch("/api/admin/notifications/test", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        msgEl.textContent = "已发送应用内测试通知";
+        msgEl.className = "meta ok";
+        showToast("已发送应用内测试通知", "success");
+        return;
+      }
+      msgEl.textContent = data.error || `请求失败（${res.status}）`;
+      msgEl.className = "meta err";
+      showToast(msgEl.textContent, "error");
+    }
+
+    document.getElementById("inAppNotifBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "发送中...", sendInAppTestNotification));
+
     (async () => {
       const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) { window.location.href = "/login"; return; }
       const meJson = await meRes.json().catch(() => ({}));
-      if (meJson?.user?.role === "admin") document.getElementById("dingtalkTestCard").removeAttribute("hidden");
+      if (meJson?.user?.role === "admin") {
+        document.getElementById("dingtalkTestCard").removeAttribute("hidden");
+        document.getElementById("inAppNotifCard").removeAttribute("hidden");
+      }
       await loadPermissionOptions();
       await loadUsers();
       await Promise.all([refreshLatestImportMeta(), loadImportHistory()]);
