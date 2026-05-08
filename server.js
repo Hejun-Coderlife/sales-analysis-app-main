@@ -9,6 +9,7 @@ import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
+import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
 const app = express();
@@ -1410,6 +1411,32 @@ app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
   const offset = Math.max(0, Number(req.query.offset) || 0);
   const data = await auditLogStore.list({ limit, offset });
   return res.json({ ok: true, ...data });
+});
+
+app.post("/api/admin/dingtalk/test-notification", requireAdminApi, async (req, res) => {
+  if (String(req.currentUser?.role || "") !== "admin") {
+    return res.status(403).json({ ok: false, error: "仅管理员可发送钉钉测试通知" });
+  }
+  try {
+    const result = await sendDingTalkTestWorkNotification({
+      appKey: env.dingtalkAppKey,
+      appSecret: env.dingtalkAppSecret,
+      agentId: env.dingtalkAgentId,
+      testUserId: env.dingtalkTestUserId,
+      publicBaseUrl: env.publicBaseUrl,
+    });
+    if (!result.ok) {
+      return res.status(502).json({ ok: false, error: result.error || "发送失败" });
+    }
+    return res.json({
+      ok: true,
+      message: "已发送测试通知",
+      dingtalk: result.dingtalk ? { task_id: result.dingtalk.task_id, errcode: result.dingtalk.errcode } : undefined,
+    });
+  } catch (err) {
+    console.warn("[dingtalk] test-notification handler error", err?.message || err);
+    return res.status(500).json({ ok: false, error: "服务器发送钉钉通知时出错，请稍后重试" });
+  }
 });
 
 app.use("/api/v2", (req, res, next) => {

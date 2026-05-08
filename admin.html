@@ -103,6 +103,15 @@
         <div class="row"><button id="createUserBtn" class="btn btn-primary">创建用户</button><span id="createUserMsg" class="meta"></span></div>
       </article>
 
+      <article class="card" id="dingtalkTestCard" hidden>
+        <h2>钉钉</h2>
+        <p>向配置的测试账号发送一条工作台通知（需服务端配置钉钉应用参数）。仅管理员可见。</p>
+        <div class="row">
+          <button id="dingtalkTestBtn" type="button" class="btn btn-light">发送钉钉测试通知</button>
+          <span id="dingtalkTestMsg" class="meta"></span>
+        </div>
+      </article>
+
       <article class="card">
         <h2>数据导入</h2>
         <p>仅管理员可导入 Excel，显示实时状态、最新更新时间与历史记录。</p>
@@ -724,9 +733,43 @@
       renderSelectedCount(kind, userId, selected);
     });
 
+    async function sendDingTalkTestNotification() {
+      const msgEl = document.getElementById("dingtalkTestMsg");
+      msgEl.textContent = "";
+      const res = await fetch("/api/admin/dingtalk/test-notification", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) {
+        msgEl.textContent = data.message || "已发送测试通知";
+        msgEl.style.color = "#166534";
+        showToast("已发送测试通知", "success");
+        return;
+      }
+      const errText = typeof data?.error === "string" ? data.error : "";
+      msgEl.style.color = "#b91c1c";
+      msgEl.textContent = errText || `请求失败（${res.status}）`;
+      showToast(msgEl.textContent || "发送失败", "error");
+    }
+
+    document.getElementById("dingtalkTestBtn")?.addEventListener("click", (event) => {
+      const btn = event.currentTarget;
+      void withLoading(btn, "发送中...", async () => {
+        await sendDingTalkTestNotification();
+      });
+    });
+
     (async () => {
       const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) { window.location.href = "/login"; return; }
+      const meJson = await meRes.json().catch(() => ({}));
+      if (meJson?.user?.role === "admin") {
+        const card = document.getElementById("dingtalkTestCard");
+        if (card) card.removeAttribute("hidden");
+      }
       await loadPermissionOptions();
       await loadUsers();
       await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs()]);

@@ -42,4 +42,12 @@ export const env = {
   sessionStore: resolveSessionStore(),
   analyticsPathMode: process.env.ANALYTICS_PATH_MODE || "legacy",
   enableShadowParity: asBool(process.env.ANALYTICS_ENABLE_SHADOW_PARITY, false),
+
+  /** Public site URL for links in outbound notifications (no trailing slash required). */
+  publicBaseUrl: String(process.env.PUBLIC_BASE_URL || "").trim(),
+  /** DingTalk internal app credentials (server-only; never send to frontend). */
+  dingtalkAppKey: String(process.env.DINGTALK_APP_KEY || "").trim(),
+  dingtalkAppSecret: String(process.env.DINGTALK_APP_SECRET || "").trim(),
+  dingtalkAgentId: String(process.env.DINGTALK_AGENT_ID || "").trim(),
+  dingtalkTestUserId: String(process.env.DINGTALK_TEST_USER_ID || "").trim(),
 };
