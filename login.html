@@ -20,6 +20,20 @@
       padding:16px;
       box-sizing:border-box;
     }
+    .login-layout{
+      width:100%;
+      max-width:900px;
+      min-height:calc(100vh - 32px);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:22px;
+      margin:0 auto;
+      position:relative;
+      z-index:1;
+      box-sizing:border-box;
+    }
     .card{
       width:min(420px,92vw);
       background:#fff;
@@ -28,7 +42,42 @@
       box-shadow:0 20px 50px rgba(2,6,23,.12);
       padding:24px;
       position:relative;
+      z-index:2;
+    }
+    .earth-section{
+      width:100%;
+      margin:0;
+      padding:0;
+      display:flex !important;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      position:static !important;
+      inset:auto !important;
+      transform:none !important;
+      pointer-events:none;
       z-index:1;
+      box-sizing:border-box;
+    }
+    .earth-stage{
+      width:clamp(280px, 36vw, 420px);
+      height:clamp(280px, 36vw, 420px);
+      max-width:420px;
+      max-height:420px;
+      margin:0 auto;
+    }
+    #earth-canvas{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+    .earth-caption{
+      margin-top:10px;
+      text-align:center;
+      color:#cbd5e1;
+      letter-spacing:.14em;
+      font-size:11px;
+      text-transform:uppercase;
     }
     h1{ margin:0 0 10px; font-size:22px; }
     p{ margin:0 0 16px; color:#4b5563; font-size:14px; }
@@ -85,6 +134,12 @@
         gap:0;
         overflow-x:hidden;
       }
+      .login-layout{
+        min-height:auto;
+        max-width:100%;
+        justify-content:flex-start;
+        gap:14px;
+      }
       .card{
         width:min(86vw, 340px);
         max-width:340px;
@@ -112,7 +167,7 @@
       }
       .earth-section{
         width:100%;
-        margin:14px 0 0;
+        margin:0;
         padding:10px 0 8px;
         display:flex;
         flex-direction:column;
@@ -137,19 +192,21 @@
   </style>
 </head>
 <body>
-  <section class="card">
-    <h1>赫眉经营助手</h1>
-    <p>登录后可访问数据看板与管理后台。</p>
-    <form id="loginForm">
-      <label for="username">账号</label>
-      <input id="username" name="username" autocomplete="username" required />
-      <label for="password">密码</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required />
-      <button id="submitBtn" type="submit">登录</button>
-      <div id="message" class="error"></div>
-    </form>
-    <div class="meta">默认管理员账号：<b>admin</b> / <b>Admin@123456</b>（上线前请立即修改）。</div>
-  </section>
+  <main class="login-layout">
+    <section class="card">
+      <h1>赫眉经营助手</h1>
+      <p>登录后可访问数据看板与管理后台。</p>
+      <form id="loginForm">
+        <label for="username">账号</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button id="submitBtn" type="submit">登录</button>
+        <div id="message" class="error"></div>
+      </form>
+      <div class="meta">默认管理员账号：<b>admin</b> / <b>Admin@123456</b>（上线前请立即修改）。</div>
+    </section>
+  </main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/frontend/src/visual/galaxy-background.js"></script>
   <script>
