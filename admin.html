@@ -35,6 +35,22 @@
     .tag{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; font-size:12px; padding:2px 8px; }
     .table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
     .table th,.table td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
+    .btn[disabled]{ opacity:.7; cursor:not-allowed; }
+    #toast{
+      position:fixed;
+      top:16px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:9999;
+      display:none;
+      max-width:calc(100vw - 32px);
+      background:#111827;
+      color:#fff;
+      padding:8px 12px;
+      border-radius:10px;
+      font-size:13px;
+      box-shadow:0 10px 24px rgba(0,0,0,.22);
+    }
   </style>
 </head>
 <body>
@@ -114,6 +130,7 @@
       </article>
     </section>
   </div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
   <script>
     const roleMap = {
@@ -167,6 +184,32 @@
     let permissionOptions = { stores: [], salespeople: [], products: [] };
     const permissionSearchState = {};
     let usersCache = [];
+    let toastTimer = null;
+
+    function showToast(message, type = "info") {
+      const toast = document.getElementById("toast");
+      if (!toast) return;
+      toast.textContent = message || "";
+      toast.style.background = type === "error" ? "#b91c1c" : (type === "success" ? "#166534" : "#111827");
+      toast.style.display = "block";
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.style.display = "none"; }, 2300);
+    }
+    function setButtonLoading(button, isLoading, loadingText) {
+      if (!button) return;
+      if (!button.dataset.originText) button.dataset.originText = button.textContent || "";
+      button.disabled = !!isLoading;
+      button.textContent = isLoading ? (loadingText || "处理中...") : button.dataset.originText;
+    }
+    async function withLoading(button, loadingText, asyncFn) {
+      if (!button || button.disabled) return;
+      setButtonLoading(button, true, loadingText);
+      try {
+        return await asyncFn();
+      } finally {
+        setButtonLoading(button, false);
+      }
+    }
 
     const splitCsv = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
     const uniq = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
@@ -395,10 +438,12 @@
       if (!res.ok) {
         msg.className = "meta err";
         msg.textContent = data.error || "创建失败";
+        showToast(msg.textContent, "error");
         return;
       }
       msg.className = "meta ok";
       msg.textContent = "创建成功";
+      showToast("创建用户成功", "success");
       ["createUsername", "createDisplayName", "createPassword"].forEach((id) => { document.getElementById(id).value = ""; });
       await loadUsers();
       await loadAuditLogs();
@@ -443,10 +488,12 @@
       if (!res.ok) {
         msg.className = "meta err";
         msg.textContent = data.error || "保存失败";
+        showToast(msg.textContent, "error");
         return;
       }
       msg.className = "meta ok";
       msg.textContent = "已保存";
+      showToast("权限已保存", "success");
       await loadUsers();
       await loadAuditLogs();
     }
@@ -466,10 +513,12 @@
       if (!res.ok) {
         msg.className = "meta err";
         msg.textContent = data.error || "重置失败";
+        showToast(msg.textContent, "error");
         return;
       }
       msg.className = "meta ok";
       msg.textContent = "密码已重置";
+      showToast("密码重置成功", "success");
       await loadAuditLogs();
     }
 
@@ -487,10 +536,12 @@
       if (!res.ok) {
         msg.className = "meta err";
         msg.textContent = data.error || "应用失败";
+        showToast(msg.textContent, "error");
         return;
       }
       msg.className = "meta ok";
       msg.textContent = "已应用角色默认权限";
+      showToast("已应用角色默认权限", "success");
       await loadUsers();
       await loadAuditLogs();
     }
@@ -557,6 +608,7 @@
       if (!file) {
         status.className = "meta err";
         status.textContent = "请先选择文件";
+        showToast("请先选择文件", "error");
         return;
       }
       status.className = "meta";
@@ -569,6 +621,7 @@
       if (!uploadRes.ok) {
         status.className = "meta err";
         status.textContent = uploadData.error || "上传失败";
+        showToast(status.textContent, "error");
         return;
       }
       const jobId = uploadData.jobId;
@@ -580,12 +633,14 @@
         if (job.status === "completed") {
           status.className = "meta ok";
           status.textContent = `导入完成：${job.datasetId || ""}`;
+          showToast("导入完成", "success");
           await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs(), loadPermissionOptions()]);
           return;
         }
         if (job.status === "failed") {
           status.className = "meta err";
           status.textContent = job.error || "导入失败";
+          showToast(status.textContent, "error");
           await Promise.all([loadImportHistory(), loadAuditLogs()]);
           return;
         }
@@ -593,12 +648,23 @@
       }
       status.className = "meta err";
       status.textContent = "导入超时，请稍后查看导入历史";
+      showToast(status.textContent, "error");
     }
 
     document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
     document.getElementById("logoutBtn").addEventListener("click", async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; });
-    document.getElementById("createUserBtn").addEventListener("click", () => { void createUser(); });
-    document.getElementById("adminImportBtn").addEventListener("click", () => { void uploadImportFile(); });
+    document.getElementById("createUserBtn").addEventListener("click", (event) => {
+      const btn = event.currentTarget;
+      void withLoading(btn, "创建中...", async () => {
+        await createUser();
+      });
+    });
+    document.getElementById("adminImportBtn").addEventListener("click", (event) => {
+      const btn = event.currentTarget;
+      void withLoading(btn, "导入中...", async () => {
+        await uploadImportFile();
+      });
+    });
     document.getElementById("userListWrap").addEventListener("click", (event) => {
       const target = event.target.closest("[data-action]");
       if (!target) return;
@@ -612,11 +678,21 @@
         return;
       }
       if (action === "apply-role-defaults") {
-        void applyRoleDefaultsForUser(userId);
+        void withLoading(target, "应用中...", async () => {
+          await applyRoleDefaultsForUser(userId);
+        });
         return;
       }
-      if (action === "save") void saveUser(userId);
-      if (action === "reset") void resetPassword(userId);
+      if (action === "save") {
+        void withLoading(target, "保存中...", async () => {
+          await saveUser(userId);
+        });
+      }
+      if (action === "reset") {
+        void withLoading(target, "重置中...", async () => {
+          await resetPassword(userId);
+        });
+      }
     });
     document.getElementById("userListWrap").addEventListener("change", (event) => {
       const cb = event.target.closest('input[type="checkbox"][data-kind]');

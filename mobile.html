@@ -65,6 +65,15 @@
     .banner-warn { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
     .banner-info { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }
     .hidden { display: none !important; }
+    .inline-loading {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #eef2ff;
+      color: #1e40af;
+      font-size: 12px;
+      border: 1px solid #c7d2fe;
+    }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -255,6 +264,21 @@
     .chat-msg.err { color: #b91c1c; }
     .chat-foot { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
     .chat-foot input { flex: 1; min-height: 42px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); padding: 0 10px; }
+    #toast {
+      position: fixed;
+      left: 50%;
+      top: 14px;
+      transform: translateX(-50%);
+      z-index: 10001;
+      display: none;
+      max-width: calc(100vw - 32px);
+      background: #111827;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
+    }
   </style>
 </head>
 <body>
@@ -270,6 +294,7 @@
   </header>
 
   <div id="globalBanner" class="banner hidden"></div>
+  <div id="inlineLoading" class="inline-loading hidden">正在刷新数据...</div>
 
   <section class="card filters" id="filterCard">
     <h2>筛选</h2>
@@ -373,6 +398,7 @@
       <button type="button" class="btn btn-primary" id="chatSend">发送</button>
     </div>
   </div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/frontend/src/visual/galaxy-background.js"></script>
@@ -403,6 +429,7 @@
     store: "",
   };
   let dateRefreshTimer = null;
+  let toastTimer = null;
 
   const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const chatMessages = [];
@@ -500,6 +527,33 @@
     el.className = "banner " + (kind === "warn" ? "banner-warn" : "banner-info");
     el.textContent = text;
     el.classList.remove("hidden");
+  }
+  function showToast(text, type) {
+    var toast = document.getElementById("toast");
+    if (!toast) return;
+    toast.textContent = text || "";
+    toast.style.background = type === "error" ? "#b91c1c" : (type === "success" ? "#166534" : "#111827");
+    toast.style.display = "block";
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.style.display = "none"; }, 2000);
+  }
+  function setButtonLoading(btn, isLoading, loadingText) {
+    if (!btn) return;
+    if (!btn.dataset.originText) btn.dataset.originText = btn.textContent || "";
+    btn.disabled = !!isLoading;
+    btn.style.opacity = isLoading ? "0.75" : "";
+    btn.textContent = isLoading ? (loadingText || "加载中...") : btn.dataset.originText;
+  }
+  function showInlineLoading(message) {
+    var el = document.getElementById("inlineLoading");
+    if (!el) return;
+    el.textContent = message || "正在刷新数据...";
+    el.classList.remove("hidden");
+  }
+  function hideInlineLoading() {
+    var el = document.getElementById("inlineLoading");
+    if (!el) return;
+    el.classList.add("hidden");
   }
   function hideBanner() {
     document.getElementById("globalBanner").classList.add("hidden");
@@ -607,7 +661,14 @@
     if (dateRefreshTimer) clearTimeout(dateRefreshTimer);
     dateRefreshTimer = setTimeout(async function () {
       if (!datasetId) return;
-      await loadAllData();
+      showInlineLoading("正在刷新数据...");
+      try {
+        await loadAllData();
+      } catch (e) {
+        showToast((e && e.message) || "刷新失败", "error");
+      } finally {
+        hideInlineLoading();
+      }
     }, 300);
   }
 
@@ -1141,6 +1202,7 @@
     chatMessages.push({ role: "user", text: t });
     renderChat();
     btn.disabled = true;
+    setButtonLoading(btn, true, "发送中...");
     try {
       const sync = await syncChatContext();
       if (!sync.ok) {
@@ -1157,13 +1219,16 @@
       const data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
         chatMessages.push({ role: "err", text: data.error || "请求失败" });
+        showToast(data.error || "发送失败", "error");
       } else {
         chatMessages.push({ role: "agent", text: data.reply || "暂无回复" });
+        showToast("发送成功", "success");
       }
     } catch (e) {
       chatMessages.push({ role: "err", text: e.message || "网络异常" });
+      showToast(e.message || "网络异常", "error");
     }
-    btn.disabled = false;
+    setButtonLoading(btn, false);
     renderChat();
   }
 
@@ -1202,13 +1267,24 @@
       if (applyBtn && !applyBtn.dataset.wired) {
         applyBtn.dataset.wired = "1";
         applyBtn.addEventListener("click", async function () {
+          if (applyBtn.disabled) return;
+          setButtonLoading(applyBtn, true, "加载中...");
+          showInlineLoading("正在加载筛选结果...");
           if (hasPerm("canUseFilters")) {
             state.startDate = document.getElementById("startDate").value || "";
             state.endDate = document.getElementById("endDate").value || "";
             state.store = document.getElementById("storeSelect").value || "";
             updateDateRangeLabel();
           }
-          await loadAllData();
+          try {
+            await loadAllData();
+            showToast("筛选已更新", "success");
+          } catch (e) {
+            showToast((e && e.message) || "加载失败", "error");
+          } finally {
+            hideInlineLoading();
+            setButtonLoading(applyBtn, false);
+          }
         });
       }
       var dateTrigger = document.getElementById("dateRangeTrigger");

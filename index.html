@@ -1185,6 +1185,60 @@ let appState = {
   hoverClearTimers: {}
 };
 window.appState = appState;
+let pageLoadingTimer = null;
+let toastTimer = null;
+
+function ensureToastEl(){
+  let el = document.getElementById('globalToast');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'globalToast';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  el.style.position = 'fixed';
+  el.style.top = '14px';
+  el.style.left = '50%';
+  el.style.transform = 'translateX(-50%)';
+  el.style.zIndex = '10020';
+  el.style.display = 'none';
+  el.style.maxWidth = 'calc(100vw - 32px)';
+  el.style.background = '#111827';
+  el.style.color = '#fff';
+  el.style.padding = '8px 12px';
+  el.style.borderRadius = '10px';
+  el.style.fontSize = '13px';
+  el.style.boxShadow = '0 10px 24px rgba(0,0,0,.24)';
+  document.body.appendChild(el);
+  return el;
+}
+function showToast(message, type = 'info'){
+  const el = ensureToastEl();
+  el.textContent = String(message || '');
+  el.style.background = type === 'error' ? '#b91c1c' : (type === 'success' ? '#166534' : '#111827');
+  el.style.display = 'block';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2200);
+}
+function setButtonLoading(button, isLoading, loadingText = '加载中...'){
+  if (!button) return;
+  if (!button.dataset.originalText) button.dataset.originalText = button.textContent || '';
+  button.disabled = !!isLoading;
+  button.style.opacity = isLoading ? '0.72' : '';
+  button.textContent = isLoading ? loadingText : button.dataset.originalText;
+}
+function showPageLoading(message = '正在更新数据...'){
+  const status = document.getElementById('status');
+  if (status) status.textContent = message;
+  const resultArea = document.getElementById('resultArea');
+  if (resultArea) resultArea.style.opacity = '0.7';
+}
+function hidePageLoading(){
+  if (pageLoadingTimer) clearTimeout(pageLoadingTimer);
+  pageLoadingTimer = setTimeout(() => {
+    const resultArea = document.getElementById('resultArea');
+    if (resultArea) resultArea.style.opacity = '';
+  }, 120);
+}
 
 function syncResultAreaToControlPanel(){
   const controlPanel = document.querySelector('.control-panel');
@@ -2844,17 +2898,22 @@ function renderAllTablesFromResults(results){
 function onGlobalFiltersChanged(keepDropdownOpen = false){
   const results = getActiveResults();
   if (!results) return;
-
-  renderKpisFromResults(results);
-  renderAllTablesFromResults(results);
-
-  updateDashboardCharts('default');
-  renderRankingTabCharts(appState.rankingsMode || 'store');
-  renderMembersTabCharts(appState.membersMode || 'spend');
-  renderSleepingTabCharts(appState.sleepingMode || 'store');
-
-  if (!keepDropdownOpen) {
-    updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
+  showPageLoading('正在更新数据...');
+  try {
+    renderKpisFromResults(results);
+    renderAllTablesFromResults(results);
+    updateDashboardCharts('default');
+    renderRankingTabCharts(appState.rankingsMode || 'store');
+    renderMembersTabCharts(appState.membersMode || 'spend');
+    renderSleepingTabCharts(appState.sleepingMode || 'store');
+    if (!keepDropdownOpen) {
+      updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
+    }
+  } catch (error) {
+    console.error(error);
+    showToast(error?.message || '数据更新失败', 'error');
+  } finally {
+    hidePageLoading();
   }
 }
 
@@ -3536,6 +3595,7 @@ window.addEventListener('resize', syncResultAreaToControlPanel);
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
+    showPageLoading('正在切换视图...');
     document.querySelectorAll('.filter-menu').forEach(menu => menu.classList.add('hidden'));
     showOverlayLight(false);
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -3564,6 +3624,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         { name:'字段映射结果', rows: appState.results?.mappings || [] }
       ]);
     }
+    hidePageLoading();
   });
 });
 
@@ -3722,9 +3783,17 @@ document.getElementById('dashboardStoreTrigger')?.addEventListener('click', () =
 document.getElementById('dashboardSalespersonTrigger')?.addEventListener('click', () => toggleDropdown('dashboardSalespersonMenu'));
 document.getElementById('dashboardProductTrigger')?.addEventListener('click', () => toggleDropdown('dashboardProductMenu'));
 document.getElementById('applyDateRangeBtn')?.addEventListener('click', () => {
+  const btn = document.getElementById('applyDateRangeBtn');
+  if (btn?.disabled) return;
+  setButtonLoading(btn, true, '加载中...');
   updateDateRangeTriggerText();
   toggleDropdown('dashboardDateMenu', false);
-  onGlobalFiltersChanged();
+  try {
+    onGlobalFiltersChanged();
+    showToast('筛选已更新', 'success');
+  } finally {
+    setButtonLoading(btn, false);
+  }
 });
 document.addEventListener('click', (e) => {
   const inDropdown = e.target.closest('.filter-dropdown');

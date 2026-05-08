@@ -59,6 +59,21 @@
     .meta{ margin-top:10px; font-size:12px; color:#6b7280; }
     .error{ margin-top:10px; color:#b91c1c; font-size:13px; min-height:18px; }
     .ok{ color:#166534; }
+    #toast{
+      position:fixed;
+      top:16px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:9999;
+      background:#111827;
+      color:#fff;
+      padding:8px 12px;
+      border-radius:10px;
+      font-size:13px;
+      box-shadow:0 10px 24px rgba(0,0,0,.25);
+      display:none;
+    }
+    #submitBtn[disabled]{ opacity:.72; cursor:not-allowed; }
     @media (max-width: 800px) {
       body{
         display:flex;
@@ -135,16 +150,33 @@
     </form>
     <div class="meta">默认管理员账号：<b>admin</b> / <b>Admin@123456</b>（上线前请立即修改）。</div>
   </section>
+  <div id="toast" role="status" aria-live="polite"></div>
   <script src="/frontend/src/visual/galaxy-background.js"></script>
   <script>
     window.initGalaxyBackground({ includeEarth: true, mapAssistantButton: false });
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('submitBtn');
     const msg = document.getElementById('message');
+    const btnText = btn.textContent;
+    let toastTimer = null;
+    function showToast(text, type = 'info'){
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      toast.textContent = text;
+      toast.style.background = type === 'error' ? '#b91c1c' : (type === 'success' ? '#166534' : '#111827');
+      toast.style.display = 'block';
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 2200);
+    }
+    function setButtonLoading(isLoading){
+      btn.disabled = !!isLoading;
+      btn.textContent = isLoading ? '登录中...' : btnText;
+    }
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       msg.textContent = '';
-      btn.disabled = true;
+      msg.classList.remove('ok');
+      setButtonLoading(true);
       const body = {
         username: document.getElementById('username').value.trim(),
         password: document.getElementById('password').value,
@@ -158,10 +190,12 @@
         const data = await response.json();
         if (!response.ok) {
           msg.textContent = data.error || '登录失败';
+          showToast(msg.textContent, 'error');
           return;
         }
         msg.textContent = '登录成功，正在跳转...';
         msg.classList.add('ok');
+        showToast('登录成功', 'success');
         const params = new URLSearchParams(window.location.search);
         const nextRaw = params.get('next') || '';
         const allowed = new Set(["/dashboard", "/admin", "/mobile", "/mobile.html", "/index.html"]);
@@ -178,8 +212,9 @@
         }
       } catch (error) {
         msg.textContent = error?.message || '网络异常，请稍后重试';
+        showToast(msg.textContent, 'error');
       } finally {
-        btn.disabled = false;
+        setButtonLoading(false);
       }
     });
   </script>
