@@ -109,7 +109,7 @@
       background: #f9fafb;
     }
     .date-range-panel .row { margin-bottom: 10px; }
-    .date-range-panel .row:last-of-type { margin-bottom: 12px; }
+    .date-range-panel .row:last-of-type { margin-bottom: 0; }
     .date-range-panel label { margin-bottom: 6px; }
     .date-range-panel input[type="date"] {
       width: 100%;
@@ -117,10 +117,32 @@
       font-size: 16px;
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 8px 10px;
+      padding: 0 12px;
       background: #fff;
+      color: var(--text);
+      box-sizing: border-box;
+      appearance: none;
+      -webkit-appearance: none;
+      font-variant-numeric: tabular-nums;
     }
-    .date-range-panel .btn { width: 100%; margin-top: 0; }
+    .date-quick {
+      margin: 10px 0 0;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .quick-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: #1f2937;
+      border-radius: 999px;
+      min-height: 32px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .quick-btn:active { filter: brightness(0.96); }
     .filters select {
       width: 100%;
       max-width: 100%;
@@ -269,7 +291,11 @@
           <label for="endDate">结束日期</label>
           <input type="date" id="endDate" />
         </div>
-        <button type="button" class="btn btn-primary" id="applyDateRangeBtn">应用日期</button>
+        <div class="date-quick">
+          <button type="button" class="quick-btn" id="quick7d">近7天</button>
+          <button type="button" class="quick-btn" id="quick30d">近30天</button>
+          <button type="button" class="quick-btn" id="quickMonth">本月</button>
+        </div>
       </div>
     </div>
     <div style="margin-top:12px">
@@ -376,6 +402,7 @@
     endDate: "",
     store: "",
   };
+  let dateRefreshTimer = null;
 
   const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const chatMessages = [];
@@ -558,11 +585,11 @@
     return y + "-" + m + "-" + day;
   }
 
-  function formatZhFromIso(iso) {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+  function formatDateZh(dateString) {
+    if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return "—";
     }
-    var p = iso.split("-");
+    var p = dateString.split("-");
     return p[0] + "年" + String(Number(p[1])) + "月" + String(Number(p[2])) + "日";
   }
 
@@ -573,7 +600,30 @@
       el.textContent = "请选择日期范围";
       return;
     }
-    el.textContent = formatZhFromIso(state.startDate) + " 至 " + formatZhFromIso(state.endDate);
+    el.textContent = formatDateZh(state.startDate) + " 至 " + formatDateZh(state.endDate);
+  }
+
+  function queueDateRefresh() {
+    if (dateRefreshTimer) clearTimeout(dateRefreshTimer);
+    dateRefreshTimer = setTimeout(async function () {
+      if (!datasetId) return;
+      await loadAllData();
+    }, 300);
+  }
+
+  function applyDateRangeFromInputs() {
+    var s = document.getElementById("startDate").value || "";
+    var e = document.getElementById("endDate").value || "";
+    if (!s || !e) return;
+    if (s > e) {
+      showBanner("warn", "开始日期不能晚于结束日期");
+      return;
+    }
+    state.startDate = s;
+    state.endDate = e;
+    updateDateRangeLabel();
+    hideBanner();
+    queueDateRefresh();
   }
 
   async function loadLatestDataset() {
@@ -1163,32 +1213,54 @@
       }
       var dateTrigger = document.getElementById("dateRangeTrigger");
       var datePanel = document.getElementById("dateRangePanel");
-      var applyDateBtn = document.getElementById("applyDateRangeBtn");
-      if (hasPerm("canUseFilters") && dateTrigger && datePanel && applyDateBtn && !dateTrigger.dataset.wired) {
+      var startDateInput = document.getElementById("startDate");
+      var endDateInput = document.getElementById("endDate");
+      var quick7dBtn = document.getElementById("quick7d");
+      var quick30dBtn = document.getElementById("quick30d");
+      var quickMonthBtn = document.getElementById("quickMonth");
+      if (hasPerm("canUseFilters") && dateTrigger && datePanel && startDateInput && endDateInput && !dateTrigger.dataset.wired) {
         dateTrigger.dataset.wired = "1";
         dateTrigger.addEventListener("click", function () {
           datePanel.classList.toggle("hidden");
           var open = !datePanel.classList.contains("hidden");
           dateTrigger.setAttribute("aria-expanded", open ? "true" : "false");
           if (open) {
-            document.getElementById("startDate").value = state.startDate;
-            document.getElementById("endDate").value = state.endDate;
+            startDateInput.value = state.startDate;
+            endDateInput.value = state.endDate;
           }
         });
-        applyDateBtn.addEventListener("click", function () {
-          var s = document.getElementById("startDate").value || "";
-          var e = document.getElementById("endDate").value || "";
-          if (s && e && s > e) {
-            showBanner("warn", "开始日期不能晚于结束日期");
-            return;
-          }
-          state.startDate = s;
-          state.endDate = e;
-          updateDateRangeLabel();
-          hideBanner();
-          datePanel.classList.add("hidden");
-          dateTrigger.setAttribute("aria-expanded", "false");
-        });
+        startDateInput.addEventListener("change", applyDateRangeFromInputs);
+        endDateInput.addEventListener("change", applyDateRangeFromInputs);
+
+        if (quick7dBtn) {
+          quick7dBtn.addEventListener("click", function () {
+            var end = new Date();
+            var start = new Date();
+            start.setDate(end.getDate() - 6);
+            startDateInput.value = ymd(start);
+            endDateInput.value = ymd(end);
+            applyDateRangeFromInputs();
+          });
+        }
+        if (quick30dBtn) {
+          quick30dBtn.addEventListener("click", function () {
+            var end = new Date();
+            var start = new Date();
+            start.setDate(end.getDate() - 29);
+            startDateInput.value = ymd(start);
+            endDateInput.value = ymd(end);
+            applyDateRangeFromInputs();
+          });
+        }
+        if (quickMonthBtn) {
+          quickMonthBtn.addEventListener("click", function () {
+            var end = new Date();
+            var start = new Date(end.getFullYear(), end.getMonth(), 1);
+            startDateInput.value = ymd(start);
+            endDateInput.value = ymd(end);
+            applyDateRangeFromInputs();
+          });
+        }
       }
     }
 
