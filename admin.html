@@ -5,206 +5,263 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>管理后台 - 销售数据分析系统</title>
   <style>
-    body{ margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#f3f6fb; color:#111827; }
-    .wrap{ max-width:1200px; margin:24px auto; padding:0 16px; }
-    .top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; }
-    .btn{ border:none; border-radius:10px; min-height:36px; padding:0 14px; cursor:pointer; font-weight:600; }
-    .btn-primary{ background:#2563eb; color:#fff; }
-    .btn-light{ background:#e5e7eb; color:#111827; }
-    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; align-items:start; }
-    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px; box-shadow:0 10px 24px rgba(2,6,23,.06); }
-    .card-wide{ grid-column:1 / -1; }
-    h1{ margin:0; font-size:22px; }
-    h2{ margin:0 0 8px; font-size:17px; }
-    p{ margin:0; color:#4b5563; font-size:13px; line-height:1.45; }
-    .meta{ font-size:12px; color:#6b7280; margin-top:8px; }
-    .ok{ color:#166534; }
-    .err{ color:#b91c1c; }
-    .muted{ color:#6b7280; font-size:12px; }
-    .field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
-    .field label{ font-size:12px; color:#374151; }
-    .field input,.field select,.field textarea{ min-height:36px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px; font-family:inherit; }
-    .field textarea{ min-height:58px; resize:vertical; }
-    .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
-    .user-item{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; margin-top:12px; }
-    .perm-list{ max-height:130px; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:8px; display:grid; gap:6px; }
-    .perm-toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px; }
-    .perm-toolbar input{ flex:1; min-width:180px; min-height:34px; border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; font-size:13px; }
-    .perm-toolbar .btn{ min-height:32px; padding:0 10px; }
-    .tag-wrap{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-    .tag{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; font-size:12px; padding:2px 8px; }
-    .table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
-    .table th,.table td{ border-bottom:1px solid #e5e7eb; padding:8px 6px; text-align:left; }
-    .btn[disabled]{ opacity:.7; cursor:not-allowed; }
-    #toast{
-      position:fixed;
-      top:16px;
-      left:50%;
-      transform:translateX(-50%);
-      z-index:9999;
-      display:none;
-      max-width:calc(100vw - 32px);
-      background:#111827;
-      color:#fff;
-      padding:8px 12px;
-      border-radius:10px;
-      font-size:13px;
-      box-shadow:0 10px 24px rgba(0,0,0,.22);
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --blue: #2563eb;
+      --green: #166534;
+      --red: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    .mobile-only-warn { display: none; margin: 0; padding: 12px 16px; background: #fef3c7; color: #92400e; border-bottom: 1px solid #fbbf24; text-align: center; font-size: 14px; }
+    .container { max-width: 1500px; margin: 0 auto; padding: 18px 16px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .topbar h1 { margin: 0; font-size: 24px; }
+    .topbar p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .btn { border: none; border-radius: 10px; min-height: 36px; padding: 0 14px; cursor: pointer; font-weight: 600; }
+    .btn:disabled { opacity: .7; cursor: not-allowed; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-light { background: #e5e7eb; color: #111827; }
+    .btn-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .workspace { display: grid; grid-template-columns: 240px minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 24px rgba(2,6,23,.06); }
+    .left-tree { padding: 12px; position: sticky; top: 12px; }
+    .tree-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .tree-list { display: grid; gap: 6px; }
+    .tree-node { border: 1px solid var(--line); background: #fff; border-radius: 8px; text-align: left; padding: 7px 9px; cursor: pointer; font-size: 13px; }
+    .tree-node.active { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+    .main-panel { padding: 12px; }
+    .filters { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr) auto auto; gap: 8px; align-items: end; margin-bottom: 10px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: #374151; }
+    .field input, .field select, .field textarea { min-height: 36px; border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 10px; font-size: 13px; font-family: inherit; }
+    .field textarea { min-height: 56px; resize: vertical; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1200px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: middle; }
+    th { background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid; }
+    .badge-ok { color: #166534; background: #dcfce7; border-color: #bbf7d0; }
+    .badge-off { color: #7f1d1d; background: #fee2e2; border-color: #fecaca; }
+    .cell-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .side-panel { display: grid; gap: 12px; position: sticky; top: 12px; }
+    .side-card { padding: 12px; }
+    .side-card h3 { margin: 0 0 8px; font-size: 15px; }
+    .meta { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .meta.ok { color: var(--green); }
+    .meta.err { color: var(--red); }
+    .drawer-mask, .modal-mask { position: fixed; inset: 0; background: rgba(17,24,39,.4); z-index: 50; display: none; }
+    .drawer-mask.show, .modal-mask.show { display: block; }
+    .drawer { position: fixed; top: 0; right: 0; width: min(760px, 100vw); height: 100vh; background: #fff; box-shadow: -8px 0 32px rgba(0,0,0,.18); z-index: 60; transform: translateX(100%); transition: transform .2s ease; display: flex; flex-direction: column; }
+    .drawer.show { transform: translateX(0); }
+    .drawer-head { padding: 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+    .drawer-body { padding: 12px; overflow: auto; display: grid; gap: 12px; }
+    .drawer-foot { padding: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
+    .group { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+    .group h4 { margin: 0 0 8px; font-size: 14px; }
+    .perm-list { max-height: 140px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
+    .perm-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .perm-toolbar input { flex: 1; min-width: 180px; min-height: 34px; border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 10px; }
+    .tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .tag { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 999px; font-size: 12px; padding: 2px 8px; }
+    .modal { position: fixed; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, 92vw); background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,.25); z-index: 60; display: none; }
+    .modal.show { display: block; }
+    .modal-head, .modal-foot { padding: 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+    .modal-foot { border-bottom: none; border-top: 1px solid var(--line); }
+    .modal-body { padding: 12px; display: grid; gap: 10px; }
+    #toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; display: none; max-width: calc(100vw - 32px); background: #111827; color: #fff; padding: 8px 12px; border-radius: 10px; font-size: 13px; box-shadow: 0 10px 24px rgba(0,0,0,.22); }
+    @media (max-width: 1024px) {
+      .mobile-only-warn { display: block; }
+      .container { display: none; }
     }
   </style>
 </head>
 <body>
-  <div id="adminMobileWarn" style="display:none;margin:0;padding:12px 16px;background:#fef3c7;color:#92400e;font-size:14px;text-align:center;border-bottom:1px solid #fbbf24;">
-    建议在电脑端使用管理后台。
-  </div>
-  <script>
-    (function () {
-      var el = document.getElementById('adminMobileWarn');
-      function sync() {
-        if (!el) return;
-        var mobile = window.matchMedia('(max-width: 768px)').matches;
-        var ua = /Mobile|Android|iPhone|iPad|DingTalk/i.test(navigator.userAgent || '');
-        el.style.display = mobile || ua ? 'block' : 'none';
-      }
-      sync();
-      window.addEventListener('resize', sync);
-    })();
-  </script>
-  <div class="wrap">
-    <header class="top">
+  <div id="adminMobileWarn" class="mobile-only-warn">建议在电脑端使用管理后台。</div>
+  <div class="container">
+    <header class="topbar">
       <div>
         <h1>管理后台</h1>
-        <p>Phase 3：优化权限编辑体验、审计日志、导入历史与备份准备。</p>
+        <p>账号与权限工作台</p>
       </div>
-      <div class="row">
+      <div style="display:flex; gap:8px;">
         <button id="toDashboardBtn" class="btn btn-light">数据看板</button>
         <button id="logoutBtn" class="btn btn-primary">退出登录</button>
       </div>
     </header>
 
-    <section class="grid">
-      <article class="card">
-        <h2>用户管理</h2>
-        <p>创建用户、调整角色、启停账号、重置密码。</p>
-        <div class="field"><label for="createUsername">新账号</label><input id="createUsername" placeholder="例如：user_demo" /></div>
-        <div class="field"><label for="createDisplayName">显示名称</label><input id="createDisplayName" placeholder="例如：门店经理A" /></div>
-        <div class="field">
-          <label for="createRole">角色</label>
-          <select id="createRole">
-            <option value="manager">经理</option>
-            <option value="store_user">门店用户</option>
-            <option value="salesperson">销售员</option>
-            <option value="viewer">查看者</option>
-            <option value="disabled">停用</option>
-            <option value="admin">管理员</option>
-          </select>
+    <section class="workspace">
+      <aside class="card left-tree">
+        <div class="tree-title">组织 / 门店</div>
+        <div id="orgTree" class="tree-list"></div>
+      </aside>
+
+      <main class="card main-panel">
+        <div class="filters">
+          <div class="field">
+            <label for="filterKeyword">搜索账号/显示名称</label>
+            <input id="filterKeyword" placeholder="输入关键词" />
+          </div>
+          <div class="field">
+            <label for="filterRole">角色</label>
+            <select id="filterRole">
+              <option value="">全部角色</option>
+              <option value="admin">管理员</option>
+              <option value="manager">经理</option>
+              <option value="store_user">门店用户</option>
+              <option value="salesperson">销售员</option>
+              <option value="viewer">查看者</option>
+              <option value="disabled">停用</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filterStatus">状态</label>
+            <select id="filterStatus">
+              <option value="">全部状态</option>
+              <option value="enabled">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="filterScope">管理范围</label>
+            <select id="filterScope">
+              <option value="">全部范围</option>
+              <option value="hq">总部</option>
+              <option value="limited">门店/销售员受限</option>
+            </select>
+          </div>
+          <button id="queryUsersBtn" class="btn btn-light">查询</button>
+          <button id="resetFiltersBtn" class="btn btn-light">重置</button>
+          <button id="openCreateBtn" class="btn btn-primary">新增账号</button>
         </div>
-        <div class="field"><label for="createPassword">初始密码（至少8位）</label><input id="createPassword" type="password" /></div>
-        <div class="row"><button id="createUserBtn" class="btn btn-primary">创建用户</button><span id="createUserMsg" class="meta"></span></div>
-      </article>
 
-      <article class="card" id="dingtalkTestCard" hidden>
-        <h2>钉钉</h2>
-        <p>向配置的测试账号发送一条工作台通知（需服务端配置钉钉应用参数）。仅管理员可见。</p>
-        <div class="row">
-          <button id="dingtalkTestBtn" type="button" class="btn btn-light">发送钉钉测试通知</button>
-          <span id="dingtalkTestMsg" class="meta"></span>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>账号</th><th>显示名称</th><th>角色</th><th>管理范围</th><th>门店权限</th><th>销售员权限</th><th>商品权限</th><th>Agent</th><th>敏感字段</th><th>状态</th><th>最后登录</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr><td colspan="12" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
         </div>
-      </article>
+      </main>
 
-      <article class="card">
-        <h2>数据导入</h2>
-        <p>仅管理员可导入 Excel，显示实时状态、最新更新时间与历史记录。</p>
-        <div class="field"><label for="adminImportFile">选择 Excel 文件（.xls / .xlsx，可多选）</label><input id="adminImportFile" type="file" accept=".xls,.xlsx" multiple /></div>
-        <div id="adminImportFileMeta" class="meta">已选择 0 个文件</div>
-        <div id="adminImportFileList" class="meta"></div>
-        <div class="row"><button id="adminImportBtn" class="btn btn-primary">开始导入</button><span id="adminImportStatus" class="meta">待上传</span></div>
-        <div id="latestImportMeta" class="meta">最新数据更新时间：暂无</div>
-      </article>
+      <aside class="side-panel">
+        <article class="card side-card">
+          <h3>数据导入</h3>
+          <div class="field"><label for="adminImportFile">选择 Excel（可多选）</label><input id="adminImportFile" type="file" accept=".xls,.xlsx" multiple /></div>
+          <div id="adminImportFileMeta" class="meta">已选择 0 个文件</div>
+          <div id="adminImportFileList" class="meta"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+            <button id="adminImportBtn" class="btn btn-primary">开始导入</button>
+            <span id="adminImportStatus" class="meta">待上传</span>
+          </div>
+          <div id="latestImportMeta" class="meta" style="margin-top:8px;">最新数据更新时间：暂无</div>
+        </article>
 
-      <article class="card card-wide">
-        <h2>权限管理（多选 + 手工兜底）</h2>
-        <p>优先使用可视化多选；如需自定义可使用手工文本（逗号分隔）兜底。</p>
-        <div id="permissionHint" class="meta">正在加载可分配项...</div>
-        <div id="userListWrap" class="meta">加载用户中...</div>
-      </article>
+        <article class="card side-card" id="dingtalkTestCard" hidden>
+          <h3>钉钉测试通知</h3>
+          <p class="meta">仅管理员可发送测试通知。</p>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <button id="dingtalkTestBtn" class="btn btn-light">发送钉钉测试通知</button>
+            <span id="dingtalkTestMsg" class="meta"></span>
+          </div>
+        </article>
 
-      <article class="card card-wide">
-        <h2>导入历史</h2>
-        <div id="importHistoryWrap" class="meta">加载中...</div>
-      </article>
-
-      <article class="card card-wide">
-        <h2>审计日志</h2>
-        <p>记录管理员关键操作：创建用户、权限变更、重置密码、导入文件等。</p>
-        <div id="auditLogWrap" class="meta">加载中...</div>
-      </article>
+        <article class="card side-card">
+          <h3>导入历史</h3>
+          <div id="importHistoryWrap" class="meta">加载中...</div>
+        </article>
+      </aside>
     </section>
   </div>
+
+  <div id="drawerMask" class="drawer-mask"></div>
+  <aside id="editDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <b>编辑账号与权限</b>
+      <button id="closeDrawerBtn" class="btn btn-light">关闭</button>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+    <div class="drawer-foot">
+      <span id="drawerMsg" class="meta"></span>
+      <div style="display:flex; gap:8px;">
+        <button id="drawerResetPwdBtn" class="btn btn-light">重置密码</button>
+        <button id="drawerApplyRoleBtn" class="btn btn-light">应用角色默认权限</button>
+        <button id="drawerSaveBtn" class="btn btn-primary">保存权限</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="createModalMask" class="modal-mask"></div>
+  <section id="createModal" class="modal" aria-hidden="true">
+    <div class="modal-head">
+      <b>新增账号</b>
+      <button id="closeCreateModalBtn" class="btn btn-light">关闭</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label for="createUsername">账号</label><input id="createUsername" placeholder="例如：user_demo" /></div>
+      <div class="field"><label for="createDisplayName">显示名称</label><input id="createDisplayName" placeholder="例如：门店经理A" /></div>
+      <div class="field"><label for="createRole">角色</label>
+        <select id="createRole">
+          <option value="manager">经理</option><option value="store_user">门店用户</option><option value="salesperson">销售员</option><option value="viewer">查看者</option><option value="disabled">停用</option><option value="admin">管理员</option>
+        </select>
+      </div>
+      <div class="field"><label for="createPassword">初始密码（至少8位）</label><input id="createPassword" type="password" /></div>
+      <div id="createUserMsg" class="meta"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="meta">创建成功后自动刷新列表</span>
+      <button id="createUserBtn" class="btn btn-primary">创建用户</button>
+    </div>
+  </section>
+
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script>
-    const roleMap = {
-      admin: "管理员",
-      manager: "经理",
-      store_user: "门店用户",
-      salesperson: "销售员",
-      viewer: "查看者",
-      disabled: "停用",
-    };
+    const roleMap = { admin:"管理员", manager:"经理", store_user:"门店用户", salesperson:"销售员", viewer:"查看者", disabled:"停用" };
     const permissionGroups = {
-      dashboard: [
-        "canViewDashboard","canViewKpi","canViewStoreRanking","canViewSalespersonRanking","canViewProductRanking",
-        "canViewMemberAnalysis","canViewSleepingMembers","canViewTrendCharts","canViewRepurchaseAnalysis","canUseFilters",
-        "canExportData","canDownloadExcel","canViewRawRows","canViewDataQuality"
-      ],
-      admin: [
-        "canAccessAdmin","canManageUsers","canCreateUsers","canDisableUsers","canResetPasswords","canAssignRoles",
-        "canAssignDataScopes","canImportExcel","canDeleteImportedData","canViewImportHistory","canViewAuditLogs",
-        "canManageSystemSettings","canManageAgentSettings","canManageDingTalkSettings","canManageBackups"
-      ],
-      agent: [
-        "canUseAgentChat","canAskCompanyWideQuestions","canAskStoreQuestions","canAskSalespersonQuestions",
-        "canAskMemberQuestions","canAskSensitiveMemberQuestions","canAskForExport","canAskForRecommendations"
-      ],
-      reminders: [
-        "canReceiveDingTalkReminders","canReceiveMemberMaintenanceReminders","canReceiveStoreManagementReminders",
-        "canReceiveSalespersonPerformanceReminders","canReceiveSleepingMemberReminders","canManageReminderRules","canManageReminderRecipients"
-      ],
+      dashboard: ["canViewDashboard","canViewKpi","canViewStoreRanking","canViewSalespersonRanking","canViewProductRanking","canViewMemberAnalysis","canViewSleepingMembers","canViewTrendCharts","canViewRepurchaseAnalysis","canUseFilters","canExportData","canDownloadExcel","canViewRawRows","canViewDataQuality"],
+      admin: ["canAccessAdmin","canManageUsers","canCreateUsers","canDisableUsers","canResetPasswords","canAssignRoles","canAssignDataScopes","canImportExcel","canDeleteImportedData","canViewImportHistory","canViewAuditLogs","canManageSystemSettings","canManageAgentSettings","canManageDingTalkSettings","canManageBackups"],
+      agent: ["canUseAgentChat","canAskCompanyWideQuestions","canAskStoreQuestions","canAskSalespersonQuestions","canAskMemberQuestions","canAskSensitiveMemberQuestions","canAskForExport","canAskForRecommendations"],
+      reminders: ["canReceiveDingTalkReminders","canReceiveMemberMaintenanceReminders","canReceiveStoreManagementReminders","canReceiveSalespersonPerformanceReminders","canReceiveSleepingMemberReminders","canManageReminderRules","canManageReminderRecipients"],
       memberFields: ["canViewMemberName","canViewPhone","canViewMemberId","canViewBirthday","canViewAddress"],
     };
     const permissionLabelMap = {
-      canViewDashboard: "查看数据看板", canViewKpi: "查看 KPI", canViewStoreRanking: "查看门店排行",
-      canViewSalespersonRanking: "查看销售员排行", canViewProductRanking: "查看商品排行", canViewMemberAnalysis: "查看会员分析",
-      canViewSleepingMembers: "查看沉睡会员", canViewTrendCharts: "查看趋势图", canViewRepurchaseAnalysis: "查看复购分析",
-      canUseFilters: "使用筛选器", canExportData: "导出数据", canDownloadExcel: "下载 Excel",
-      canViewRawRows: "查看原始明细", canViewDataQuality: "查看数据校验", canAccessAdmin: "访问管理后台",
-      canManageUsers: "管理用户", canCreateUsers: "创建用户", canDisableUsers: "停用用户", canResetPasswords: "重置密码",
-      canAssignRoles: "分配角色", canAssignDataScopes: "分配数据范围", canImportExcel: "导入 Excel",
-      canDeleteImportedData: "删除导入数据", canViewImportHistory: "查看导入历史", canViewAuditLogs: "查看审计日志",
-      canManageSystemSettings: "系统设置", canManageAgentSettings: "Agent 设置", canManageDingTalkSettings: "钉钉设置", canManageBackups: "备份设置",
-      canUseAgentChat: "使用数据助手", canAskCompanyWideQuestions: "跨全公司提问", canAskStoreQuestions: "门店维度提问",
-      canAskSalespersonQuestions: "销售员维度提问", canAskMemberQuestions: "会员维度提问", canAskSensitiveMemberQuestions: "敏感会员信息提问",
-      canAskForExport: "要求导出", canAskForRecommendations: "经营建议问答",
-      canReceiveDingTalkReminders: "接收钉钉提醒", canReceiveMemberMaintenanceReminders: "会员维护提醒",
-      canReceiveStoreManagementReminders: "门店管理提醒", canReceiveSalespersonPerformanceReminders: "销售员业绩提醒",
-      canReceiveSleepingMemberReminders: "沉睡会员提醒", canManageReminderRules: "管理提醒规则", canManageReminderRecipients: "管理提醒接收人",
-      canViewMemberName: "查看会员姓名", canViewPhone: "查看手机号", canViewMemberId: "查看会员标识",
-      canViewBirthday: "查看生日", canViewAddress: "查看地址",
+      canViewDashboard:"查看数据看板",canViewKpi:"查看 KPI",canViewStoreRanking:"查看门店排行",canViewSalespersonRanking:"查看销售员排行",canViewProductRanking:"查看商品排行",canViewMemberAnalysis:"查看会员分析",canViewSleepingMembers:"查看沉睡会员",canViewTrendCharts:"查看趋势图",canViewRepurchaseAnalysis:"查看复购分析",canUseFilters:"使用筛选器",canExportData:"导出数据",canDownloadExcel:"下载 Excel",canViewRawRows:"查看原始明细",canViewDataQuality:"查看数据校验",
+      canAccessAdmin:"访问管理后台",canManageUsers:"管理用户",canCreateUsers:"创建用户",canDisableUsers:"停用用户",canResetPasswords:"重置密码",canAssignRoles:"分配角色",canAssignDataScopes:"分配数据范围",canImportExcel:"导入 Excel",canDeleteImportedData:"删除导入数据",canViewImportHistory:"查看导入历史",canViewAuditLogs:"查看审计日志",canManageSystemSettings:"系统设置",canManageAgentSettings:"Agent 设置",canManageDingTalkSettings:"钉钉设置",canManageBackups:"备份设置",
+      canUseAgentChat:"使用数据助手",canAskCompanyWideQuestions:"跨全公司提问",canAskStoreQuestions:"门店维度提问",canAskSalespersonQuestions:"销售员维度提问",canAskMemberQuestions:"会员维度提问",canAskSensitiveMemberQuestions:"敏感会员信息提问",canAskForExport:"要求导出",canAskForRecommendations:"经营建议问答",
+      canReceiveDingTalkReminders:"接收钉钉提醒",canReceiveMemberMaintenanceReminders:"会员维护提醒",canReceiveStoreManagementReminders:"门店管理提醒",canReceiveSalespersonPerformanceReminders:"销售员业绩提醒",canReceiveSleepingMemberReminders:"沉睡会员提醒",canManageReminderRules:"管理提醒规则",canManageReminderRecipients:"管理提醒接收人",
+      canViewMemberName:"查看会员姓名",canViewPhone:"查看手机号",canViewMemberId:"查看会员标识",canViewBirthday:"查看生日",canViewAddress:"查看地址",
     };
-    let permissionOptions = { stores: [], salespeople: [], products: [] };
-    const permissionSearchState = {};
+
     let usersCache = [];
+    let permissionOptions = { stores: [], salespeople: [], products: [] };
+    let selectedTree = { type: "all", value: "" };
+    let editingUserId = "";
+    const permissionSearchState = {};
     let toastTimer = null;
+
+    const splitCsv = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const uniq = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
+    const joinCsv = (list) => (Array.isArray(list) ? list : []).join(", ");
+    const fmtTime = (v) => { const d = new Date(v); return !v || Number.isNaN(d.getTime()) ? "暂无" : d.toLocaleString("zh-CN"); };
 
     function showToast(message, type = "info") {
       const toast = document.getElementById("toast");
-      if (!toast) return;
       toast.textContent = message || "";
       toast.style.background = type === "error" ? "#b91c1c" : (type === "success" ? "#166534" : "#111827");
       toast.style.display = "block";
       if (toastTimer) clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { toast.style.display = "none"; }, 2300);
+      toastTimer = setTimeout(() => { toast.style.display = "none"; }, 2200);
     }
     function setButtonLoading(button, isLoading, loadingText) {
       if (!button) return;
@@ -213,55 +270,232 @@
       button.textContent = isLoading ? (loadingText || "处理中...") : button.dataset.originText;
     }
     async function withLoading(button, loadingText, asyncFn) {
-      if (!button || button.disabled) return;
       setButtonLoading(button, true, loadingText);
-      try {
-        return await asyncFn();
-      } finally {
-        setButtonLoading(button, false);
-      }
+      try { return await asyncFn(); } finally { setButtonLoading(button, false); }
     }
 
-    const splitCsv = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
-    const uniq = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
-    const joinCsv = (list) => (Array.isArray(list) ? list : []).join(", ");
-    const fmtTime = (v) => {
-      if (!v) return "暂无";
-      if (typeof v === "object") {
-        const maybeIso = v?.value || v?.iso || v?.timestamp || "";
-        if (maybeIso) {
-          const d0 = new Date(maybeIso);
-          if (!Number.isNaN(d0.getTime())) return d0.toLocaleString("zh-CN");
-        }
-        if (typeof v?.micros === "number") {
-          const d1 = new Date(Math.floor(v.micros / 1000));
-          if (!Number.isNaN(d1.getTime())) return d1.toLocaleString("zh-CN");
-        }
-        return JSON.stringify(v);
+    function summarizeScope(u) {
+      if (u.allowAllStores && u.allowAllSalespeople && u.allowAllProducts) return "总部";
+      if (u.allowAllStores) return "全门店";
+      return "受限范围";
+    }
+    function summarizeCount(allowAll, list, unit) {
+      if (allowAll) return "全部";
+      const count = Array.isArray(list) ? list.length : 0;
+      return `${count}${unit}`;
+    }
+    function summarizeSensitive(fields = {}) {
+      const names = [];
+      if (fields.canViewPhone) names.push("手机号");
+      if (fields.canViewMemberName) names.push("会员名");
+      if (fields.canViewMemberId) names.push("会员标识");
+      if (!names.length) return "未开启";
+      return names.join("、");
+    }
+    function hasAgentEnabled(u) {
+      return !!u?.permissions?.canUseAgentChat;
+    }
+    function userVisibleInTree(u) {
+      if (selectedTree.type === "all") return true;
+      if (selectedTree.type === "hq") return !!u.allowAllStores;
+      if (selectedTree.type === "allStores") return true;
+      if (selectedTree.type === "store") {
+        const store = selectedTree.value;
+        return !!u.allowAllStores || (Array.isArray(u.allowedStores) && u.allowedStores.includes(store));
       }
-      const d = new Date(v);
-      return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("zh-CN");
-    };
+      return true;
+    }
+    function applyFilters(rows) {
+      const keyword = String(document.getElementById("filterKeyword").value || "").trim().toLowerCase();
+      const role = document.getElementById("filterRole").value;
+      const status = document.getElementById("filterStatus").value;
+      const scope = document.getElementById("filterScope").value;
+      return rows.filter((u) => {
+        if (!userVisibleInTree(u)) return false;
+        if (keyword) {
+          const hit = String(u.username || "").toLowerCase().includes(keyword) || String(u.displayName || "").toLowerCase().includes(keyword);
+          if (!hit) return false;
+        }
+        if (role && String(u.role || "") !== role) return false;
+        if (status === "enabled" && !u.enabled) return false;
+        if (status === "disabled" && !!u.enabled) return false;
+        if (scope === "hq" && !u.allowAllStores) return false;
+        if (scope === "limited" && !!u.allowAllStores) return false;
+        return true;
+      });
+    }
 
+    function renderOrgTree() {
+      const stores = uniq((permissionOptions.stores || []).slice()).sort((a, b) => a.localeCompare(b, "zh-CN"));
+      const nodes = [
+        { type: "all", value: "", label: `全部账号（${usersCache.length}）` },
+        { type: "hq", value: "", label: "总部" },
+        { type: "allStores", value: "", label: "全部门店" },
+        ...stores.map((s) => ({ type: "store", value: s, label: s })),
+      ];
+      document.getElementById("orgTree").innerHTML = nodes.map((n) => {
+        const active = selectedTree.type === n.type && selectedTree.value === n.value ? " active" : "";
+        return `<button class="tree-node${active}" data-tree-type="${n.type}" data-tree-value="${n.value.replace(/"/g, "&quot;")}">${n.label}</button>`;
+      }).join("");
+    }
+
+    function renderUsersTable() {
+      const rows = applyFilters(usersCache);
+      const tbody = document.getElementById("usersTableBody");
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="12" class="muted">暂无匹配账号</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map((u) => `
+        <tr>
+          <td>${u.username || "-"}</td>
+          <td>${u.displayName || "-"}</td>
+          <td>${roleMap[u.role] || u.role || "-"}</td>
+          <td>${summarizeScope(u)}</td>
+          <td>${summarizeCount(u.allowAllStores, u.allowedStores, "家")}</td>
+          <td>${summarizeCount(u.allowAllSalespeople, u.allowedSalespeople, "人")}</td>
+          <td>${summarizeCount(u.allowAllProducts, u.allowedProducts, "个")}</td>
+          <td>${hasAgentEnabled(u) ? "已开启" : "未开启"}</td>
+          <td>${summarizeSensitive(u.allowedMemberFields || {})}</td>
+          <td><span class="badge ${u.enabled ? "badge-ok" : "badge-off"}">${u.enabled ? "启用" : "停用"}</span></td>
+          <td>${fmtTime(u.lastLoginAt)}</td>
+          <td>
+            <div class="cell-actions">
+              <button class="btn btn-light" data-action="edit" data-id="${u.id}">编辑</button>
+              <button class="btn ${u.enabled ? "btn-danger" : "btn-light"}" data-action="toggle" data-id="${u.id}">${u.enabled ? "停用" : "启用"}</button>
+              <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadUsers() {
+      const res = await fetch("/api/admin/users");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="12" class="muted">${data.error || "用户列表加载失败"}</td></tr>`;
+        return;
+      }
+      usersCache = data.users || [];
+      renderOrgTree();
+      renderUsersTable();
+    }
+    async function loadPermissionOptions() {
+      const res = await fetch("/api/admin/permission-options");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) permissionOptions = data.options || { stores: [], salespeople: [], products: [] };
+      renderOrgTree();
+    }
+
+    async function refreshLatestImportMeta() {
+      const el = document.getElementById("latestImportMeta");
+      const res = await fetch("/api/admin/import/latest");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { el.className = "meta err"; el.textContent = data.error || "加载最新导入信息失败"; return; }
+      const latest = data.latest;
+      el.className = "meta";
+      el.textContent = latest ? `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）` : "最新数据更新时间：暂无";
+    }
+    async function loadImportHistory() {
+      const wrap = document.getElementById("importHistoryWrap");
+      const res = await fetch("/api/admin/import/history?limit=8");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { wrap.className = "meta err"; wrap.textContent = data.error || "导入历史加载失败"; return; }
+      const rows = data.rows || [];
+      if (!rows.length) { wrap.className = "meta"; wrap.textContent = "暂无导入历史"; return; }
+      wrap.className = "";
+      wrap.innerHTML = rows.map((r) => `<div style="padding:6px 0;border-bottom:1px solid #eef2f7;"><b>${r.filename || "-"}</b><div class="meta">${fmtTime(r.importedAt)} · ${r.status || "-"} · ${r.rowCount || 0} 行</div></div>`).join("");
+    }
+
+    async function uploadImportFile() {
+      const files = [...(document.getElementById("adminImportFile").files || [])];
+      const status = document.getElementById("adminImportStatus");
+      if (!files.length) { status.className = "meta err"; status.textContent = "请先选择文件"; showToast("请先选择文件", "error"); return; }
+      status.className = "meta";
+      status.textContent = `上传中（${files.length} 个文件）...`;
+      const form = new FormData();
+      files.forEach((f) => form.append("files", f));
+      form.append("mapping", JSON.stringify({}));
+      const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) { status.className = "meta err"; status.textContent = uploadData.error || "上传失败"; showToast(status.textContent, "error"); return; }
+      const jobId = uploadData.jobId;
+      for (let i = 0; i < 300; i += 1) {
+        const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
+        const jobData = await jobRes.json().catch(() => ({}));
+        const job = jobData.job || {};
+        const progress = job?.stats?.importProgress || {};
+        const idx = Number(progress.currentFileIndex || 0);
+        const total = Number(progress.fileCount || files.length);
+        const name = String(progress.currentFileName || "");
+        const rows = Number(progress.cumulativeRowCount || 0);
+        status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(idx, total)}/${total} 个｜${name || "处理中"}｜累计 ${rows} 行`;
+        if (job.status === "completed") {
+          const okFiles = job?.stats?.successfulFiles || [];
+          const failFiles = job?.stats?.failedFiles || [];
+          status.className = "meta ok";
+          status.textContent = `导入完成：成功 ${okFiles.length}，失败 ${failFiles.length}，累计 ${Number(job?.stats?.rowCount || 0)} 行`;
+          showToast("导入完成", "success");
+          await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadPermissionOptions()]);
+          return;
+        }
+        if (job.status === "failed") {
+          status.className = "meta err";
+          status.textContent = job.error || "导入失败";
+          showToast(status.textContent, "error");
+          await loadImportHistory();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      status.className = "meta err";
+      status.textContent = "导入超时，请稍后查看导入历史";
+      showToast(status.textContent, "error");
+    }
+    function renderImportFileSelection() {
+      const files = [...(document.getElementById("adminImportFile").files || [])];
+      document.getElementById("adminImportFileMeta").textContent = `已选择 ${files.length} 个文件`;
+      document.getElementById("adminImportFileList").innerHTML = files.map((f) => `<div>${f.name}（${Math.ceil((Number(f.size) || 0) / 1024)} KB）</div>`).join("");
+    }
+
+    function getPermissionSearchKey(kind, userId) { return `${kind}:${userId}`; }
+    function getPermissionSearchValue(kind, userId) { return String(permissionSearchState[getPermissionSearchKey(kind, userId)] || ""); }
+    function setPermissionSearchValue(kind, userId, value) { permissionSearchState[getPermissionSearchKey(kind, userId)] = String(value || ""); }
+    function renderPermissionFlagsCheckboxes(userId, groupName, flags = {}) {
+      return (permissionGroups[groupName] || []).map((key) => {
+        const checked = flags?.[key] ? " checked" : "";
+        return `<label><input type="checkbox" data-perm-group="${groupName}" data-perm-key="${key}" data-id="${userId}"${checked}/> ${permissionLabelMap[key] || key}</label>`;
+      }).join("");
+    }
+    function collectPermissionFlags(userId, groupName) {
+      const values = {};
+      document.querySelectorAll(`input[type="checkbox"][data-perm-group="${groupName}"][data-id="${userId}"]`).forEach((node) => {
+        const key = node.getAttribute("data-perm-key");
+        if (key) values[key] = !!node.checked;
+      });
+      return values;
+    }
+    function renderPermissionCheckboxes(kind, userId, selectedValues, searchValue = "") {
+      const options = kind === "stores" ? permissionOptions.stores : kind === "salespeople" ? permissionOptions.salespeople : permissionOptions.products;
+      const selectedSet = new Set(selectedValues || []);
+      const search = String(searchValue || "").trim().toLowerCase();
+      if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
+      const filtered = options.filter((v) => selectedSet.has(v) || !search || String(v).toLowerCase().includes(search));
+      if (!filtered.length) return '<div class="muted">无匹配项</div>';
+      return filtered.map((v) => `<label><input type="checkbox" data-kind="${kind}" data-id="${userId}" value="${v.replace(/"/g, "&quot;")}"${selectedSet.has(v) ? " checked" : ""}/> ${v}</label>`).join("");
+    }
+    function collectPermissionValues(kind, userId) {
+      const checked = [...document.querySelectorAll(`input[type="checkbox"][data-kind="${kind}"][data-id="${userId}"]:checked`)].map((x) => x.value);
+      const manual = splitCsv(document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`)?.value || "");
+      return uniq([...checked, ...manual]);
+    }
     function renderTagList(targetId, values) {
       const el = document.getElementById(targetId);
       if (!el) return;
       const rows = uniq(values);
       el.innerHTML = rows.length ? rows.map((v) => `<span class="tag">${v}</span>`).join("") : '<span class="muted">未选择</span>';
     }
-
-    function getPermissionSearchKey(kind, userId) {
-      return `${kind}:${userId}`;
-    }
-
-    function getPermissionSearchValue(kind, userId) {
-      return String(permissionSearchState[getPermissionSearchKey(kind, userId)] || "");
-    }
-
-    function setPermissionSearchValue(kind, userId, value) {
-      permissionSearchState[getPermissionSearchKey(kind, userId)] = String(value || "");
-    }
-
     function renderSelectedCount(kind, userId, selectedValues) {
       const el = document.getElementById(`count-${kind}-${userId}`);
       if (!el) return;
@@ -269,26 +503,6 @@
       const unit = kind === "stores" ? "个门店" : kind === "salespeople" ? "位销售员" : "个商品";
       el.textContent = `已选择 ${count} ${unit}`;
     }
-
-    function renderPermissionCheckboxes(kind, userId, selectedValues, searchValue = "") {
-      const options = kind === "stores" ? permissionOptions.stores : kind === "salespeople" ? permissionOptions.salespeople : permissionOptions.products;
-      const selectedSet = new Set(selectedValues || []);
-      const search = String(searchValue || "").trim().toLowerCase();
-      if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
-      const filtered = options.filter((v) => selectedSet.has(v) || !search || String(v).toLowerCase().includes(search));
-      if (!filtered.length) return '<div class="muted">无匹配项，请调整搜索关键词</div>';
-      return filtered.map((v) => {
-        const checked = selectedSet.has(v) ? " checked" : "";
-        return `<label><input type="checkbox" data-kind="${kind}" data-id="${userId}" value="${v.replace(/"/g, "&quot;")}"${checked}/> ${v}</label>`;
-      }).join("");
-    }
-
-    function collectPermissionValues(kind, userId) {
-      const checked = [...document.querySelectorAll(`input[type="checkbox"][data-kind="${kind}"][data-id="${userId}"]:checked`)].map((x) => x.value);
-      const manual = splitCsv(document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`)?.value || "");
-      return uniq([...checked, ...manual]);
-    }
-
     function renderPermissionPanel(kind, userId, selectedValues) {
       const listEl = document.getElementById(`perm-list-${kind}-${userId}`);
       if (!listEl) return;
@@ -298,7 +512,6 @@
       renderTagList(`tags-${kind}-${userId}`, selected);
       renderSelectedCount(kind, userId, selected);
     }
-
     function applyPermissionBulkAction(kind, userId, action) {
       const options = kind === "stores" ? permissionOptions.stores : kind === "salespeople" ? permissionOptions.salespeople : permissionOptions.products;
       const fallback = document.querySelector(`[data-fallback="${kind}"][data-id="${userId}"]`);
@@ -308,130 +521,127 @@
         renderPermissionPanel(kind, userId, []);
         return;
       }
-      if (action === "all") {
-        const selected = uniq([...options, ...manualValues]);
-        renderPermissionPanel(kind, userId, selected);
-      }
+      renderPermissionPanel(kind, userId, uniq([...options, ...manualValues]));
     }
 
-    function renderPermissionFlagsCheckboxes(userId, groupName, flags = {}) {
-      const keys = permissionGroups[groupName] || [];
-      return keys
-        .map((key) => {
-          const checked = flags?.[key] ? " checked" : "";
-          return `<label><input type="checkbox" data-perm-group="${groupName}" data-perm-key="${key}" data-id="${userId}"${checked}/> ${permissionLabelMap[key] || key}</label>`;
-        })
-        .join("");
-    }
-
-    function collectPermissionFlags(userId, groupName) {
-      const values = {};
-      const nodes = document.querySelectorAll(`input[type="checkbox"][data-perm-group="${groupName}"][data-id="${userId}"]`);
-      nodes.forEach((node) => {
-        const key = node.getAttribute("data-perm-key");
-        if (!key) return;
-        values[key] = !!node.checked;
-      });
-      return values;
-    }
-
-    function renderUsers(rows) {
-      const wrap = document.getElementById("userListWrap");
-      if (!rows.length) {
-        wrap.textContent = "暂无用户";
-        return;
-      }
-      const optionsRole = (role) => Object.keys(roleMap).map((k) => `<option value="${k}"${k === role ? " selected" : ""}>${roleMap[k]}</option>`).join("");
-      wrap.innerHTML = rows.map((u) => `
-        <div class="user-item">
-          <div><b>${u.username}</b> <span class="muted">(${u.displayName || "-"})</span></div>
-          <div class="field"><label>角色</label><select data-field="role" data-id="${u.id}">${optionsRole(u.role)}</select></div>
-          <div class="row">
-            <label class="muted"><input type="checkbox" data-field="allowAllStores" data-id="${u.id}" ${u.allowAllStores ? "checked" : ""}/> 所有门店</label>
-            <label class="muted"><input type="checkbox" data-field="allowAllSalespeople" data-id="${u.id}" ${u.allowAllSalespeople ? "checked" : ""}/> 所有销售员</label>
-            <label class="muted"><input type="checkbox" data-field="allowAllProducts" data-id="${u.id}" ${u.allowAllProducts ? "checked" : ""}/> 所有商品</label>
-          </div>
-          <div class="field">
-            <label>门店权限（可视化多选）</label>
-            <div class="perm-toolbar">
-              <input type="text" data-search-kind="stores" data-id="${u.id}" placeholder="搜索门店..." value="${getPermissionSearchValue("stores", u.id).replace(/"/g, "&quot;")}"/>
-              <button class="btn btn-light" data-action="perm-all" data-kind="stores" data-id="${u.id}">全选门店</button>
-              <button class="btn btn-light" data-action="perm-clear" data-kind="stores" data-id="${u.id}">清空门店</button>
-            </div>
-            <div id="count-stores-${u.id}" class="meta"></div>
-            <div id="perm-list-stores-${u.id}" class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [], getPermissionSearchValue("stores", u.id))}</div>
-            <div id="tags-stores-${u.id}" class="tag-wrap"></div>
-          </div>
-          <div class="field"><label>门店权限（手工兜底，逗号分隔）</label><textarea data-fallback="stores" data-id="${u.id}" placeholder="例如：门店1, 门店2">${joinCsv(u.allowedStores || [])}</textarea></div>
-          <div class="field">
-            <label>销售员权限（可视化多选）</label>
-            <div class="perm-toolbar">
-              <input type="text" data-search-kind="salespeople" data-id="${u.id}" placeholder="搜索销售员..." value="${getPermissionSearchValue("salespeople", u.id).replace(/"/g, "&quot;")}"/>
-              <button class="btn btn-light" data-action="perm-all" data-kind="salespeople" data-id="${u.id}">全选销售员</button>
-              <button class="btn btn-light" data-action="perm-clear" data-kind="salespeople" data-id="${u.id}">清空销售员</button>
-            </div>
-            <div id="count-salespeople-${u.id}" class="meta"></div>
-            <div id="perm-list-salespeople-${u.id}" class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [], getPermissionSearchValue("salespeople", u.id))}</div>
-            <div id="tags-salespeople-${u.id}" class="tag-wrap"></div>
-          </div>
-          <div class="field"><label>销售员权限（手工兜底，逗号分隔）</label><textarea data-fallback="salespeople" data-id="${u.id}" placeholder="例如：销售1, 销售2">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
-          <div class="field">
-            <label>商品权限（可视化多选）</label>
-            <div class="perm-toolbar">
-              <input type="text" data-search-kind="products" data-id="${u.id}" placeholder="搜索商品..." value="${getPermissionSearchValue("products", u.id).replace(/"/g, "&quot;")}"/>
-              <button class="btn btn-light" data-action="perm-all" data-kind="products" data-id="${u.id}">全选商品</button>
-              <button class="btn btn-light" data-action="perm-clear" data-kind="products" data-id="${u.id}">清空商品</button>
-            </div>
-            <div id="count-products-${u.id}" class="meta"></div>
-            <div id="perm-list-products-${u.id}" class="perm-list">${renderPermissionCheckboxes("products", u.id, u.allowedProducts || [], getPermissionSearchValue("products", u.id))}</div>
-            <div id="tags-products-${u.id}" class="tag-wrap"></div>
-          </div>
-          <div class="field"><label>商品权限（手工兜底，逗号分隔）</label><textarea data-fallback="products" data-id="${u.id}" placeholder="例如：男装, 女装">${joinCsv(u.allowedProducts || [])}</textarea></div>
-          <div class="field"><label>看板/导出权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "dashboard", u.permissions || {})}</div></div>
-          <div class="field"><label>管理权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "admin", u.permissions || {})}</div></div>
-          <div class="field"><label>Agent 权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "agent", u.permissions || {})}</div></div>
-          <div class="field"><label>提醒权限（预留）</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "reminders", u.permissions || {})}</div></div>
-          <div class="field"><label>会员敏感字段权限</label><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "memberFields", u.allowedMemberFields || {})}</div></div>
-          <div class="row">
-            <label class="muted"><input type="checkbox" data-field="enabled" data-id="${u.id}" ${u.enabled ? "checked" : ""}/> 启用</label>
-            <button class="btn btn-light" data-action="apply-role-defaults" data-id="${u.id}">应用角色默认权限</button>
-            <button class="btn btn-light" data-action="save" data-id="${u.id}">保存</button>
-            <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
-            <span id="msg-${u.id}" class="meta"></span>
-          </div>
+    function openDrawerForUser(userId) {
+      editingUserId = String(userId || "");
+      const u = usersCache.find((x) => String(x.id) === editingUserId);
+      if (!u) return;
+      const body = document.getElementById("drawerBody");
+      const optionsRole = Object.keys(roleMap).map((k) => `<option value="${k}"${k === u.role ? " selected" : ""}>${roleMap[k]}</option>`).join("");
+      body.innerHTML = `
+        <div class="group"><h4>基本信息</h4>
+          <div class="field"><label>账号</label><input value="${u.username || ""}" disabled /></div>
+          <div class="field"><label>显示名称</label><input data-edit-field="displayName" value="${(u.displayName || "").replace(/"/g, "&quot;")}" /></div>
+          <div class="field"><label>角色</label><select data-edit-field="role">${optionsRole}</select></div>
+          <label class="muted"><input type="checkbox" data-edit-field="enabled" ${u.enabled ? "checked" : ""}/> 启用账号</label>
         </div>
-      `).join("");
-      rows.forEach((u) => {
-        renderPermissionPanel("stores", u.id, u.allowedStores || []);
-        renderPermissionPanel("salespeople", u.id, u.allowedSalespeople || []);
-        renderPermissionPanel("products", u.id, u.allowedProducts || []);
+        <div class="group"><h4>门店权限</h4>
+          <label class="muted"><input type="checkbox" data-edit-field="allowAllStores" ${u.allowAllStores ? "checked" : ""}/> 所有门店</label>
+          <div class="perm-toolbar"><input data-search-kind="stores" data-id="${u.id}" placeholder="搜索门店..." value="${getPermissionSearchValue("stores", u.id).replace(/"/g, "&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="stores" data-id="${u.id}">全选门店</button><button class="btn btn-light" data-action="perm-clear" data-kind="stores" data-id="${u.id}">清空门店</button></div>
+          <div id="count-stores-${u.id}" class="meta"></div><div id="perm-list-stores-${u.id}" class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [], getPermissionSearchValue("stores", u.id))}</div><div id="tags-stores-${u.id}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="stores" data-id="${u.id}">${joinCsv(u.allowedStores || [])}</textarea></div>
+        </div>
+        <div class="group"><h4>销售员权限</h4>
+          <label class="muted"><input type="checkbox" data-edit-field="allowAllSalespeople" ${u.allowAllSalespeople ? "checked" : ""}/> 所有销售员</label>
+          <div class="perm-toolbar"><input data-search-kind="salespeople" data-id="${u.id}" placeholder="搜索销售员..." value="${getPermissionSearchValue("salespeople", u.id).replace(/"/g, "&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="salespeople" data-id="${u.id}">全选销售员</button><button class="btn btn-light" data-action="perm-clear" data-kind="salespeople" data-id="${u.id}">清空销售员</button></div>
+          <div id="count-salespeople-${u.id}" class="meta"></div><div id="perm-list-salespeople-${u.id}" class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [], getPermissionSearchValue("salespeople", u.id))}</div><div id="tags-salespeople-${u.id}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="salespeople" data-id="${u.id}">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
+        </div>
+        <div class="group"><h4>商品权限</h4>
+          <label class="muted"><input type="checkbox" data-edit-field="allowAllProducts" ${u.allowAllProducts ? "checked" : ""}/> 所有商品</label>
+          <div class="perm-toolbar"><input data-search-kind="products" data-id="${u.id}" placeholder="搜索商品..." value="${getPermissionSearchValue("products", u.id).replace(/"/g, "&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="products" data-id="${u.id}">全选商品</button><button class="btn btn-light" data-action="perm-clear" data-kind="products" data-id="${u.id}">清空商品</button></div>
+          <div id="count-products-${u.id}" class="meta"></div><div id="perm-list-products-${u.id}" class="perm-list">${renderPermissionCheckboxes("products", u.id, u.allowedProducts || [], getPermissionSearchValue("products", u.id))}</div><div id="tags-products-${u.id}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="products" data-id="${u.id}">${joinCsv(u.allowedProducts || [])}</textarea></div>
+        </div>
+        <div class="group"><h4>看板权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "dashboard", u.permissions || {})}</div></div>
+        <div class="group"><h4>管理权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "admin", u.permissions || {})}</div></div>
+        <div class="group"><h4>Agent 权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "agent", u.permissions || {})}</div></div>
+        <div class="group"><h4>钉钉提醒权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "reminders", u.permissions || {})}</div></div>
+        <div class="group"><h4>敏感字段权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "memberFields", u.allowedMemberFields || {})}</div></div>
+      `;
+      ["stores","salespeople","products"].forEach((kind) => renderPermissionPanel(kind, u.id, u[`allowed${kind.charAt(0).toUpperCase()+kind.slice(1)}`] || u.allowedStores || []));
+      document.getElementById("drawerMsg").textContent = "";
+      document.getElementById("drawerMask").classList.add("show");
+      document.getElementById("editDrawer").classList.add("show");
+    }
+    function closeDrawer() {
+      document.getElementById("drawerMask").classList.remove("show");
+      document.getElementById("editDrawer").classList.remove("show");
+      editingUserId = "";
+    }
+
+    async function saveEditingUser() {
+      if (!editingUserId) return;
+      const userId = editingUserId;
+      const role = document.querySelector(`[data-edit-field="role"]`)?.value;
+      const enabled = !!document.querySelector(`[data-edit-field="enabled"]`)?.checked;
+      const allowAllStores = !!document.querySelector(`[data-edit-field="allowAllStores"]`)?.checked;
+      const allowAllSalespeople = !!document.querySelector(`[data-edit-field="allowAllSalespeople"]`)?.checked;
+      const allowAllProducts = !!document.querySelector(`[data-edit-field="allowAllProducts"]`)?.checked;
+      const displayName = document.querySelector(`[data-edit-field="displayName"]`)?.value?.trim() || "";
+      const allowedStores = collectPermissionValues("stores", userId);
+      const allowedSalespeople = collectPermissionValues("salespeople", userId);
+      const allowedProducts = collectPermissionValues("products", userId);
+      const permissions = { ...collectPermissionFlags(userId, "dashboard"), ...collectPermissionFlags(userId, "admin"), ...collectPermissionFlags(userId, "agent"), ...collectPermissionFlags(userId, "reminders") };
+      const allowedMemberFields = collectPermissionFlags(userId, "memberFields");
+      const msg = document.getElementById("drawerMsg");
+      msg.className = "meta";
+      msg.textContent = "保存中...";
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName, role, enabled, allowAllStores, allowAllSalespeople, allowAllProducts, allowedStores, allowedSalespeople, allowedProducts, permissions, allowedMemberFields }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { msg.className = "meta err"; msg.textContent = data.error || "保存失败"; showToast(msg.textContent, "error"); return; }
+      msg.className = "meta ok";
+      msg.textContent = "已保存";
+      showToast("权限已保存", "success");
+      await loadUsers();
     }
-
-    async function loadUsers() {
-      const res = await fetch("/api/admin/users");
-      const data = await res.json();
-      const wrap = document.getElementById("userListWrap");
-      if (!res.ok) {
-        wrap.textContent = data.error || "用户列表加载失败";
-        return;
-      }
-      usersCache = data.users || [];
-      renderUsers(usersCache);
+    async function applyRoleDefaultsForEditingUser() {
+      if (!editingUserId) return;
+      const role = document.querySelector(`[data-edit-field="role"]`)?.value;
+      const msg = document.getElementById("drawerMsg");
+      msg.className = "meta";
+      msg.textContent = "应用中...";
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(editingUserId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, applyRoleDefaults: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { msg.className = "meta err"; msg.textContent = data.error || "应用失败"; showToast(msg.textContent, "error"); return; }
+      showToast("已应用角色默认权限", "success");
+      await loadUsers();
+      openDrawerForUser(editingUserId);
     }
-
-    async function loadPermissionOptions() {
-      const hint = document.getElementById("permissionHint");
-      const res = await fetch("/api/admin/permission-options");
-      const data = await res.json();
-      if (!res.ok) {
-        hint.className = "meta err";
-        hint.textContent = data.error || "权限项加载失败";
-        return;
-      }
-      permissionOptions = data.options || { stores: [], salespeople: [], products: [] };
-      hint.className = "meta";
-      hint.textContent = `可分配门店 ${permissionOptions.stores.length} 项，可分配销售员 ${permissionOptions.salespeople.length} 项，可分配商品 ${permissionOptions.products.length} 项。`;
+    async function resetPassword(userId) {
+      const password = window.prompt("请输入新密码（至少8位）：");
+      if (!password) return;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || "重置失败", "error"); return; }
+      showToast("密码重置成功", "success");
+    }
+    async function toggleUser(userId) {
+      const u = usersCache.find((x) => String(x.id) === String(userId));
+      if (!u) return;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !u.enabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || "操作失败", "error"); return; }
+      showToast(!u.enabled ? "账号已启用" : "账号已停用", "success");
+      await loadUsers();
     }
 
     async function createUser() {
@@ -445,322 +655,81 @@
         password: document.getElementById("createPassword").value,
       };
       const res = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!res.ok) {
-        msg.className = "meta err";
-        msg.textContent = data.error || "创建失败";
-        showToast(msg.textContent, "error");
-        return;
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { msg.className = "meta err"; msg.textContent = data.error || "创建失败"; showToast(msg.textContent, "error"); return; }
       msg.className = "meta ok";
       msg.textContent = "创建成功";
       showToast("创建用户成功", "success");
-      ["createUsername", "createDisplayName", "createPassword"].forEach((id) => { document.getElementById(id).value = ""; });
+      ["createUsername","createDisplayName","createPassword"].forEach((id) => { document.getElementById(id).value = ""; });
       await loadUsers();
-      await loadAuditLogs();
+      closeCreateModal();
+    }
+    function openCreateModal() {
+      document.getElementById("createModalMask").classList.add("show");
+      document.getElementById("createModal").classList.add("show");
+      document.getElementById("createUserMsg").textContent = "";
+    }
+    function closeCreateModal() {
+      document.getElementById("createModalMask").classList.remove("show");
+      document.getElementById("createModal").classList.remove("show");
     }
 
-    async function saveUser(userId) {
-      const msg = document.getElementById(`msg-${userId}`);
-      msg.className = "meta";
-      msg.textContent = "保存中...";
-      const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
-      const enabled = !!document.querySelector(`[data-field="enabled"][data-id="${userId}"]`)?.checked;
-      const allowAllStores = !!document.querySelector(`[data-field="allowAllStores"][data-id="${userId}"]`)?.checked;
-      const allowAllSalespeople = !!document.querySelector(`[data-field="allowAllSalespeople"][data-id="${userId}"]`)?.checked;
-      const allowAllProducts = !!document.querySelector(`[data-field="allowAllProducts"][data-id="${userId}"]`)?.checked;
-      const allowedStores = collectPermissionValues("stores", userId);
-      const allowedSalespeople = collectPermissionValues("salespeople", userId);
-      const allowedProducts = collectPermissionValues("products", userId);
-      const permissions = {
-        ...collectPermissionFlags(userId, "dashboard"),
-        ...collectPermissionFlags(userId, "admin"),
-        ...collectPermissionFlags(userId, "agent"),
-        ...collectPermissionFlags(userId, "reminders"),
-      };
-      const allowedMemberFields = collectPermissionFlags(userId, "memberFields");
-      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role,
-          enabled,
-          allowAllStores,
-          allowAllSalespeople,
-          allowAllProducts,
-          allowedStores,
-          allowedSalespeople,
-          allowedProducts,
-          permissions,
-          allowedMemberFields,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        msg.className = "meta err";
-        msg.textContent = data.error || "保存失败";
-        showToast(msg.textContent, "error");
-        return;
-      }
-      msg.className = "meta ok";
-      msg.textContent = "已保存";
-      showToast("权限已保存", "success");
-      await loadUsers();
-      await loadAuditLogs();
-    }
-
-    async function resetPassword(userId) {
-      const password = window.prompt("请输入新密码（至少8位）：");
-      if (!password) return;
-      const msg = document.getElementById(`msg-${userId}`);
-      msg.className = "meta";
-      msg.textContent = "重置中...";
-      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        msg.className = "meta err";
-        msg.textContent = data.error || "重置失败";
-        showToast(msg.textContent, "error");
-        return;
-      }
-      msg.className = "meta ok";
-      msg.textContent = "密码已重置";
-      showToast("密码重置成功", "success");
-      await loadAuditLogs();
-    }
-
-    async function applyRoleDefaultsForUser(userId) {
-      const msg = document.getElementById(`msg-${userId}`);
-      msg.className = "meta";
-      msg.textContent = "应用中...";
-      const role = document.querySelector(`[data-field="role"][data-id="${userId}"]`)?.value;
-      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, applyRoleDefaults: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        msg.className = "meta err";
-        msg.textContent = data.error || "应用失败";
-        showToast(msg.textContent, "error");
-        return;
-      }
-      msg.className = "meta ok";
-      msg.textContent = "已应用角色默认权限";
-      showToast("已应用角色默认权限", "success");
-      await loadUsers();
-      await loadAuditLogs();
-    }
-
-    async function refreshLatestImportMeta() {
-      const el = document.getElementById("latestImportMeta");
-      const res = await fetch("/api/admin/import/latest");
-      const data = await res.json();
-      if (!res.ok) {
-        el.className = "meta err";
-        el.textContent = data.error || "加载最新导入信息失败";
-        return;
-      }
-      const latest = data.latest;
-      el.className = "meta";
-      el.textContent = latest ? `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）` : "最新数据更新时间：暂无";
-    }
-
-    async function loadImportHistory() {
-      const wrap = document.getElementById("importHistoryWrap");
-      const res = await fetch("/api/admin/import/history?limit=20");
-      const data = await res.json();
-      if (!res.ok) {
-        wrap.className = "meta err";
-        wrap.textContent = data.error || "导入历史加载失败";
-        return;
-      }
-      const rows = data.rows || [];
-      if (!rows.length) {
-        wrap.className = "meta";
-        wrap.textContent = "暂无导入历史";
-        return;
-      }
-      wrap.className = "";
-      wrap.innerHTML = `<table class="table"><thead><tr><th>文件名</th><th>导入时间</th><th>行数</th><th>状态</th><th>导入人</th></tr></thead><tbody>${
-        rows.map((r) => `<tr><td>${r.filename || "-"}</td><td>${fmtTime(r.importedAt)}</td><td>${r.rowCount || 0}</td><td>${r.status || "-"}</td><td>${r.importedBy || "-"}</td></tr>`).join("")
-      }</tbody></table>`;
-    }
-
-    async function loadAuditLogs() {
-      const wrap = document.getElementById("auditLogWrap");
-      const res = await fetch("/api/admin/audit-logs?limit=30");
-      const data = await res.json();
-      if (!res.ok) {
-        wrap.className = "meta err";
-        wrap.textContent = data.error || "审计日志加载失败";
-        return;
-      }
-      const rows = data.rows || [];
-      if (!rows.length) {
-        wrap.className = "meta";
-        wrap.textContent = "暂无审计日志";
-        return;
-      }
-      wrap.className = "";
-      wrap.innerHTML = `<table class="table"><thead><tr><th>时间</th><th>管理员</th><th>动作</th><th>目标</th><th>摘要</th></tr></thead><tbody>${
-        rows.map((r) => `<tr><td>${fmtTime(r.timestamp)}</td><td>${r.adminUsername || "-"}</td><td>${r.actionType || "-"}</td><td>${r.targetType || "-"}:${r.targetId || "-"}</td><td>${r.summary || "-"}</td></tr>`).join("")
-      }</tbody></table>`;
-    }
-
-    async function uploadImportFile() {
-      const files = [...(document.getElementById("adminImportFile").files || [])];
-      const status = document.getElementById("adminImportStatus");
-      if (!files.length) {
-        status.className = "meta err";
-        status.textContent = "请先选择文件";
-        showToast("请先选择文件", "error");
-        return;
-      }
-      status.className = "meta";
-      status.textContent = `上传中（${files.length} 个文件）...`;
-      const form = new FormData();
-      files.forEach((file) => form.append("files", file));
-      form.append("mapping", JSON.stringify({}));
-      const uploadRes = await fetch("/api/v2/uploads", { method: "POST", body: form });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) {
-        status.className = "meta err";
-        status.textContent = uploadData.error || "上传失败";
-        showToast(status.textContent, "error");
-        return;
-      }
-      const jobId = uploadData.jobId;
-      for (let i = 0; i < 300; i += 1) {
-        const jobRes = await fetch(`/api/v2/jobs/${encodeURIComponent(jobId)}`);
-        const jobData = await jobRes.json();
-        const job = jobData.job || {};
-        const importProgress = job?.stats?.importProgress || {};
-        const currentFileIndex = Number(importProgress.currentFileIndex || 0);
-        const fileCount = Number(importProgress.fileCount || 0);
-        const currentFileName = String(importProgress.currentFileName || "");
-        const cumulativeRowCount = Number(importProgress.cumulativeRowCount || 0);
-        const phase = String(job.phase || "");
-        if (fileCount > 0) {
-          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(currentFileIndex, fileCount)}/${fileCount} 个｜${currentFileName || "处理中"}｜累计 ${cumulativeRowCount} 行${phase ? `｜${phase}` : ""}`;
-        } else {
-          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）${phase ? `｜${phase}` : ""}`;
-        }
-        if (job.status === "completed") {
-          const successfulFiles = job?.stats?.successfulFiles || [];
-          const failedFiles = job?.stats?.failedFiles || [];
-          status.className = "meta ok";
-          status.textContent = `导入完成：成功 ${successfulFiles.length} 个，失败 ${failedFiles.length} 个，累计 ${Number(job?.stats?.rowCount || 0)} 行（dataset: ${job.datasetId || ""}）`;
-          if (failedFiles.length) {
-            const reasonText = failedFiles
-              .map((item) => `${item.fileName || "未知文件"}：${item.reason || "失败"}`)
-              .join("；");
-            status.textContent += `；失败原因：${reasonText}`;
-          }
-          showToast("导入完成", "success");
-          await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs(), loadPermissionOptions()]);
-          return;
-        }
-        if (job.status === "failed") {
-          const successfulFiles = job?.stats?.successfulFiles || [];
-          const failedFiles = job?.stats?.failedFiles || [];
-          status.className = "meta err";
-          status.textContent = `导入失败：成功 ${successfulFiles.length} 个，失败 ${failedFiles.length} 个。${job.error || ""}`;
-          if (failedFiles.length) {
-            const reasonText = failedFiles
-              .map((item) => `${item.fileName || "未知文件"}：${item.reason || "失败"}`)
-              .join("；");
-            status.textContent += ` 失败原因：${reasonText}`;
-          }
-          showToast(status.textContent, "error");
-          await Promise.all([loadImportHistory(), loadAuditLogs()]);
-          return;
-        }
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-      status.className = "meta err";
-      status.textContent = "导入超时，请稍后查看导入历史";
-      showToast(status.textContent, "error");
-    }
-
-    function renderImportFileSelection() {
-      const input = document.getElementById("adminImportFile");
-      const files = [...(input?.files || [])];
-      const metaEl = document.getElementById("adminImportFileMeta");
-      const listEl = document.getElementById("adminImportFileList");
-      if (!metaEl || !listEl) return;
-      metaEl.textContent = `已选择 ${files.length} 个文件`;
-      if (!files.length) {
-        listEl.textContent = "";
-        return;
-      }
-      listEl.innerHTML = files
-        .map((file) => `<div>${file.name}（${Math.ceil((Number(file.size) || 0) / 1024)} KB）</div>`)
-        .join("");
+    async function sendDingTalkTestNotification() {
+      const msgEl = document.getElementById("dingtalkTestMsg");
+      msgEl.textContent = "";
+      const res = await fetch("/api/admin/dingtalk/test-notification", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok !== false) { msgEl.textContent = data.message || "已发送测试通知"; msgEl.className = "meta ok"; showToast("已发送测试通知", "success"); return; }
+      msgEl.textContent = data.error || `请求失败（${res.status}）`; msgEl.className = "meta err"; showToast(msgEl.textContent, "error");
     }
 
     document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
     document.getElementById("logoutBtn").addEventListener("click", async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; });
-    document.getElementById("createUserBtn").addEventListener("click", (event) => {
-      const btn = event.currentTarget;
-      void withLoading(btn, "创建中...", async () => {
-        await createUser();
-      });
+    document.getElementById("queryUsersBtn").addEventListener("click", () => renderUsersTable());
+    document.getElementById("resetFiltersBtn").addEventListener("click", () => {
+      ["filterKeyword","filterRole","filterStatus","filterScope"].forEach((id) => { document.getElementById(id).value = ""; });
+      selectedTree = { type: "all", value: "" };
+      renderOrgTree();
+      renderUsersTable();
     });
-    document.getElementById("adminImportBtn").addEventListener("click", (event) => {
-      const btn = event.currentTarget;
-      void withLoading(btn, "导入中...", async () => {
-        await uploadImportFile();
-      });
+    document.getElementById("openCreateBtn").addEventListener("click", openCreateModal);
+    document.getElementById("closeCreateModalBtn").addEventListener("click", closeCreateModal);
+    document.getElementById("createModalMask").addEventListener("click", closeCreateModal);
+    document.getElementById("createUserBtn").addEventListener("click", (e) => withLoading(e.currentTarget, "创建中...", createUser));
+
+    document.getElementById("orgTree").addEventListener("click", (event) => {
+      const node = event.target.closest("[data-tree-type]");
+      if (!node) return;
+      selectedTree = { type: node.getAttribute("data-tree-type"), value: node.getAttribute("data-tree-value") || "" };
+      renderOrgTree();
+      renderUsersTable();
     });
-    document.getElementById("adminImportFile").addEventListener("change", () => {
-      renderImportFileSelection();
+    document.getElementById("usersTableBody").addEventListener("click", async (event) => {
+      const btn = event.target.closest("[data-action]");
+      if (!btn) return;
+      const userId = btn.getAttribute("data-id");
+      const action = btn.getAttribute("data-action");
+      if (!userId) return;
+      if (action === "edit") return openDrawerForUser(userId);
+      if (action === "toggle") return withLoading(btn, "处理中...", async () => { await toggleUser(userId); });
+      if (action === "reset") return withLoading(btn, "重置中...", async () => { await resetPassword(userId); });
     });
-    document.getElementById("userListWrap").addEventListener("click", (event) => {
+
+    document.getElementById("drawerMask").addEventListener("click", closeDrawer);
+    document.getElementById("closeDrawerBtn").addEventListener("click", closeDrawer);
+    document.getElementById("drawerSaveBtn").addEventListener("click", (e) => withLoading(e.currentTarget, "保存中...", saveEditingUser));
+    document.getElementById("drawerApplyRoleBtn").addEventListener("click", (e) => withLoading(e.currentTarget, "应用中...", applyRoleDefaultsForEditingUser));
+    document.getElementById("drawerResetPwdBtn").addEventListener("click", (e) => withLoading(e.currentTarget, "重置中...", async () => { if (editingUserId) await resetPassword(editingUserId); }));
+    document.getElementById("drawerBody").addEventListener("click", (event) => {
       const target = event.target.closest("[data-action]");
       if (!target) return;
       const userId = target.getAttribute("data-id");
-      const action = target.getAttribute("data-action");
-      if (!userId) return;
-      if (action === "perm-all" || action === "perm-clear") {
-        const kind = target.getAttribute("data-kind");
-        if (!kind) return;
-        applyPermissionBulkAction(kind, userId, action === "perm-all" ? "all" : "clear");
-        return;
-      }
-      if (action === "apply-role-defaults") {
-        void withLoading(target, "应用中...", async () => {
-          await applyRoleDefaultsForUser(userId);
-        });
-        return;
-      }
-      if (action === "save") {
-        void withLoading(target, "保存中...", async () => {
-          await saveUser(userId);
-        });
-      }
-      if (action === "reset") {
-        void withLoading(target, "重置中...", async () => {
-          await resetPassword(userId);
-        });
-      }
-    });
-    document.getElementById("userListWrap").addEventListener("change", (event) => {
-      const cb = event.target.closest('input[type="checkbox"][data-kind]');
-      if (!cb) return;
-      const userId = cb.getAttribute("data-id");
-      const kind = cb.getAttribute("data-kind");
+      const kind = target.getAttribute("data-kind");
       if (!userId || !kind) return;
-      const selected = collectPermissionValues(kind, userId);
-      renderTagList(`tags-${kind}-${userId}`, selected);
-      renderSelectedCount(kind, userId, selected);
+      if (target.getAttribute("data-action") === "perm-all") applyPermissionBulkAction(kind, userId, "all");
+      if (target.getAttribute("data-action") === "perm-clear") applyPermissionBulkAction(kind, userId, "clear");
     });
-    document.getElementById("userListWrap").addEventListener("input", (event) => {
+    document.getElementById("drawerBody").addEventListener("input", (event) => {
       const searchInput = event.target.closest("[data-search-kind]");
       if (searchInput) {
         const userId = searchInput.getAttribute("data-id");
@@ -779,47 +748,29 @@
       renderTagList(`tags-${kind}-${userId}`, selected);
       renderSelectedCount(kind, userId, selected);
     });
-
-    async function sendDingTalkTestNotification() {
-      const msgEl = document.getElementById("dingtalkTestMsg");
-      msgEl.textContent = "";
-      const res = await fetch("/api/admin/dingtalk/test-notification", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok !== false) {
-        msgEl.textContent = data.message || "已发送测试通知";
-        msgEl.style.color = "#166534";
-        showToast("已发送测试通知", "success");
-        return;
-      }
-      const errText = typeof data?.error === "string" ? data.error : "";
-      msgEl.style.color = "#b91c1c";
-      msgEl.textContent = errText || `请求失败（${res.status}）`;
-      showToast(msgEl.textContent || "发送失败", "error");
-    }
-
-    document.getElementById("dingtalkTestBtn")?.addEventListener("click", (event) => {
-      const btn = event.currentTarget;
-      void withLoading(btn, "发送中...", async () => {
-        await sendDingTalkTestNotification();
-      });
+    document.getElementById("drawerBody").addEventListener("change", (event) => {
+      const cb = event.target.closest('input[type="checkbox"][data-kind]');
+      if (!cb) return;
+      const userId = cb.getAttribute("data-id");
+      const kind = cb.getAttribute("data-kind");
+      if (!userId || !kind) return;
+      const selected = collectPermissionValues(kind, userId);
+      renderTagList(`tags-${kind}-${userId}`, selected);
+      renderSelectedCount(kind, userId, selected);
     });
+
+    document.getElementById("adminImportBtn").addEventListener("click", (event) => withLoading(event.currentTarget, "导入中...", uploadImportFile));
+    document.getElementById("adminImportFile").addEventListener("change", renderImportFileSelection);
+    document.getElementById("dingtalkTestBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "发送中...", sendDingTalkTestNotification));
 
     (async () => {
       const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) { window.location.href = "/login"; return; }
       const meJson = await meRes.json().catch(() => ({}));
-      if (meJson?.user?.role === "admin") {
-        const card = document.getElementById("dingtalkTestCard");
-        if (card) card.removeAttribute("hidden");
-      }
+      if (meJson?.user?.role === "admin") document.getElementById("dingtalkTestCard").removeAttribute("hidden");
       await loadPermissionOptions();
       await loadUsers();
-      await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadAuditLogs()]);
+      await Promise.all([refreshLatestImportMeta(), loadImportHistory()]);
     })();
   </script>
 </body>
