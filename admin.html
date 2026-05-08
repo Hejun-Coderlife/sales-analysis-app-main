@@ -260,6 +260,7 @@
     let permissionOptions = { stores: [], salespeople: [], products: [] };
     let selectedTree = { type: "all", value: "" };
     let editingUserId = "";
+    let currentUser = null;
     const permissionSearchState = {};
     let toastTimer = null;
 
@@ -548,6 +549,12 @@
     function getPermissionSearchKey(kind, userId) { return `${kind}:${userId}`; }
     function getPermissionSearchValue(kind, userId) { return String(permissionSearchState[getPermissionSearchKey(kind, userId)] || ""); }
     function setPermissionSearchValue(kind, userId, value) { permissionSearchState[getPermissionSearchKey(kind, userId)] = String(value || ""); }
+    function isAdminOperator() { return String(currentUser?.role || "") === "admin"; }
+    function requireAdminAction(actionLabel) {
+      if (isAdminOperator()) return true;
+      showToast(`${actionLabel}仅限管理员`, "error");
+      return false;
+    }
     function renderPermissionFlagsCheckboxes(userId, groupName, flags = {}) {
       return (permissionGroups[groupName] || []).map((key) => `<label><input type="checkbox" data-perm-group="${groupName}" data-perm-key="${key}" data-id="${userId}"${flags?.[key] ? " checked":""}/> ${permissionLabelMap[key] || key}</label>`).join("");
     }
@@ -608,11 +615,12 @@
       if (!u) return;
       const body = document.getElementById("drawerBody");
       const optionsPos = Object.keys(positionMap).map((k) => `<option value="${k}"${k===u.role?" selected":""}>${positionMap[k]}</option>`).join("");
+      const adminOnly = !isAdminOperator();
       body.innerHTML = `
         <div class="group"><h4>基本信息</h4>
           <div class="field"><label>账号</label><input value="${u.username || ""}" disabled /></div>
           <div class="field"><label>显示名称</label><input data-edit-field="displayName" value="${(u.displayName || "").replace(/"/g,"&quot;")}" /></div>
-          <div class="field"><label>岗位</label><select data-edit-field="role">${optionsPos}</select></div>
+          <div class="field"><label>岗位</label><select data-edit-field="role"${adminOnly ? " disabled" : ""}>${optionsPos}</select></div>
           <label class="muted"><input type="checkbox" data-edit-field="enabled" ${u.enabled ? "checked":""}/> 启用账号</label>
         </div>
         <div class="group"><h4>管理范围</h4>
@@ -640,9 +648,13 @@
         <div class="group"><h4>会员隐私权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "memberFields", u.allowedMemberFields || {})}</div></div>
       `;
       ["stores","salespeople","products"].forEach((kind) => renderPermissionPanel(kind, u.id, kind==="stores"?u.allowedStores:kind==="salespeople"?u.allowedSalespeople:u.allowedProducts));
-      document.getElementById("drawerMsg").textContent = "";
+      document.getElementById("drawerMsg").textContent = adminOnly ? "当前账号非管理员：仅可查看岗位，禁止修改角色/重置密码。" : "";
       document.getElementById("drawerMask").classList.add("show");
       document.getElementById("editDrawer").classList.add("show");
+      const resetBtn = document.getElementById("drawerResetPwdBtn");
+      const applyRoleBtn = document.getElementById("drawerApplyRoleBtn");
+      if (resetBtn) resetBtn.disabled = adminOnly;
+      if (applyRoleBtn) applyRoleBtn.disabled = adminOnly;
     }
     function closeDrawer() {
       document.getElementById("drawerMask").classList.remove("show");
@@ -652,6 +664,7 @@
 
     async function saveEditingUser() {
       if (!editingUserId) return;
+      if (!requireAdminAction("编辑用户")) return;
       const userId = editingUserId;
       const payload = {
         displayName: document.querySelector("[data-edit-field='displayName']")?.value?.trim() || "",
@@ -679,6 +692,7 @@
     }
     async function applyPositionDefaultsForEditingUser() {
       if (!editingUserId) return;
+      if (!requireAdminAction("应用岗位默认权限")) return;
       const role = document.querySelector("[data-edit-field='role']")?.value || "";
       const msg = document.getElementById("drawerMsg");
       msg.className = "meta";
@@ -691,6 +705,7 @@
       openDrawerForUser(editingUserId);
     }
     async function resetPassword(userId) {
+      if (!requireAdminAction("重置密码")) return;
       const password = window.prompt("请输入新密码（至少8位）：");
       if (!password) return;
       const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-password`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ password }) });
@@ -699,6 +714,7 @@
       showToast("密码重置成功", "success");
     }
     async function toggleUser(userId) {
+      if (!requireAdminAction("启停账号")) return;
       const u = usersCache.find((x) => String(x.id) === String(userId));
       if (!u) return;
       const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ enabled: !u.enabled }) });
@@ -709,6 +725,7 @@
     }
 
     async function createUser() {
+      if (!requireAdminAction("新增员工")) return;
       const msg = document.getElementById("createUserMsg");
       msg.className = "meta";
       msg.textContent = "提交中...";
@@ -795,7 +812,10 @@
       renderOrgTree();
       renderUsersTable();
     });
-    document.getElementById("openCreateBtn").addEventListener("click", openCreateModal);
+    document.getElementById("openCreateBtn").addEventListener("click", function () {
+      if (!requireAdminAction("新增员工")) return;
+      openCreateModal();
+    });
     document.getElementById("closeCreateModalBtn").addEventListener("click", closeCreateModal);
     document.getElementById("createModalMask").addEventListener("click", closeCreateModal);
     document.getElementById("createUserBtn").addEventListener("click", (e) => withLoading(e.currentTarget, "创建中...", createUser));
@@ -880,6 +900,15 @@
       const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) { window.location.href = "/login"; return; }
       const meJson = await meRes.json().catch(() => ({}));
+      currentUser = meJson?.user || null;
+      if (!isAdminOperator()) {
+        const createBtn = document.getElementById("openCreateBtn");
+        const resetBtn = document.getElementById("drawerResetPwdBtn");
+        const applyRoleBtn = document.getElementById("drawerApplyRoleBtn");
+        if (createBtn) createBtn.disabled = true;
+        if (resetBtn) resetBtn.disabled = true;
+        if (applyRoleBtn) applyRoleBtn.disabled = true;
+      }
       if (meJson?.user?.role === "admin") {
         document.getElementById("dingtalkTestCard").removeAttribute("hidden");
         document.getElementById("inAppNotifCard").removeAttribute("hidden");
