@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="format-detection" content="telephone=no" />
-  <title>手机看板 - 销售数据分析系统</title>
+  <title>赫眉经营助手 - 数据看板（手机版）</title>
   <link rel="stylesheet" href="/frontend/src/styles/galaxy-background.css" />
   <style>
     :root {
@@ -75,19 +75,75 @@
     }
     .card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
     .filters label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-    .filters .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .filters input[type="date"],
-    .filters select {
+    .filter-full { width: 100%; max-width: 100%; }
+    .date-range-trigger {
       width: 100%;
-      min-height: 42px;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    .date-range-trigger:active { filter: brightness(0.97); }
+    .date-range-trigger .chev { flex-shrink: 0; font-size: 10px; color: var(--muted); }
+    .date-range-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .date-range-lines .hint { font-size: 11px; font-weight: 500; color: var(--muted); }
+    .date-range-lines .val { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; word-break: break-all; }
+    .date-range-panel {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+    }
+    .date-range-panel .row { margin-bottom: 10px; }
+    .date-range-panel .row:last-of-type { margin-bottom: 12px; }
+    .date-range-panel label { margin-bottom: 6px; }
+    .date-range-panel input[type="date"] {
+      width: 100%;
+      min-height: 44px;
       font-size: 16px;
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 8px 10px;
+      background: #fff;
+    }
+    .date-range-panel .btn { width: 100%; margin-top: 0; }
+    .filters select {
+      width: 100%;
+      max-width: 100%;
+      min-height: 44px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      box-sizing: border-box;
+    }
+    .rank-chart-box {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .rank-chart-box canvas { display: block; max-width: 100%; }
+    .chart-empty {
+      margin: 0;
+      padding: 20px 8px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--muted);
     }
     .kpi-grid {
       display: grid;
@@ -180,11 +236,11 @@
 <body>
   <header class="top">
     <div>
-      <h1>数据看板（手机版）</h1>
-      <p class="sub" id="userLabel">加载中…</p>
+      <h1>赫眉经营助手</h1>
+      <p class="sub">数据看板（手机版）</p>
+      <p class="sub" style="margin-top:2px" id="userLabel">加载中…</p>
     </div>
     <div class="actions">
-      <a class="btn btn-light" href="/dashboard">电脑版看板</a>
       <button type="button" class="btn btn-light" id="logoutBtn">退出登录</button>
     </div>
   </header>
@@ -193,17 +249,28 @@
 
   <section class="card filters" id="filterCard">
     <h2>筛选</h2>
-    <div class="grid">
-      <div>
-        <label for="startDate">开始日期</label>
-        <input type="date" id="startDate" />
-      </div>
-      <div>
-        <label for="endDate">结束日期</label>
-        <input type="date" id="endDate" />
+    <div class="filter-full">
+      <label for="dateRangeTrigger">日期范围</label>
+      <button type="button" class="date-range-trigger" id="dateRangeTrigger" aria-expanded="false" aria-controls="dateRangePanel">
+        <span class="date-range-lines">
+          <span class="hint">当前区间</span>
+          <span class="val" id="dateRangeLabel">—</span>
+        </span>
+        <span class="chev" aria-hidden="true">▼</span>
+      </button>
+      <div class="date-range-panel hidden" id="dateRangePanel" role="region" aria-label="选择日期">
+        <div class="row">
+          <label for="startDate">开始日期</label>
+          <input type="date" id="startDate" />
+        </div>
+        <div class="row">
+          <label for="endDate">结束日期</label>
+          <input type="date" id="endDate" />
+        </div>
+        <button type="button" class="btn btn-primary" id="applyDateRangeBtn">应用日期</button>
       </div>
     </div>
-    <div style="margin-top:10px">
+    <div style="margin-top:12px">
       <label for="storeSelect">门店</label>
       <select id="storeSelect"></select>
     </div>
@@ -222,15 +289,24 @@
 
   <section class="card hidden" id="rankStoresCard">
     <h2>门店排行 Top 10</h2>
-    <ol class="ol" id="listStores"></ol>
+    <div class="rank-chart-box" style="height:min(420px,85vh)">
+      <canvas id="chartStores"></canvas>
+      <p class="chart-empty hidden" id="emptyStores">暂无排行数据</p>
+    </div>
   </section>
   <section class="card hidden" id="rankSalesCard">
     <h2>销售员排行 Top 10</h2>
-    <ol class="ol" id="listSales"></ol>
+    <div class="rank-chart-box" style="height:min(420px,85vh)">
+      <canvas id="chartSales"></canvas>
+      <p class="chart-empty hidden" id="emptySales">暂无排行数据</p>
+    </div>
   </section>
   <section class="card hidden" id="rankProductsCard">
     <h2>商品排行 Top 10</h2>
-    <ol class="ol" id="listProducts"></ol>
+    <div class="rank-chart-box" style="height:min(420px,85vh)">
+      <canvas id="chartProducts"></canvas>
+      <p class="chart-empty hidden" id="emptyProducts">暂无排行数据</p>
+    </div>
   </section>
 
   <section class="card hidden" id="memberCard">
@@ -261,6 +337,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/frontend/src/visual/galaxy-background.js"></script>
   <script>
 (function () {
@@ -291,6 +368,100 @@
 
   const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   const chatMessages = [];
+
+  const rankCharts = { stores: null, sales: null, products: null };
+  const RANK_BAR_BG = "rgba(118, 144, 243, 0.78)";
+  const RANK_BAR_BORDER = "#7690f3";
+
+  function destroyRankChart(key) {
+    if (rankCharts[key]) {
+      rankCharts[key].destroy();
+      rankCharts[key] = null;
+    }
+  }
+
+  function rankChartSetVisible(canvasId, emptyId, showChart) {
+    const canvas = document.getElementById(canvasId);
+    const emptyEl = document.getElementById(emptyId);
+    if (canvas) canvas.classList.toggle("hidden", !showChart);
+    if (emptyEl) emptyEl.classList.toggle("hidden", showChart);
+  }
+
+  function renderRankHorizontalBar(key, canvasId, emptyId, labels, values, fmtVal) {
+    const canvas = document.getElementById(canvasId);
+    const emptyEl = document.getElementById(emptyId);
+    const box = canvas && canvas.parentElement;
+    destroyRankChart(key);
+    if (!labels.length || !canvas || !box) {
+      rankChartSetVisible(canvasId, emptyId, false);
+      return;
+    }
+    rankChartSetVisible(canvasId, emptyId, true);
+    const n = labels.length;
+    box.style.height = Math.min(420, Math.max(160, n * 28 + 52)) + "px";
+
+    rankCharts[key] = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: labels.slice(),
+        datasets: [
+          {
+            label: "数值",
+            data: values.slice(),
+            backgroundColor: RANK_BAR_BG,
+            borderColor: RANK_BAR_BORDER,
+            borderWidth: 0,
+            borderRadius: { topRight: 8, bottomRight: 8, topLeft: 0, bottomLeft: 0 },
+            borderSkipped: false,
+            maxBarThickness: 24,
+          },
+        ],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { right: 6 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function (items) {
+                const i = items[0] ? items[0].dataIndex : 0;
+                return String(labels[i] != null ? labels[i] : "");
+              },
+              label: function (ctx) {
+                return fmtVal(Number(ctx.raw || 0));
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(229, 231, 235, 0.95)", drawBorder: false },
+            ticks: {
+              font: { size: 10 },
+              maxTicksLimit: 6,
+            },
+            border: { display: false },
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 11 },
+              autoSkip: false,
+              callback: function (val) {
+                var s = String(val != null ? val : "");
+                return s.length > 12 ? s.slice(0, 11) + "…" : s;
+              },
+            },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
 
   function hasPerm(key) {
     return Boolean(user && user.permissions && user.permissions[key]);
@@ -352,25 +523,6 @@
       '</div><div class="lab">会员数</div></div>';
   }
 
-  function renderOl(id, rows, fmtVal) {
-    const el = document.getElementById(id);
-    if (!rows.length) {
-      el.innerHTML = '<li class="muted">无数据</li>';
-      return;
-    }
-    el.innerHTML = rows
-      .map(function (r) {
-        return (
-          '<li><span class="name">' +
-          escapeHtml(r.name) +
-          "</span><span>" +
-          fmtVal(r.val) +
-          "</span></li>"
-        );
-      })
-      .join("");
-  }
-
   function escapeHtml(s) {
     return String(s != null ? s : "")
       .replace(/&/g, "&amp;")
@@ -384,6 +536,24 @@
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return y + "-" + m + "-" + day;
+  }
+
+  function formatZhFromIso(iso) {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      return "—";
+    }
+    var p = iso.split("-");
+    return p[0] + "年" + String(Number(p[1])) + "月" + String(Number(p[2])) + "日";
+  }
+
+  function updateDateRangeLabel() {
+    var el = document.getElementById("dateRangeLabel");
+    if (!el) return;
+    if (!state.startDate || !state.endDate) {
+      el.textContent = "请选择日期范围";
+      return;
+    }
+    el.textContent = formatZhFromIso(state.startDate) + " 至 " + formatZhFromIso(state.endDate);
   }
 
   async function loadLatestDataset() {
@@ -439,6 +609,9 @@
     hideBanner();
     if (!datasetId) {
       showBanner("warn", NO_IMPORT);
+      destroyRankChart("stores");
+      destroyRankChart("sales");
+      destroyRankChart("products");
       [
         "coreKpiCard",
         "overviewCard",
@@ -613,40 +786,55 @@
 
     if (hasPerm("canViewStoreRanking")) {
       setSectionVisible("rankStoresCard", true);
-      renderOl(
-        "listStores",
-        stores.map(function (r) {
-          return { name: r.store, val: Number(r.performance || 0) };
-        }),
+      var storeRows = stores.map(function (r) {
+        return { name: r.store, val: Number(r.performance || 0) };
+      });
+      renderRankHorizontalBar(
+        "stores",
+        "chartStores",
+        "emptyStores",
+        storeRows.map(function (r) { return r.name; }),
+        storeRows.map(function (r) { return r.val; }),
         function (v) { return fmtMoney(v); }
       );
     } else {
+      destroyRankChart("stores");
       setSectionVisible("rankStoresCard", false);
     }
 
     if (hasPerm("canViewSalespersonRanking")) {
       setSectionVisible("rankSalesCard", true);
-      renderOl(
-        "listSales",
-        sales.map(function (r) {
-          return { name: r.salesperson, val: Number(r.performance || 0) };
-        }),
+      var salesRows = sales.map(function (r) {
+        return { name: r.salesperson, val: Number(r.performance || 0) };
+      });
+      renderRankHorizontalBar(
+        "sales",
+        "chartSales",
+        "emptySales",
+        salesRows.map(function (r) { return r.name; }),
+        salesRows.map(function (r) { return r.val; }),
         function (v) { return fmtMoney(v); }
       );
     } else {
+      destroyRankChart("sales");
       setSectionVisible("rankSalesCard", false);
     }
 
     if (hasPerm("canViewProductRanking")) {
       setSectionVisible("rankProductsCard", true);
-      renderOl(
-        "listProducts",
-        products.map(function (r) {
-          return { name: r.product, val: Number(r.sales_amount || 0) };
-        }),
+      var prodRows = products.map(function (r) {
+        return { name: r.product, val: Number(r.sales_amount || 0) };
+      });
+      renderRankHorizontalBar(
+        "products",
+        "chartProducts",
+        "emptyProducts",
+        prodRows.map(function (r) { return r.name; }),
+        prodRows.map(function (r) { return r.val; }),
         function (v) { return fmtMoney(v); }
       );
     } else {
+      destroyRankChart("products");
       setSectionVisible("rankProductsCard", false);
     }
 
@@ -918,8 +1106,56 @@
       window.location.href = "/login";
     });
 
+    function wireFilterUi() {
+      var applyBtn = document.getElementById("applyFiltersBtn");
+      if (applyBtn && !applyBtn.dataset.wired) {
+        applyBtn.dataset.wired = "1";
+        applyBtn.addEventListener("click", async function () {
+          if (hasPerm("canUseFilters")) {
+            state.startDate = document.getElementById("startDate").value || "";
+            state.endDate = document.getElementById("endDate").value || "";
+            state.store = document.getElementById("storeSelect").value || "";
+            updateDateRangeLabel();
+          }
+          await loadAllData();
+        });
+      }
+      var dateTrigger = document.getElementById("dateRangeTrigger");
+      var datePanel = document.getElementById("dateRangePanel");
+      var applyDateBtn = document.getElementById("applyDateRangeBtn");
+      if (hasPerm("canUseFilters") && dateTrigger && datePanel && applyDateBtn && !dateTrigger.dataset.wired) {
+        dateTrigger.dataset.wired = "1";
+        dateTrigger.addEventListener("click", function () {
+          datePanel.classList.toggle("hidden");
+          var open = !datePanel.classList.contains("hidden");
+          dateTrigger.setAttribute("aria-expanded", open ? "true" : "false");
+          if (open) {
+            document.getElementById("startDate").value = state.startDate;
+            document.getElementById("endDate").value = state.endDate;
+          }
+        });
+        applyDateBtn.addEventListener("click", function () {
+          var s = document.getElementById("startDate").value || "";
+          var e = document.getElementById("endDate").value || "";
+          if (s && e && s > e) {
+            showBanner("warn", "开始日期不能晚于结束日期");
+            return;
+          }
+          state.startDate = s;
+          state.endDate = e;
+          updateDateRangeLabel();
+          hideBanner();
+          datePanel.classList.add("hidden");
+          dateTrigger.setAttribute("aria-expanded", "false");
+        });
+      }
+    }
+
+    wireFilterUi();
+
     datasetId = await loadLatestDataset();
     if (!datasetId) {
+      updateDateRangeLabel();
       await loadAllData();
       wireChat();
       return;
@@ -934,21 +1170,13 @@
       state.endDate = dateBounds.max;
       document.getElementById("startDate").value = state.startDate;
       document.getElementById("endDate").value = state.endDate;
+      updateDateRangeLabel();
       populateStoreSelect((opt && opt.options && opt.options.stores) || []);
     } else {
       document.getElementById("startDate").disabled = true;
       document.getElementById("endDate").disabled = true;
       document.getElementById("storeSelect").disabled = true;
     }
-
-    document.getElementById("applyFiltersBtn").addEventListener("click", async function () {
-      if (hasPerm("canUseFilters")) {
-        state.startDate = document.getElementById("startDate").value || "";
-        state.endDate = document.getElementById("endDate").value || "";
-        state.store = document.getElementById("storeSelect").value || "";
-      }
-      await loadAllData();
-    });
 
     await loadAllData();
     wireChat();
