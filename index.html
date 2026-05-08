@@ -615,7 +615,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
 
 <div class="wrap">
   <h1>赫眉经营助手</h1>
-  <p>请在浏览器中打开系统，上传一个或多个 Excel 文件后即可开始分析。</p>
+  <p>经营数据由系统自动导入并展示；如需上传 Excel，请前往管理后台。</p>
   <p class="small">系统内置规则：支持 <b>Q 列金额逻辑</b>、保留负值、自动识别文本金额，并生成沉睡会员分析。</p>
 
   
@@ -664,17 +664,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
 </div>
       </div>
       <div class="control-left">
-        <div class="upload-box">
-          <label for="files">上传 Excel 文件（.xls / .xlsx）</label>
-          <input id="files" type="file" accept=".xls,.xlsx" multiple />
-          <div class="small">可上传一个或多个文件，然后开始分析。</div>
-        </div>
-
         <div class="button-group">
-          <div class="analyze-wrap">
-            <div class="analyze-spinner" aria-hidden="true"></div>
-            <button id="analyzeBtn" class="btn">开始分析</button>
-          </div>
           <button id="downloadSleepXlsxBtn" class="light btn">下载</button>
         </div>
       </div>
@@ -3746,40 +3736,6 @@ document.getElementById('ticketRankingTitle')?.addEventListener('click', () => {
   renderRankingTabCharts('ticket');
 });
 hideDuplicateRankingCards();
-document.getElementById('analyzeBtn').addEventListener('click', async () => {
-  playRunButtonBounce();
-  const files = [...document.getElementById('files').files];
-  const status = document.getElementById('status');
-  if (!files.length){ status.textContent = '请至少上传一个文件。'; return; }
-
-  const overrides = {
-    store: normalizeText(document.getElementById('storeHeader')?.value || ''),
-    salesperson: normalizeText(document.getElementById('salesHeader')?.value || ''),
-    product: normalizeText(document.getElementById('productHeader')?.value || ''),
-    amount: normalizeText(document.getElementById('amountHeader')?.value || ''),
-    date: normalizeText(document.getElementById('dateHeader')?.value || ''),
-    order_no: normalizeText(document.getElementById('orderHeader')?.value || ''),
-    qty:'', member_id:'', member_name:'', phone:''
-  };
-  const cfg = getCurrentAnalysisConfig();
-
-  try{
-    setAnalyzeLoading(true);
-    const prepared = await prepareFiles(files, overrides);
-    if (!prepared.cleaned.length){ status.textContent = '未找到有效数据行。'; return; }
-    const results = analyze(prepared.cleaned, cfg);
-    appState.lastCfg = cfg;
-    appState.results = { results, mappings: prepared.mappings, originalCleaned: prepared.cleaned };
-    populateSleepingSalespersonOptions();
-    renderResults(results, prepared.mappings);
-    setHtml('status', '<span class="ok">完成。</span>已从 ' + files.length + ' 个文件中加载 ' + prepared.cleaned.length.toLocaleString() + ' 条有效数据。');
-  }catch(err){
-    console.error(err);
-    setHtml('status', '<span class="warn">错误：</span>' + (err.message || err));
-  }finally{
-    setAnalyzeLoading(false);
-  }
-});
 document.getElementById('sleepSalespersonTrigger')?.addEventListener('click', () => toggleDropdown('sleepSalespersonMenu'));
 document.getElementById('clearSleepSalespersonBtn')?.addEventListener('click', () => {
   toggleDropdown('sleepSalespersonMenu', false);
