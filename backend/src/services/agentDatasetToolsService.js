@@ -5,6 +5,8 @@ import {
 } from "../auth/permissionModel.js";
 
 const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
+const DATA_NOT_READY_MESSAGE = "当前数据不足以判断。";
+const QUERY_FAILED_MESSAGE = "数据查询失败，请稍后重试。";
 
 function normalizeDate(value) {
   const text = String(value || "").trim();
@@ -54,12 +56,33 @@ function validateRequestedScope(scope, requestedFilters) {
 }
 
 function buildScopedFilters(rawFilters, accessScope) {
+  if (accessScope?.forceNoData) {
+    return { ok: false, error: OUT_OF_SCOPE_MESSAGE };
+  }
   const requested = sanitizeFilters(rawFilters);
   if (!validateRequestedScope(accessScope, requested)) {
     return { ok: false, error: OUT_OF_SCOPE_MESSAGE };
   }
   const scoped = applyPermissionScopeToFilters(requested, accessScope);
   return { ok: true, requested, scoped };
+}
+
+function buildContextMeta(currentUser, accessScope, filters) {
+  return {
+    userId: String(currentUser?.id || currentUser?.username || ""),
+    role: String(currentUser?.role || ""),
+    scope: {
+      unrestricted: !!accessScope?.unrestricted,
+      allowAllStores: !!accessScope?.allowAllStores,
+      allowAllSalespeople: !!accessScope?.allowAllSalespeople,
+      allowAllProducts: !!accessScope?.allowAllProducts,
+      forceNoData: !!accessScope?.forceNoData,
+      allowedStoresCount: Array.isArray(accessScope?.allowedStores) ? accessScope.allowedStores.length : 0,
+      allowedSalespeopleCount: Array.isArray(accessScope?.allowedSalespeople) ? accessScope.allowedSalespeople.length : 0,
+      allowedProductsCount: Array.isArray(accessScope?.allowedProducts) ? accessScope.allowedProducts.length : 0,
+    },
+    filters: filters || {},
+  };
 }
 
 function buildTrendRange(preset) {
@@ -244,91 +267,134 @@ export function createAgentDatasetToolsService({ analyticsService }) {
   }
 
   async function runToolCall({ currentUser, accessScope, toolName, toolArgs }) {
-    const args = toolArgs && typeof toolArgs === "object" ? toolArgs : {};
-    const deny = () => ({ ok: false, error: OUT_OF_SCOPE_MESSAGE });
-    const datasetId = await getReadyDatasetId();
-    if (!datasetId) {
-      return { ok: false, error: "当前数据不足以判断" };
-    }
-
-    if (toolName === "getKpiFromDataset") {
-      if (!hasPermission(currentUser, "canViewKpi")) return deny();
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const kpis = await analyticsService.getKpis(datasetId, scoped.scoped);
-      const totalSales = Number(kpis?.totalSales ?? kpis?.totalsales ?? 0);
-      const totalOrders = Number(kpis?.totalOrders ?? kpis?.totalorders ?? 0);
-      const uniqueMembers = Number(kpis?.uniqueMembers ?? kpis?.uniquemembers ?? 0);
-      const avgTicket = totalOrders > 0 ? totalSales / totalOrders : 0;
-      return { ok: true, datasetId, filters: scoped.scoped, data: { totalSales, totalOrders, uniqueMembers, avgTicket } };
-    }
-
-    if (toolName === "getStoreRankingFromDataset") {
-      if (!hasPermission(currentUser, "canViewStoreRanking")) return deny();
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const limit = sanitizeLimit(args.limit, 20, 200);
-      const rows = await analyticsService.getTopStores(datasetId, { filters: scoped.scoped, limit, offset: 0 });
-      return { ok: true, datasetId, rows, total: rows.length, filters: scoped.scoped };
-    }
-
-    if (toolName === "getSalespersonRankingFromDataset") {
-      if (!hasPermission(currentUser, "canViewSalespersonRanking")) return deny();
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const limit = sanitizeLimit(args.limit, 20, 200);
-      const rows = await analyticsService.getTopSalespeople(datasetId, { filters: scoped.scoped, limit, offset: 0 });
-      return { ok: true, datasetId, rows, total: rows.length, filters: scoped.scoped };
-    }
-
-    if (toolName === "getProductRankingFromDataset") {
-      if (!hasPermission(currentUser, "canViewProductRanking")) return deny();
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const limit = sanitizeLimit(args.limit, 20, 200);
-      const rows = await analyticsService.getTopProducts(datasetId, { filters: scoped.scoped, limit, offset: 0 });
-      return { ok: true, datasetId, rows, total: rows.length, filters: scoped.scoped };
-    }
-
-    if (toolName === "getSleepingMembersSummaryFromDataset") {
-      if (!hasPermission(currentUser, "canViewSleepingMembers")) return deny();
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const limit = sanitizeLimit(args.limit, 20, 100);
-      const sleeping = await analyticsService.getSleepingAnalytics(datasetId, {
-        filters: scoped.scoped,
-        analysisDate: scoped.scoped.endDate || "",
-        limit,
-        offset: 0,
-      });
-      return {
-        ok: true,
-        datasetId,
-        filters: scoped.scoped,
-        sleepSummary: sleeping.sleepSummary || [],
-        rows: maskSensitiveMemberRows(sleeping.rows || [], currentUser?.allowedMemberFields || {}),
-      };
-    }
-
-    if (toolName === "getTrendFromDataset") {
-      if (!hasPermission(currentUser, "canViewTrendCharts")) return deny();
-      const preset = String(args.preset || "last7d");
-      if (!["last7d", "last30d", "thisMonth"].includes(preset)) {
-        return { ok: false, error: "preset must be last7d/last30d/thisMonth" };
+    try {
+      const args = toolArgs && typeof toolArgs === "object" ? toolArgs : {};
+      const deny = () => ({ ok: false, error: OUT_OF_SCOPE_MESSAGE, code: "OUT_OF_SCOPE" });
+      const datasetId = await getReadyDatasetId();
+      if (!datasetId) {
+        return { ok: false, error: DATA_NOT_READY_MESSAGE, code: "DATA_NOT_READY" };
       }
-      const scoped = buildScopedFilters(args.filters, accessScope);
-      if (!scoped.ok) return deny();
-      const range = buildTrendRange(preset);
-      const trendFilters = {
-        ...scoped.scoped,
-        startDate: range.startDate,
-        endDate: range.endDate,
-      };
-      const trends = await analyticsService.getTrendSeries(datasetId, { filters: trendFilters });
-      return { ok: true, datasetId, preset, filters: trendFilters, daily: trends.daily || [] };
-    }
 
-    return null;
+      if (toolName === "getKpiFromDataset") {
+        if (!hasPermission(currentUser, "canViewKpi")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const kpis = await analyticsService.getKpis(datasetId, scoped.scoped);
+        const totalSales = Number(kpis?.totalSales ?? kpis?.totalsales ?? 0);
+        const totalOrders = Number(kpis?.totalOrders ?? kpis?.totalorders ?? 0);
+        const uniqueMembers = Number(kpis?.uniqueMembers ?? kpis?.uniquemembers ?? 0);
+        const avgTicket = totalOrders > 0 ? totalSales / totalOrders : 0;
+        return {
+          ok: true,
+          datasetId,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+          data: { totalSales, totalOrders, uniqueMembers, avgTicket },
+        };
+      }
+
+      if (toolName === "getStoreRankingFromDataset") {
+        if (!hasPermission(currentUser, "canViewStoreRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const limit = sanitizeLimit(args.limit, 20, 200);
+        const rows = await analyticsService.getTopStores(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        return {
+          ok: true,
+          datasetId,
+          rows,
+          total: rows.length,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
+      if (toolName === "getSalespersonRankingFromDataset") {
+        if (!hasPermission(currentUser, "canViewSalespersonRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const limit = sanitizeLimit(args.limit, 20, 200);
+        const rows = await analyticsService.getTopSalespeople(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        return {
+          ok: true,
+          datasetId,
+          rows,
+          total: rows.length,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
+      if (toolName === "getProductRankingFromDataset") {
+        if (!hasPermission(currentUser, "canViewProductRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const limit = sanitizeLimit(args.limit, 20, 200);
+        const rows = await analyticsService.getTopProducts(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        return {
+          ok: true,
+          datasetId,
+          rows,
+          total: rows.length,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
+      if (toolName === "getSleepingMembersSummaryFromDataset") {
+        if (!hasPermission(currentUser, "canViewSleepingMembers")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const limit = sanitizeLimit(args.limit, 20, 100);
+        const sleeping = await analyticsService.getSleepingAnalytics(datasetId, {
+          filters: scoped.scoped,
+          analysisDate: scoped.scoped.endDate || "",
+          limit,
+          offset: 0,
+        });
+        return {
+          ok: true,
+          datasetId,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+          sleepSummary: sleeping.sleepSummary || [],
+          rows: maskSensitiveMemberRows(sleeping.rows || [], currentUser?.allowedMemberFields || {}),
+        };
+      }
+
+      if (toolName === "getTrendFromDataset") {
+        if (!hasPermission(currentUser, "canViewTrendCharts")) return deny();
+        const preset = String(args.preset || "last7d");
+        if (!["last7d", "last30d", "thisMonth"].includes(preset)) {
+          return { ok: false, error: "preset must be last7d/last30d/thisMonth", code: "INVALID_ARGUMENT" };
+        }
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const range = buildTrendRange(preset);
+        const trendFilters = {
+          ...scoped.scoped,
+          startDate: range.startDate,
+          endDate: range.endDate,
+        };
+        const trends = await analyticsService.getTrendSeries(datasetId, { filters: trendFilters });
+        return {
+          ok: true,
+          datasetId,
+          preset,
+          filters: trendFilters,
+          contextMeta: buildContextMeta(currentUser, accessScope, trendFilters),
+          daily: trends.daily || [],
+        };
+      }
+
+      return null;
+    } catch (error) {
+      return {
+        ok: false,
+        error: QUERY_FAILED_MESSAGE,
+        code: "TOOL_QUERY_FAILED",
+      };
+    }
   }
 
   return {

@@ -4357,6 +4357,20 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
     renderMessages();
   }
 
+  function normalizeAgentErrorMessage(message) {
+    const text = String(message || '').trim();
+    if (!text) return '请求失败，请稍后重试';
+    if (text.includes('你没有权限查看该范围的数据')) return '你没有权限查看该范围的数据';
+    if (text.includes('当前数据不足以判断')) return '当前数据不足以判断';
+    if (text.includes('消息内容不能为空')) return '请输入问题后再发送';
+    if (text.includes('上下文同步失败')) return '上下文同步失败，请稍后重试';
+    if (text.includes('网络')) return '网络异常，请稍后重试';
+    if (text.includes('AI_API_KEY') || text.includes('上游 AI') || text.includes('tool')) {
+      return '智能助手暂时不可用，请稍后重试';
+    }
+    return text;
+  }
+
   function applyChatFontScale(scale) {
     chatFontScale = Math.max(0.8, Math.min(1.8, scale));
     root.style.setProperty('--ai-chat-font-scale', String(chatFontScale));
@@ -4719,7 +4733,7 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
     try {
       const syncResult = await syncSalesContextToServer();
       if (!syncResult.ok) {
-        appendLine('Error', syncResult.error || '无法将看板数据同步到数据助手。');
+        appendLine('Error', normalizeAgentErrorMessage(syncResult.error || '无法将看板数据同步到数据助手。'));
         return;
       }
       const response = await fetch('/api/chat', {
@@ -4729,13 +4743,13 @@ document.getElementById('downloadSleepXlsxBtn').addEventListener('click', () => 
       });
       const data = await response.json();
       if (!response.ok) {
-        appendLine('Error', data?.error || '请求失败');
+        appendLine('Error', normalizeAgentErrorMessage(data?.error || '请求失败'));
         return;
       }
       appendLine('Agent', data?.reply || '暂无回复');
       applyUiActions(data?.uiActions);
     } catch (error) {
-      appendLine('Error', error?.message || '网络异常');
+      appendLine('Error', normalizeAgentErrorMessage(error?.message || '网络异常'));
     } finally {
       sendBtn.disabled = false;
       sendBtn.textContent = '发送';
