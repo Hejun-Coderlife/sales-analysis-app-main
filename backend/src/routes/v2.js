@@ -22,6 +22,17 @@ const notificationConfigPath = path.resolve(env.dataDir, "notification-config.js
 const notificationService = new NotificationService({ configPath: notificationConfigPath });
 const notificationServiceReady = notificationService.init().catch(() => null);
 
+function collectUploadedFiles(req) {
+  const fromAny = Array.isArray(req?.files) ? req.files : [];
+  const fromFields =
+    req?.files && !Array.isArray(req.files)
+      ? Object.values(req.files)
+          .flatMap((x) => (Array.isArray(x) ? x : []))
+          .filter(Boolean)
+      : [];
+  return [...fromAny, ...fromFields];
+}
+
 function stableJson(value) {
   if (value == null) return "null";
   if (typeof value !== "object") return JSON.stringify(value);
@@ -217,14 +228,22 @@ export function createV2Router({
     if (!hasPermission(req.currentUser, "canImportExcel")) {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });
     }
-    const fileList = (Array.isArray(req.files) ? req.files : [])
+    const uploadedFiles = collectUploadedFiles(req);
+    const fileList = uploadedFiles
       .filter(Boolean)
       .filter((f) => {
         const name = String(f.originalname || "").toLowerCase();
         return name.endsWith(".xls") || name.endsWith(".xlsx");
       });
     if (!fileList.length) {
-      return res.status(400).json({ error: "file/files is required (multipart field name: file or files)" });
+      const providedFieldNames = [...new Set(uploadedFiles.map((f) => String(f.fieldname || "")).filter(Boolean))];
+      return res.status(400).json({
+        error: "未检测到可导入的 Excel 文件（支持 .xls/.xlsx）",
+        details: {
+          expectedFields: ["file", "files"],
+          providedFieldNames,
+        },
+      });
     }
     let overrides = {};
     try {
@@ -280,6 +299,9 @@ export function createV2Router({
                   fileCount: Number(importProgress.fileCount || fileList.length),
                   currentFileName: String(importProgress.currentFileName || ""),
                   cumulativeRowCount: Number(importProgress.cumulativeRowCount || 0),
+                  successfulFileCount: Number(importProgress.successfulFileCount || 0),
+                  failedFileCount: Number(importProgress.failedFileCount || 0),
+                  duplicateRowsSkipped: Number(importProgress.duplicateRowsSkipped || 0),
                 },
               },
             });
@@ -294,6 +316,7 @@ export function createV2Router({
             rowCount: result.rowCount,
             mapping: result.mapping,
             validation: result.validation,
+            duplicateRowsSkipped: Number(result.duplicateRowsSkipped || 0),
             successfulFiles: result.successfulFiles || [],
             failedFiles: result.failedFiles || [],
             importProgress: {
@@ -301,6 +324,9 @@ export function createV2Router({
               fileCount: fileList.length,
               currentFileName: "",
               cumulativeRowCount: Number(result.rowCount || 0),
+              successfulFileCount: Array.isArray(result.successfulFiles) ? result.successfulFiles.length : 0,
+              failedFileCount: Array.isArray(result.failedFiles) ? result.failedFiles.length : 0,
+              duplicateRowsSkipped: Number(result.duplicateRowsSkipped || 0),
             },
           },
           warnings: result.validation?.warnings || [],

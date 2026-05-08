@@ -375,6 +375,7 @@ export class IngestionService {
     const warnings = [];
     const successfulFiles = [];
     const failedFiles = [];
+    let duplicateRowsSkipped = 0;
 
     let cumulativeRows = 0;
     for (let index = 0; index < entries.length; index += 1) {
@@ -401,11 +402,14 @@ export class IngestionService {
           allRows.push(row);
         }
         const uniqueAdded = seenRows.size - before;
+        const duplicateInFile = Math.max(0, parsed.cleanedRows.length - uniqueAdded);
+        duplicateRowsSkipped += duplicateInFile;
         cumulativeRows += uniqueAdded;
         successfulFiles.push({
           fileName: entry.sourceName,
           rawRows: parsed.cleanedRows.length,
           uniqueRowsAdded: uniqueAdded,
+          duplicateRowsSkipped: duplicateInFile,
         });
         mapping.push({
           fileName: entry.sourceName,
@@ -414,11 +418,37 @@ export class IngestionService {
         warnings.push(
           ...parsed.warnings.map((w) => `[${entry.sourceName}] ${w}`)
         );
+        onProgress?.(
+          5 + Math.floor(((index + 1) / Math.max(1, fileCount)) * 35),
+          `文件解析完成：${fileNo}/${fileCount}`,
+          {
+            currentFileIndex: fileNo,
+            fileCount,
+            currentFileName: entry.sourceName,
+            cumulativeRowCount: cumulativeRows,
+            successfulFileCount: successfulFiles.length,
+            failedFileCount: failedFiles.length,
+            duplicateRowsSkipped,
+          }
+        );
       } catch (error) {
         failedFiles.push({
           fileName: entry.sourceName,
           reason: String(error?.message || "解析失败"),
         });
+        onProgress?.(
+          5 + Math.floor(((index + 1) / Math.max(1, fileCount)) * 35),
+          `文件解析失败：${fileNo}/${fileCount}`,
+          {
+            currentFileIndex: fileNo,
+            fileCount,
+            currentFileName: entry.sourceName,
+            cumulativeRowCount: cumulativeRows,
+            successfulFileCount: successfulFiles.length,
+            failedFileCount: failedFiles.length,
+            duplicateRowsSkipped,
+          }
+        );
       }
     }
 
@@ -429,6 +459,7 @@ export class IngestionService {
       fileCount: entries.length,
       successFileCount: successfulFiles.length,
       failedFileCount: failedFiles.length,
+      duplicateRowsSkipped,
       successfulFiles,
       failedFiles,
     };
@@ -438,6 +469,9 @@ export class IngestionService {
       fileCount: entries.length,
       currentFileName: "",
       cumulativeRowCount: allRows.length,
+      successfulFileCount: successfulFiles.length,
+      failedFileCount: failedFiles.length,
+      duplicateRowsSkipped,
     });
 
     await this.duckdbService.run(
@@ -478,6 +512,9 @@ export class IngestionService {
           fileCount: entries.length,
           currentFileName: "",
           cumulativeRowCount: inserted,
+          successfulFileCount: successfulFiles.length,
+          failedFileCount: failedFiles.length,
+          duplicateRowsSkipped,
         });
       }
     }
@@ -499,6 +536,9 @@ export class IngestionService {
       fileCount: entries.length,
       currentFileName: "",
       cumulativeRowCount: allRows.length,
+      successfulFileCount: successfulFiles.length,
+      failedFileCount: failedFiles.length,
+      duplicateRowsSkipped,
     });
 
     return {
@@ -506,6 +546,7 @@ export class IngestionService {
       rowCount: allRows.length,
       mapping,
       validation,
+      duplicateRowsSkipped,
       successfulFiles,
       failedFiles,
     };

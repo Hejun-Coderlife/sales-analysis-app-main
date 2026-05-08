@@ -519,7 +519,11 @@
           const total = Number(p.fileCount || files.length);
           const name = String(p.currentFileName || "");
           const rows = Number(p.cumulativeRowCount || 0);
-          status.textContent = `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(idx,total)}/${total} 个｜${name || "处理中"}｜累计 ${rows} 行`;
+          const okFiles = Number(p.successfulFileCount || 0);
+          const failedFiles = Number(p.failedFileCount || 0);
+          const dupRows = Number(p.duplicateRowsSkipped || 0);
+          status.textContent =
+            `导入状态：${job.status || "running"}（${job.progress || 0}%）｜第 ${Math.min(idx,total)}/${total} 个｜${name || "处理中"}｜累计 ${rows} 行｜成功 ${okFiles}｜失败 ${failedFiles}｜去重 ${dupRows}`;
           if (job.status === "completed") {
             const okFiles = job?.stats?.successfulFiles || [];
             const failFiles = job?.stats?.failedFiles || [];
