@@ -131,6 +131,14 @@
       padding: 8px 10px;
       box-sizing: border-box;
     }
+    .rank-empty-msg {
+      margin: 4px 0 0;
+      padding: 16px 8px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .rank-detail-wrap { margin-top: 2px; }
     .rank-chart-box {
       position: relative;
       width: 100%;
@@ -138,13 +146,7 @@
       overflow: hidden;
     }
     .rank-chart-box canvas { display: block; max-width: 100%; }
-    .chart-empty {
-      margin: 0;
-      padding: 20px 8px;
-      text-align: center;
-      font-size: 14px;
-      color: var(--muted);
-    }
+    .rank-list.ol { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--border); }
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -289,23 +291,32 @@
 
   <section class="card hidden" id="rankStoresCard">
     <h2>门店排行 Top 10</h2>
-    <div class="rank-chart-box" style="height:min(420px,85vh)">
-      <canvas id="chartStores"></canvas>
-      <p class="chart-empty hidden" id="emptyStores">暂无排行数据</p>
+    <p class="rank-empty-msg hidden" id="rankStoresEmptyMsg">暂无可展示的排行数据</p>
+    <div class="rank-detail-wrap hidden" id="rankStoresDetail">
+      <div class="rank-chart-box">
+        <canvas id="chartStores"></canvas>
+      </div>
+      <ol class="ol rank-list" id="listStores"></ol>
     </div>
   </section>
   <section class="card hidden" id="rankSalesCard">
     <h2>销售员排行 Top 10</h2>
-    <div class="rank-chart-box" style="height:min(420px,85vh)">
-      <canvas id="chartSales"></canvas>
-      <p class="chart-empty hidden" id="emptySales">暂无排行数据</p>
+    <p class="rank-empty-msg hidden" id="rankSalesEmptyMsg">暂无可展示的排行数据</p>
+    <div class="rank-detail-wrap hidden" id="rankSalesDetail">
+      <div class="rank-chart-box">
+        <canvas id="chartSales"></canvas>
+      </div>
+      <ol class="ol rank-list" id="listSales"></ol>
     </div>
   </section>
   <section class="card hidden" id="rankProductsCard">
     <h2>商品排行 Top 10</h2>
-    <div class="rank-chart-box" style="height:min(420px,85vh)">
-      <canvas id="chartProducts"></canvas>
-      <p class="chart-empty hidden" id="emptyProducts">暂无排行数据</p>
+    <p class="rank-empty-msg hidden" id="rankProductsEmptyMsg">暂无可展示的排行数据</p>
+    <div class="rank-detail-wrap hidden" id="rankProductsDetail">
+      <div class="rank-chart-box">
+        <canvas id="chartProducts"></canvas>
+      </div>
+      <ol class="ol rank-list" id="listProducts"></ol>
     </div>
   </section>
 
@@ -380,25 +391,15 @@
     }
   }
 
-  function rankChartSetVisible(canvasId, emptyId, showChart) {
+  function renderRankHorizontalBar(key, canvasId, labels, values, fmtVal) {
     const canvas = document.getElementById(canvasId);
-    const emptyEl = document.getElementById(emptyId);
-    if (canvas) canvas.classList.toggle("hidden", !showChart);
-    if (emptyEl) emptyEl.classList.toggle("hidden", showChart);
-  }
-
-  function renderRankHorizontalBar(key, canvasId, emptyId, labels, values, fmtVal) {
-    const canvas = document.getElementById(canvasId);
-    const emptyEl = document.getElementById(emptyId);
     const box = canvas && canvas.parentElement;
     destroyRankChart(key);
     if (!labels.length || !canvas || !box) {
-      rankChartSetVisible(canvasId, emptyId, false);
       return;
     }
-    rankChartSetVisible(canvasId, emptyId, true);
     const n = labels.length;
-    box.style.height = Math.min(420, Math.max(160, n * 28 + 52)) + "px";
+    box.style.height = Math.min(320, Math.max(140, n * 26 + 48)) + "px";
 
     rankCharts[key] = new Chart(canvas, {
       type: "bar",
@@ -521,6 +522,25 @@
       '<div class="kpi"><div class="val">' +
       fmtInt(kpis.uniqueMembers) +
       '</div><div class="lab">会员数</div></div>';
+  }
+
+  function renderOl(id, rows, fmtVal) {
+    const el = document.getElementById(id);
+    if (!rows.length) {
+      el.innerHTML = "";
+      return;
+    }
+    el.innerHTML = rows
+      .map(function (r) {
+        return (
+          '<li><span class="name">' +
+          escapeHtml(r.name) +
+          "</span><span>" +
+          fmtVal(r.val) +
+          "</span></li>"
+        );
+      })
+      .join("");
   }
 
   function escapeHtml(s) {
@@ -789,14 +809,21 @@
       var storeRows = stores.map(function (r) {
         return { name: r.store, val: Number(r.performance || 0) };
       });
-      renderRankHorizontalBar(
-        "stores",
-        "chartStores",
-        "emptyStores",
-        storeRows.map(function (r) { return r.name; }),
-        storeRows.map(function (r) { return r.val; }),
-        function (v) { return fmtMoney(v); }
-      );
+      var storeLabels = storeRows.map(function (r) { return r.name; });
+      var storeVals = storeRows.map(function (r) { return r.val; });
+      if (!storeRows.length) {
+        destroyRankChart("stores");
+        document.getElementById("rankStoresEmptyMsg").classList.remove("hidden");
+        document.getElementById("rankStoresDetail").classList.add("hidden");
+        document.getElementById("listStores").innerHTML = "";
+      } else {
+        document.getElementById("rankStoresEmptyMsg").classList.add("hidden");
+        document.getElementById("rankStoresDetail").classList.remove("hidden");
+        renderRankHorizontalBar("stores", "chartStores", storeLabels, storeVals, function (v) {
+          return fmtMoney(v);
+        });
+        renderOl("listStores", storeRows, function (v) { return fmtMoney(v); });
+      }
     } else {
       destroyRankChart("stores");
       setSectionVisible("rankStoresCard", false);
@@ -807,14 +834,21 @@
       var salesRows = sales.map(function (r) {
         return { name: r.salesperson, val: Number(r.performance || 0) };
       });
-      renderRankHorizontalBar(
-        "sales",
-        "chartSales",
-        "emptySales",
-        salesRows.map(function (r) { return r.name; }),
-        salesRows.map(function (r) { return r.val; }),
-        function (v) { return fmtMoney(v); }
-      );
+      var salesLabels = salesRows.map(function (r) { return r.name; });
+      var salesVals = salesRows.map(function (r) { return r.val; });
+      if (!salesRows.length) {
+        destroyRankChart("sales");
+        document.getElementById("rankSalesEmptyMsg").classList.remove("hidden");
+        document.getElementById("rankSalesDetail").classList.add("hidden");
+        document.getElementById("listSales").innerHTML = "";
+      } else {
+        document.getElementById("rankSalesEmptyMsg").classList.add("hidden");
+        document.getElementById("rankSalesDetail").classList.remove("hidden");
+        renderRankHorizontalBar("sales", "chartSales", salesLabels, salesVals, function (v) {
+          return fmtMoney(v);
+        });
+        renderOl("listSales", salesRows, function (v) { return fmtMoney(v); });
+      }
     } else {
       destroyRankChart("sales");
       setSectionVisible("rankSalesCard", false);
@@ -825,14 +859,21 @@
       var prodRows = products.map(function (r) {
         return { name: r.product, val: Number(r.sales_amount || 0) };
       });
-      renderRankHorizontalBar(
-        "products",
-        "chartProducts",
-        "emptyProducts",
-        prodRows.map(function (r) { return r.name; }),
-        prodRows.map(function (r) { return r.val; }),
-        function (v) { return fmtMoney(v); }
-      );
+      var prodLabels = prodRows.map(function (r) { return r.name; });
+      var prodVals = prodRows.map(function (r) { return r.val; });
+      if (!prodRows.length) {
+        destroyRankChart("products");
+        document.getElementById("rankProductsEmptyMsg").classList.remove("hidden");
+        document.getElementById("rankProductsDetail").classList.add("hidden");
+        document.getElementById("listProducts").innerHTML = "";
+      } else {
+        document.getElementById("rankProductsEmptyMsg").classList.add("hidden");
+        document.getElementById("rankProductsDetail").classList.remove("hidden");
+        renderRankHorizontalBar("products", "chartProducts", prodLabels, prodVals, function (v) {
+          return fmtMoney(v);
+        });
+        renderOl("listProducts", prodRows, function (v) { return fmtMoney(v); });
+      }
     } else {
       destroyRankChart("products");
       setSectionVisible("rankProductsCard", false);
