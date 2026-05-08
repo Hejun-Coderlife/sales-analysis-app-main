@@ -905,11 +905,57 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
     if (!hasPermission(currentUser, "canAskSalespersonQuestions")) return deny();
     const year = String(args.year || "").trim();
     if (!year) return { ok: false, error: "year is required" };
-    const rows = (context.salespersonYearlyPerformance || [])
+    let rows = (context.salespersonYearlyPerformance || [])
       .filter((x) => String(x.year || "") === year)
       .sort((a, b) => b.performance - a.performance)
       .slice(0, limit)
       .map((x, idx) => ({ rank: idx + 1, year, salesperson: x.salesperson, performance: x.performance }));
+    if (!rows.length) {
+      const startYear = String((context.filters && context.filters.startDate) || "").slice(0, 4);
+      const endYear = String((context.filters && context.filters.endDate) || "").slice(0, 4);
+      const isSingleYearFilter = startYear && endYear && startYear === endYear;
+      if (isSingleYearFilter && startYear === year) {
+        rows = (context.topSalespeople || [])
+          .slice()
+          .sort((a, b) => Number(b.performance || 0) - Number(a.performance || 0))
+          .slice(0, limit)
+          .map((x, idx) => ({
+            rank: idx + 1,
+            year,
+            salesperson: String(x.salesperson || ""),
+            performance: Number(x.performance || 0),
+          }));
+      }
+    }
+    if (!rows.length) {
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+      const contextFilters = context.filters && typeof context.filters === "object" ? context.filters : {};
+      const intersectStart = contextFilters.startDate && contextFilters.startDate > yearStart ? contextFilters.startDate : yearStart;
+      const intersectEnd = contextFilters.endDate && contextFilters.endDate < yearEnd ? contextFilters.endDate : yearEnd;
+      if (intersectStart <= intersectEnd) {
+        const latest = await analyticsService.getLatestDatasetSummary({ onlyReady: true });
+        const datasetId = context.datasetId || latest?.dataset_id;
+        if (datasetId) {
+          const scopedFilters = {
+            ...contextFilters,
+            startDate: intersectStart,
+            endDate: intersectEnd,
+          };
+          const queriedRows = await analyticsService.getTopSalespeople(datasetId, {
+            filters: scopedFilters,
+            limit,
+            offset: 0,
+          });
+          rows = (queriedRows || []).map((x, idx) => ({
+            rank: idx + 1,
+            year,
+            salesperson: String(x.salesperson || ""),
+            performance: Number(x.performance || 0),
+          }));
+        }
+      }
+    }
     return { ok: true, rows, year, updatedAt: context.updatedAt };
   }
   if (toolName === "getTopSalespeopleByMonth") {
@@ -1630,6 +1676,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
         "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
         "When data is not enough, explicitly say: 当前数据不足以判断。 " +
         "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
+        "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +
         "Never invent numbers.",
     };
     const workingMessages = [systemMessage, ...getSessionMessages(conversationId), { role: "user", content: userMessage }];

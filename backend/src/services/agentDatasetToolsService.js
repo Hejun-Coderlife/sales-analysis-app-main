@@ -263,6 +263,30 @@ export function createAgentDatasetToolsService({ analyticsService }) {
           },
         },
       },
+      {
+        type: "function",
+        function: {
+          name: "getDataCompletenessFromDataset",
+          description: "Check data completeness and missing fields from current dataset.",
+          parameters: {
+            type: "object",
+            properties: {
+              filters: {
+                type: "object",
+                properties: {
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  stores: { type: "array", items: { type: "string" } },
+                  salespeople: { type: "array", items: { type: "string" } },
+                  products: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
     ];
   }
 
@@ -384,6 +408,42 @@ export function createAgentDatasetToolsService({ analyticsService }) {
           filters: trendFilters,
           contextMeta: buildContextMeta(currentUser, accessScope, trendFilters),
           daily: trends.daily || [],
+        };
+      }
+
+      if (toolName === "getDataCompletenessFromDataset") {
+        if (!hasPermission(currentUser, "canViewDataQuality")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const report = await analyticsService.getDataQualityReport(datasetId, { filters: scoped.scoped });
+        const messages = Array.isArray(report?.messages) ? report.messages : [];
+        const warnings = Array.isArray(report?.warnings) ? report.warnings : [];
+        const suggestions = [];
+        if (messages.some((m) => String(m).includes("销售员字段未识别"))) {
+          suggestions.push("请确认订单表包含销售员字段，并检查导入映射是否匹配“销售员/营业员/导购”等列名。");
+        }
+        if (messages.some((m) => String(m).includes("商品字段未识别"))) {
+          suggestions.push("请确认订单表包含商品字段，并检查导入映射是否匹配“商品/品名/货品名称”等列名。");
+        }
+        if (messages.some((m) => String(m).includes("会员字段未识别"))) {
+          suggestions.push("请补充会员相关字段（会员编号/会员姓名/手机号），否则会员注册率、复购率等指标无法完整计算。");
+        }
+        if (!messages.length && !warnings.length) {
+          suggestions.push("当前数据字段识别正常，可继续核查时间范围和筛选条件是否与分析目标一致。");
+        }
+        suggestions.push("如仍异常，请联系管理员在后台重新导入并检查字段映射明细。");
+        return {
+          ok: true,
+          datasetId,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+          completeness: {
+            messages,
+            warnings: warnings.slice(0, 20),
+            mappingRows: report?.mappingRows || [],
+            summary: report?.summary || {},
+            suggestions,
+          },
         };
       }
 

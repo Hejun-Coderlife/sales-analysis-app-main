@@ -225,6 +225,16 @@ export class IngestionService {
         );
         continue;
       }
+      const optionalHints = [];
+      if (!mapping.member_id) optionalHints.push("member_id");
+      if (!mapping.member_name) optionalHints.push("member_name");
+      if (!mapping.phone) optionalHints.push("phone");
+      if (!mapping.qty) optionalHints.push("qty");
+      if (optionalHints.length) {
+        warnings.push(
+          `[${sheetName}] 可选字段未识别：${optionalHints.join(", ")}。这可能导致会员注册率、复购率、数量相关指标不完整。`
+        );
+      }
 
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
         const row = rows[rowIndex];

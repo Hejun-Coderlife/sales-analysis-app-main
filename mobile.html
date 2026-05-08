@@ -225,6 +225,12 @@
       overscroll-behavior: contain;
       padding-bottom: 88px;
     }
+    .member-list-scroll {
+      max-height: 420px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 2px;
+    }
     #trendDetail { position: relative; }
     .trend-tooltip {
       position: absolute;
@@ -270,7 +276,7 @@
       bottom: calc(12px + var(--safe-bottom));
       max-height: min(64vh, 520px);
       z-index: 9999;
-      background: #fff;
+      background: linear-gradient(180deg, rgba(245, 247, 255, 0.98), rgba(255, 255, 255, 0.98));
       border: 1px solid rgba(118, 144, 243, 0.55);
       border-radius: 14px;
       flex-direction: column;
@@ -285,11 +291,21 @@
       align-items: center;
       justify-content: space-between;
       padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(118, 144, 243, 0.28);
+      background: linear-gradient(90deg, rgba(118, 144, 243, 0.16), rgba(165, 180, 252, 0.06));
       font-weight: 600;
       font-size: 14px;
+      color: #1e3a8a;
+      border-radius: 14px 14px 0 0;
     }
-    .chat-body { flex: 1; overflow: auto; overflow-x: hidden; padding: 10px 12px; font-size: 14px; }
+    .chat-body {
+      flex: 1;
+      overflow: auto;
+      overflow-x: hidden;
+      padding: 10px 12px;
+      font-size: 14px;
+      background: rgba(255, 255, 255, 0.72);
+    }
     .chat-msg {
       margin-bottom: 10px;
       line-height: 1.6;
@@ -301,15 +317,15 @@
     .chat-msg.user {
       margin-left: auto;
       text-align: left;
-      color: #1d4ed8;
-      background: rgba(29, 78, 216, 0.08);
+      color: #166534;
+      background: #dcfce7;
       border-radius: 10px;
       padding: 8px 10px;
     }
     .chat-msg.agent {
       text-align: left;
       color: #111827;
-      background: #f8fafc;
+      background: #ecfdf5;
       border-radius: 10px;
       padding: 8px 10px;
     }
@@ -317,7 +333,14 @@
     .assistant-paragraph:last-child { margin-bottom: 0; }
     .assistant-subtitle { font-weight: 600; color: #1f2937; margin-right: 4px; }
     .chat-msg.err { color: #b91c1c; }
-    .chat-foot { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
+    .chat-foot {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid rgba(118, 144, 243, 0.28);
+      background: rgba(247, 249, 255, 0.95);
+      border-radius: 0 0 14px 14px;
+    }
     .chat-foot input { flex: 1; min-height: 42px; font-size: 16px; border-radius: 10px; border: 1px solid var(--border); padding: 0 10px; }
     #toast {
       position: fixed;
@@ -446,11 +469,6 @@
     <div id="sleepSummary"></div>
   </section>
 
-  <section class="card hidden" id="agentCard">
-    <h2>AI助手</h2>
-    <p class="muted" style="margin:0 0 10px">点击下方浮动按钮打开对话，数据与权限与当前账号一致。</p>
-  </section>
-
   <button type="button" id="chatFab" aria-label="打开AI助手"></button>
   <div id="chatPanel">
     <div class="chat-head">
@@ -472,6 +490,10 @@
   <script>
 (function () {
   window.initGalaxyBackground({ includeEarth: true, mapAssistantButton: true });
+  var earthCaption = document.querySelector(".earth-caption");
+  if (earthCaption) {
+    earthCaption.innerHTML = 'GLOBAL BUSINESS NETWORK<span class="earth-hint">DRAG TO ROTATE · PINCH TO ZOOM</span>';
+  }
 
   const NO_PERM_DATA = "当前账号暂无可查看数据，请联系管理员配置权限。";
   const NO_IMPORT = "暂无数据，请管理员先在后台导入 Excel。";
@@ -508,7 +530,17 @@
   const trendSeriesMeta = [];
   const RANK_BAR_BG = "rgba(118, 144, 243, 0.78)";
   const RANK_BAR_BORDER = "#7690f3";
+  const MEMBER_INITIAL_LIMIT = 100;
+  const MEMBER_LOAD_STEP = 100;
+  const MEMBER_MAX_ROWS = 50000;
   let fabIgnoreClickUntil = 0;
+  let memberPagingState = {
+    rows: [],
+    loading: false,
+    hasMore: false,
+    filterBase: null,
+    storeParam: null,
+  };
 
   function destroyRankChart(key) {
     if (rankCharts[key]) {
@@ -526,6 +558,32 @@
     }
     const n = labels.length;
     box.style.height = Math.min(320, Math.max(140, n * 26 + 48)) + "px";
+    const rankBarHeadLabelPlugin = {
+      id: "rankBarHeadLabelPlugin",
+      afterDatasetsDraw: function (chart) {
+        var meta = chart.getDatasetMeta(0);
+        if (!meta || !Array.isArray(meta.data)) return;
+        var ctx = chart.ctx;
+        var area = chart.chartArea || {};
+        ctx.save();
+        ctx.font = "600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+        ctx.fillStyle = "#111827";
+        for (var i = 0; i < meta.data.length; i += 1) {
+          var bar = meta.data[i];
+          if (!bar) continue;
+          var rawName = String(labels[i] != null ? labels[i] : "");
+          if (!rawName) continue;
+          var name = rawName.length > 10 ? rawName.slice(0, 9) + "…" : rawName;
+          var textW = ctx.measureText(name).width;
+          var x = Number(bar.x || 0) + 6;
+          var y = Number(bar.y || 0) + 3;
+          if (area.right && x + textW > area.right - 2) x = Math.max((area.left || 0) + 2, (area.right || 0) - textW - 2);
+          if (y < (area.top || 0) + 10) y = (area.top || 0) + 10;
+          ctx.fillText(name, x, y);
+        }
+        ctx.restore();
+      },
+    };
 
     rankCharts[key] = new Chart(canvas, {
       type: "bar",
@@ -576,10 +634,12 @@
           y: {
             grid: { display: false },
             ticks: {
+              display: false,
               font: { size: 11 },
               autoSkip: false,
               callback: function (val) {
-                var s = String(val != null ? val : "");
+                var idx = Number(val);
+                var s = String(labels[idx] != null ? labels[idx] : "");
                 return s.length > 12 ? s.slice(0, 11) + "…" : s;
               },
             },
@@ -587,6 +647,7 @@
           },
         },
       },
+      plugins: [rankBarHeadLabelPlugin],
     });
   }
 
@@ -656,7 +717,7 @@
         maintainAspectRatio: false,
         animation: false,
         interaction: { mode: "index", intersect: false },
-        elements: { point: { hitRadius: 20 } },
+        elements: { point: { hitRadius: 30 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -674,6 +735,13 @@
               }
               var idx = model.dataPoints[0].dataIndex;
               var row = trendSeriesMeta[idx] || {};
+              if (!row || (row.sales == null && values[idx] == null)) {
+                tipEl.innerHTML = '<div style="font-weight:600;">No data available for this period.</div>';
+                tipEl.style.left = "50%";
+                tipEl.style.top = "16px";
+                tipEl.classList.add("show");
+                return;
+              }
               var html = '<div style="font-weight:600;margin-bottom:2px;">' + escapeHtml(String(row.day || labels[idx] || "")) + "</div>";
               html += '<div>销售额：' + escapeHtml(fmtMoney(Number(row.sales || values[idx] || 0))) + "</div>";
               if (row.orderCount != null) html += '<div>订单数：' + escapeHtml(fmtInt(Number(row.orderCount || 0))) + "</div>";
@@ -723,8 +791,56 @@
         trendChart.update("none");
       }
     };
+    var activateByPointerX = function (evt) {
+      if (!trendChart || !trendChart.canvas) return;
+      var nativeEvt = evt && evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+      if (!nativeEvt) return;
+      var rect = trendChart.canvas.getBoundingClientRect();
+      if (!rect || !rect.width || !rect.height) return;
+      var cx = Number(nativeEvt.clientX || 0);
+      var cy = Number(nativeEvt.clientY || 0);
+      if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) {
+        hideTip();
+        return;
+      }
+      // Chart.js hit-testing uses CSS pixels, not device pixels.
+      // Using canvas.width/rect.width here causes 2x/3x offsets on mobile retina screens.
+      var xPixel = cx - rect.left;
+      var labelsLen = Array.isArray(labels) ? labels.length : 0;
+      if (!labelsLen) return;
+      var idx = 0;
+      var nearestDist = Number.POSITIVE_INFINITY;
+      var meta = trendChart.getDatasetMeta && trendChart.getDatasetMeta(0);
+      var points = meta && Array.isArray(meta.data) ? meta.data : [];
+      if (points.length) {
+        for (var i = 0; i < points.length; i += 1) {
+          var px = Number(points[i] && points[i].x);
+          if (!Number.isFinite(px)) continue;
+          var d = Math.abs(px - xPixel);
+          if (d < nearestDist) {
+            nearestDist = d;
+            idx = i;
+          }
+        }
+      } else {
+        var xScale = trendChart.scales && trendChart.scales.x;
+        if (!xScale) return;
+        var rawIdx = xScale.getValueForPixel(xPixel);
+        idx = Math.max(0, Math.min(labelsLen - 1, Math.round(Number(rawIdx || 0))));
+      }
+      trendChart.tooltip.setActiveElements([{ datasetIndex: 0, index: idx }], {
+        x: points[idx] && Number.isFinite(Number(points[idx].x)) ? Number(points[idx].x) : xPixel,
+        y: trendChart.chartArea ? trendChart.chartArea.top + 12 : 12,
+      });
+      trendChart.update("none");
+    };
     canvas.onpointerleave = hideTip;
+    canvas.onpointerdown = activateByPointerX;
+    canvas.onpointermove = activateByPointerX;
     canvas.onpointerup = function () { setTimeout(hideTip, 700); };
+    canvas.ontouchstart = activateByPointerX;
+    canvas.ontouchmove = activateByPointerX;
+    canvas.ontouchend = function () { setTimeout(hideTip, 700); };
   }
 
   function hasPerm(key) {
@@ -954,6 +1070,103 @@
     return Array.isArray(data.daily) ? data.daily : [];
   }
 
+  async function fetchTopMembersPage(filterBase, storeParam, limit, offset) {
+    if (!datasetId || !hasPerm("canViewMemberAnalysis")) return [];
+    var safeLimit = Math.max(1, Math.min(500, Number(limit) || MEMBER_LOAD_STEP));
+    var safeOffset = Math.max(0, Number(offset) || 0);
+    var q = qs(Object.assign({}, filterBase, storeParam, { limit: safeLimit, offset: safeOffset })) || "";
+    var url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/members/top?" + q;
+    var data = await fetchJson(url);
+    return Array.isArray(data && data.rows) ? data.rows : [];
+  }
+
+  function renderMemberSummary(uq) {
+    const ms = document.getElementById("memberSummary");
+    if (!ms) return;
+    var topMembers = (memberPagingState.rows || []).slice(0, MEMBER_MAX_ROWS);
+    if (!topMembers.length) {
+      ms.innerHTML =
+        '<p class="muted">区间内去重会员约 <b>' +
+        uq +
+        "</b> 人。</p><p class=\"muted\">暂无会员排行明细。</p>";
+      return;
+    }
+    var showLoadMore = memberPagingState.hasMore && topMembers.length < MEMBER_MAX_ROWS;
+    ms.innerHTML =
+      '<p class="muted">区间内去重会员约 <b>' +
+      uq +
+      "</b> 人。消费前列：</p><ol class=\"ol member-list-scroll\">" +
+      topMembers
+        .map(function (m, i) {
+          return (
+            "<li style=\"padding-left:4px\"><span class=\"name\">" +
+            (i + 1) +
+            ". " +
+            escapeHtml(m.member_name || m.member_id || "") +
+            "</span><span>" +
+            fmtMoney(m.total_spend) +
+            "</span></li>"
+          );
+        })
+        .join("") +
+      "</ol>" +
+      (showLoadMore
+        ? '<div style="margin-top:10px;text-align:center;"><button type="button" class="btn btn-light" id="memberLoadMoreBtn" style="min-height:36px;padding:0 14px;">加载更多会员（+100）</button></div>'
+        : "");
+  }
+
+  function wireMemberLoadMore(uq) {
+    var loadMoreBtn = document.getElementById("memberLoadMoreBtn");
+    if (!loadMoreBtn) return;
+    loadMoreBtn.onclick = function () {
+      loadMoreMembersAndRender(uq)
+        .then(function () {
+          cacheForChat.members = (memberPagingState.rows || []).slice();
+          wireMemberLoadMore(uq);
+        })
+        .catch(function () {});
+    };
+  }
+
+  async function loadMoreMembersAndRender(uq) {
+    if (memberPagingState.loading || !memberPagingState.hasMore) return;
+    memberPagingState.loading = true;
+    var btn = document.getElementById("memberLoadMoreBtn");
+    var oldList = document.querySelector("#memberSummary .member-list-scroll");
+    var prevScrollTop = oldList ? oldList.scrollTop : 0;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "加载中...";
+    }
+    try {
+      var offset = (memberPagingState.rows || []).length;
+      var rows = await fetchTopMembersPage(
+        memberPagingState.filterBase || {},
+        memberPagingState.storeParam || {},
+        MEMBER_LOAD_STEP,
+        offset
+      );
+      if (rows.length) {
+        memberPagingState.rows = (memberPagingState.rows || []).concat(rows).slice(0, MEMBER_MAX_ROWS);
+      }
+      memberPagingState.hasMore = rows.length === MEMBER_LOAD_STEP && memberPagingState.rows.length < MEMBER_MAX_ROWS;
+      renderMemberSummary(uq);
+      wireMemberLoadMore(uq);
+      var newList = document.querySelector("#memberSummary .member-list-scroll");
+      if (newList) {
+        newList.scrollTop = prevScrollTop;
+      }
+    } catch (e) {
+      showToast((e && e.message) || "会员加载失败", "error");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "加载更多会员（+100）";
+      }
+    } finally {
+      memberPagingState.loading = false;
+    }
+  }
+
   async function loadAllData() {
     hideBanner();
     if (!datasetId) {
@@ -970,7 +1183,6 @@
         "memberCard",
         "sleepCard",
       ].forEach(function (id) { setSectionVisible(id, false); });
-      setSectionVisible("agentCard", hasPerm("canUseAgentChat"));
       document.getElementById("chatFab").style.display = hasPerm("canUseAgentChat") ? "block" : "none";
       return;
     }
@@ -1024,18 +1236,18 @@
     }
     try {
       if (hasPerm("canViewMemberAnalysis")) {
-        const q =
-          qs(Object.assign({}, filterBase, storeParam, { limit: 20, offset: 0 })) || "";
-        const url =
-          "/api/v2/datasets/" +
-          encodeURIComponent(datasetId) +
-          "/members/top?" +
-          q;
-        const data = await fetchJson(url);
-        members = data.rows || [];
+        members = await fetchTopMembersPage(filterBase, storeParam, MEMBER_INITIAL_LIMIT, 0);
+        memberPagingState.rows = (members || []).slice(0, MEMBER_MAX_ROWS);
+        memberPagingState.hasMore = (members || []).length === MEMBER_INITIAL_LIMIT;
+        memberPagingState.filterBase = Object.assign({}, filterBase);
+        memberPagingState.storeParam = Object.assign({}, storeParam);
       }
     } catch (e) {
       members = [];
+      memberPagingState.rows = [];
+      memberPagingState.hasMore = false;
+      memberPagingState.filterBase = Object.assign({}, filterBase);
+      memberPagingState.storeParam = Object.assign({}, storeParam);
     }
     try {
       if (hasPerm("canViewSleepingMembers")) {
@@ -1255,36 +1467,13 @@
 
     if (hasPerm("canViewMemberAnalysis")) {
       setSectionVisible("memberCard", true);
-      const ms = document.getElementById("memberSummary");
       const uq = coreKpis ? fmtInt(coreKpis.uniqueMembers || 0) : "—";
-      var topMembers = members.slice(0, 5);
-      if (!topMembers.length) {
-        ms.innerHTML =
-          '<p class="muted">区间内去重会员约 <b>' +
-          uq +
-          "</b> 人。</p><p class=\"muted\">暂无会员排行明细。</p>";
-      } else {
-        ms.innerHTML =
-          '<p class="muted">区间内去重会员约 <b>' +
-          uq +
-          "</b> 人。消费前列：</p><ol class=\"ol\">" +
-          topMembers
-            .map(function (m, i) {
-                    return (
-                      "<li style=\"padding-left:4px\"><span class=\"name\">" +
-                      (i + 1) +
-                      ". " +
-                      escapeHtml(m.member_name || m.member_id || "") +
-                      "</span><span>" +
-                      fmtMoney(m.total_spend) +
-                      "</span></li>"
-                    );
-                  })
-            .join("") +
-          "</ol>";
-      }
+      renderMemberSummary(uq);
+      wireMemberLoadMore(uq);
     } else {
       setSectionVisible("memberCard", false);
+      memberPagingState.rows = [];
+      memberPagingState.hasMore = false;
     }
 
     if (hasPerm("canViewSleepingMembers") && sleeping && sleeping.sleepSummary) {
@@ -1312,14 +1501,13 @@
       setSectionVisible("sleepCard", false);
     }
 
-    setSectionVisible("agentCard", hasPerm("canUseAgentChat"));
     document.getElementById("chatFab").style.display = hasPerm("canUseAgentChat") ? "block" : "none";
 
     cacheForChat.coreKpis = coreKpis;
     cacheForChat.stores = stores;
     cacheForChat.sales = sales;
     cacheForChat.products = products;
-    cacheForChat.members = members;
+    cacheForChat.members = (memberPagingState.rows || []).slice();
     cacheForChat.sleeping = sleeping;
   }
 
@@ -1345,6 +1533,7 @@
       if (r.metric === "A-Class Members") sleepA = Number(r.value || 0);
     });
     return {
+      datasetId: datasetId,
       updatedAt: new Date().toISOString(),
       filters: {
         startDate: state.startDate,
