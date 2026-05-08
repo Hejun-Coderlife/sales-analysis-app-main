@@ -217,6 +217,29 @@
       font-weight: 600;
     }
     .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-value { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; min-width: 108px; }
+    .rank-list { padding-right: 2px; }
+    .rank-list.expanded { max-height: 420px; overflow-y: auto; overscroll-behavior: contain; }
+    #trendDetail { position: relative; }
+    .trend-tooltip {
+      position: absolute;
+      min-width: 120px;
+      max-width: 78%;
+      background: rgba(17, 24, 39, 0.92);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 8px 10px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -108%);
+      transition: opacity .12s ease;
+      z-index: 3;
+      box-shadow: 0 8px 18px rgba(2, 6, 23, .28);
+      white-space: normal;
+    }
+    .trend-tooltip.show { opacity: 1; }
     .muted { color: var(--muted); font-size: 12px; }
     .perm-tip { font-size: 13px; color: var(--muted); padding: 8px 0; }
     #chatFab {
@@ -497,9 +520,12 @@
 
   const rankCharts = { stores: null, sales: null, products: null };
   let trendChart = null;
+  const TREND_TOOLTIP_ID = "trendTooltip";
+  const trendSeriesMeta = [];
   const rankExpandState = { stores: false, sales: false, products: false };
   const RANK_BAR_BG = "rgba(118, 144, 243, 0.78)";
   const RANK_BAR_BORDER = "#7690f3";
+  let fabIgnoreClickUntil = 0;
 
   function destroyRankChart(key) {
     if (rankCharts[key]) {
@@ -597,7 +623,33 @@
     }
     if (empty) empty.classList.add("hidden");
     if (detail) detail.classList.remove("hidden");
+    var trendTooltip = document.getElementById(TREND_TOOLTIP_ID);
+    if (!trendTooltip && detail) {
+      trendTooltip = document.createElement("div");
+      trendTooltip.id = TREND_TOOLTIP_ID;
+      trendTooltip.className = "trend-tooltip";
+      detail.appendChild(trendTooltip);
+    }
     box.style.height = "240px";
+    const trendCrosshairPlugin = {
+      id: "trendCrosshairPlugin",
+      afterDatasetsDraw: function (chart) {
+        const active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
+        if (!active || !active.length) return;
+        const x = active[0].element.x;
+        const area = chart.chartArea;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(37, 99, 235, 0.9)";
+        ctx.moveTo(x, area.top);
+        ctx.lineTo(x, area.bottom);
+        ctx.stroke();
+        ctx.restore();
+      },
+    };
     trendChart = new Chart(canvas, {
       type: "line",
       data: {
@@ -620,9 +672,38 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        interaction: { mode: "index", intersect: false },
+        elements: { point: { hitRadius: 20 } },
         plugins: {
           legend: { display: false },
           tooltip: {
+            enabled: false,
+            position: "nearest",
+            mode: "index",
+            intersect: false,
+            external: function (context) {
+              var model = context.tooltip;
+              var tipEl = document.getElementById(TREND_TOOLTIP_ID);
+              if (!tipEl || !detail) return;
+              if (!model || !model.opacity || !model.dataPoints || !model.dataPoints.length) {
+                tipEl.classList.remove("show");
+                return;
+              }
+              var idx = model.dataPoints[0].dataIndex;
+              var row = trendSeriesMeta[idx] || {};
+              var html = '<div style="font-weight:600;margin-bottom:2px;">' + escapeHtml(String(row.day || labels[idx] || "")) + "</div>";
+              html += '<div>销售额：' + escapeHtml(fmtMoney(Number(row.sales || values[idx] || 0))) + "</div>";
+              if (row.orderCount != null) html += '<div>订单数：' + escapeHtml(fmtInt(Number(row.orderCount || 0))) + "</div>";
+              if (row.storeCount != null) html += '<div>门店数：' + escapeHtml(fmtInt(Number(row.storeCount || 0))) + "</div>";
+              tipEl.innerHTML = html;
+              const area = context.chart.chartArea;
+              var left = model.caretX;
+              var top = Math.max(area.top + 14, model.caretY);
+              left = Math.max(42, Math.min(left, detail.clientWidth - 42));
+              tipEl.style.left = left + "px";
+              tipEl.style.top = top + "px";
+              tipEl.classList.add("show");
+            },
             callbacks: {
               label: function (ctx) {
                 return fmtMoney(Number(ctx.raw || 0));
@@ -649,7 +730,18 @@
           },
         },
       },
+      plugins: [trendCrosshairPlugin],
     });
+    var hideTip = function () {
+      var tipEl = document.getElementById(TREND_TOOLTIP_ID);
+      if (tipEl) tipEl.classList.remove("show");
+      if (trendChart && trendChart.tooltip) {
+        trendChart.tooltip.setActiveElements([], { x: 0, y: 0 });
+        trendChart.update("none");
+      }
+    };
+    canvas.onpointerleave = hideTip;
+    canvas.onpointerup = function () { setTimeout(hideTip, 700); };
   }
 
   function hasPerm(key) {
@@ -750,7 +842,7 @@
         return (
           '<li><span class="name">' +
           escapeHtml(r.name) +
-          "</span><span>" +
+          '</span><span class="rank-value">' +
           fmtVal(r.val) +
           "</span></li>"
         );
@@ -1067,8 +1159,15 @@
     if (hasPerm("canViewTrendCharts")) {
       setSectionVisible("trendCard", true);
       var trendRows = (trendDaily || []).map(function (r) {
-        return { day: String(r.day || ""), sales: Number(r.sales_amount || 0) };
+        return {
+          day: String(r.day || ""),
+          sales: Number(r.sales_amount || 0),
+          orderCount: r.order_count == null ? null : Number(r.order_count),
+          storeCount: r.store_count == null ? null : Number(r.store_count),
+        };
       });
+      trendSeriesMeta.length = 0;
+      trendRows.forEach(function (r) { trendSeriesMeta.push(r); });
       renderTrendLine(
         trendRows.map(function (r) { return r.day; }),
         trendRows.map(function (r) { return r.sales; })
@@ -1104,8 +1203,7 @@
         renderOl("listStores", listRows, function (v) { return fmtMoney(v); });
         var listElStores = document.getElementById("listStores");
         if (listElStores) {
-          listElStores.style.maxHeight = rankExpandState.stores ? "420px" : "";
-          listElStores.style.overflowY = rankExpandState.stores ? "auto" : "";
+          listElStores.classList.toggle("expanded", !!rankExpandState.stores);
           listElStores.style.display = "block";
         }
         var toggleStoresBtn = document.getElementById("toggleStoresBtn");
@@ -1139,8 +1237,7 @@
         renderOl("listSales", salesListRows, function (v) { return fmtMoney(v); });
         var listElSales = document.getElementById("listSales");
         if (listElSales) {
-          listElSales.style.maxHeight = rankExpandState.sales ? "420px" : "";
-          listElSales.style.overflowY = rankExpandState.sales ? "auto" : "";
+          listElSales.classList.toggle("expanded", !!rankExpandState.sales);
           listElSales.style.display = "block";
         }
         var toggleSalesBtn = document.getElementById("toggleSalesBtn");
@@ -1174,8 +1271,7 @@
         renderOl("listProducts", prodListRows, function (v) { return fmtMoney(v); });
         var listElProducts = document.getElementById("listProducts");
         if (listElProducts) {
-          listElProducts.style.maxHeight = rankExpandState.products ? "420px" : "";
-          listElProducts.style.overflowY = rankExpandState.products ? "auto" : "";
+          listElProducts.classList.toggle("expanded", !!rankExpandState.products);
           listElProducts.style.display = "block";
         }
         var toggleProductsBtn = document.getElementById("toggleProductsBtn");
@@ -1680,6 +1776,7 @@
     }
 
     wireRankToggleUi();
+    wireDraggableFab();
 
     datasetId = await loadLatestDataset();
     wireNotifications();
@@ -1719,7 +1816,11 @@
     const close = document.getElementById("chatClose");
     const send = document.getElementById("chatSend");
     const input = document.getElementById("chatInput");
-    fab.addEventListener("click", function () {
+    fab.addEventListener("click", function (e) {
+      if (Date.now() < fabIgnoreClickUntil) {
+        e.preventDefault();
+        return;
+      }
       panel.classList.add("open");
     });
     close.addEventListener("click", function () {
@@ -1729,6 +1830,86 @@
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") sendChat();
     });
+  }
+
+  function wireDraggableFab() {
+    var fab = document.getElementById("chatFab");
+    if (!fab || fab.dataset.dragWired) return;
+    fab.dataset.dragWired = "1";
+    const key = "mobileAiFabPosition";
+    var dragging = false;
+    var moved = false;
+    var startX = 0;
+    var startY = 0;
+    var originLeft = 0;
+    var originTop = 0;
+
+    function clampPos(left, top) {
+      const w = fab.offsetWidth || 56;
+      const h = fab.offsetHeight || 56;
+      const maxLeft = Math.max(0, window.innerWidth - w);
+      const maxTop = Math.max(0, window.innerHeight - h);
+      return {
+        left: Math.max(0, Math.min(maxLeft, left)),
+        top: Math.max(0, Math.min(maxTop, top)),
+      };
+    }
+    function applyPos(left, top) {
+      const p = clampPos(left, top);
+      fab.style.left = p.left + "px";
+      fab.style.top = p.top + "px";
+      fab.style.right = "auto";
+      fab.style.bottom = "auto";
+      return p;
+    }
+    function savePos(p) {
+      try { localStorage.setItem(key, JSON.stringify({ left: p.left, top: p.top })); } catch (_e) {}
+    }
+    function restorePos() {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (!p || !Number.isFinite(Number(p.left)) || !Number.isFinite(Number(p.top))) return;
+        applyPos(Number(p.left), Number(p.top));
+      } catch (_e) {}
+    }
+
+    restorePos();
+    window.addEventListener("resize", function () {
+      if (!fab.style.left || !fab.style.top) return;
+      const left = Number(String(fab.style.left || "0").replace("px", "")) || 0;
+      const top = Number(String(fab.style.top || "0").replace("px", "")) || 0;
+      const p = applyPos(left, top);
+      savePos(p);
+    });
+
+    fab.addEventListener("pointerdown", function (e) {
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = fab.getBoundingClientRect();
+      originLeft = rect.left;
+      originTop = rect.top;
+      fab.setPointerCapture(e.pointerId);
+    });
+    fab.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
+      if (!moved) return;
+      const p = applyPos(originLeft + dx, originTop + dy);
+      savePos(p);
+    });
+    fab.addEventListener("pointerup", function (e) {
+      if (!dragging) return;
+      dragging = false;
+      fab.releasePointerCapture(e.pointerId);
+      if (moved) fabIgnoreClickUntil = Date.now() + 220;
+    });
+    fab.addEventListener("pointercancel", function () { dragging = false; });
   }
 
   function setNotifUnreadBadge(n) {
