@@ -1321,6 +1321,10 @@
         applyBtn.dataset.wired = "1";
         applyBtn.addEventListener("click", async function () {
           if (applyBtn.disabled) return;
+          var datePanelEl = document.getElementById("dateRangePanel");
+          var dateTriggerEl = document.getElementById("dateRangeTrigger");
+          if (datePanelEl) datePanelEl.classList.add("hidden");
+          if (dateTriggerEl) dateTriggerEl.setAttribute("aria-expanded", "false");
           setButtonLoading(applyBtn, true, "加载中...");
           showInlineLoading("正在加载筛选结果...");
           if (hasPerm("canUseFilters")) {
