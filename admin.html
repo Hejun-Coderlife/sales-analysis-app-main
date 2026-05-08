@@ -179,13 +179,30 @@
           <div class="row" style="margin-top:8px;"><button id="adminImportBtn" class="btn btn-primary">开始导入</button><span id="adminImportStatus" class="meta">待上传</span></div>
           <div id="latestImportMeta" class="meta" style="margin-top:8px;">最新数据更新时间：暂无</div>
         </article>
-        <article class="side-card" id="dingtalkTestCard" hidden>
-          <h3>钉钉测试通知</h3>
-          <div class="row"><button id="dingtalkTestBtn" class="btn btn-light">发送钉钉测试通知</button><span id="dingtalkTestMsg" class="meta"></span></div>
-        </article>
-        <article class="side-card" id="inAppNotifCard" hidden>
-          <h3>应用内通知</h3>
-          <div class="row"><button id="inAppNotifBtn" class="btn btn-light">发送应用内测试通知</button><span id="inAppNotifMsg" class="meta"></span></div>
+        <article class="side-card" id="notifConfigCard" hidden>
+          <h3>钉钉通知配置</h3>
+          <label class="muted" style="display:block;margin-bottom:8px;">
+            <input id="dingtalkEnabledCheckbox" type="checkbox" /> 启用钉钉通知渠道
+          </label>
+          <div class="field">
+            <label for="dingtalkTestUserIdInput">测试接收人（钉钉 UserID）</label>
+            <input id="dingtalkTestUserIdInput" placeholder="例如：manager_001" />
+          </div>
+          <label class="muted" style="display:block;margin:8px 0 4px;">
+            <input id="ruleDailySummaryCheckbox" type="checkbox" /> 日报提醒
+          </label>
+          <label class="muted" style="display:block;margin:0 0 4px;">
+            <input id="ruleSleepingCheckbox" type="checkbox" /> 沉睡会员提醒
+          </label>
+          <label class="muted" style="display:block;margin:0 0 8px;">
+            <input id="ruleSalespersonCheckbox" type="checkbox" /> 销售员业绩提醒
+          </label>
+          <div class="row">
+            <button id="saveNotifConfigBtn" class="btn btn-light">保存配置</button>
+            <button id="dingtalkTestBtn" class="btn btn-light">发送钉钉测试通知</button>
+          </div>
+          <div id="dingtalkEnvStatus" class="meta" style="margin-top:8px;">加载中...</div>
+          <div id="dingtalkTestMsg" class="meta"></div>
         </article>
         <article class="side-card">
           <h3>导入历史</h3>
@@ -781,18 +798,81 @@
     async function sendDingTalkTestNotification() {
       const msgEl = document.getElementById("dingtalkTestMsg");
       msgEl.textContent = "";
-      const res = await fetch("/api/admin/dingtalk/test-notification", { method:"POST", credentials:"same-origin", headers:{ "Content-Type":"application/json" }, body:"{}" });
+      const testUserId = String(document.getElementById("dingtalkTestUserIdInput")?.value || "").trim();
+      const res = await fetch("/api/v2/admin/notifications/test-dingtalk", {
+        method:"POST",
+        credentials:"same-origin",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ testUserId }),
+      });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok !== false) { msgEl.textContent = data.message || "已发送测试通知"; msgEl.className = "meta ok"; showToast("已发送钉钉测试通知","success"); return; }
-      msgEl.textContent = data.error || `请求失败（${res.status}）`; msgEl.className = "meta err"; showToast(msgEl.textContent,"error");
+      if (res.ok && data.ok !== false) {
+        const code = Number(data?.dingtalk?.errcode ?? 0);
+        const errmsg = String(data?.dingtalk?.errmsg || "ok");
+        msgEl.textContent = `发送成功（errcode=${code}, errmsg=${errmsg}）`;
+        msgEl.className = "meta ok";
+        showToast("已发送钉钉测试通知","success");
+        return;
+      }
+      msgEl.textContent = data.error || `请求失败（${res.status}）`;
+      msgEl.className = "meta err";
+      showToast(msgEl.textContent,"error");
     }
-    async function sendInAppTestNotification() {
-      const msgEl = document.getElementById("inAppNotifMsg");
-      msgEl.textContent = "";
-      const res = await fetch("/api/admin/notifications/test", { method:"POST", credentials:"same-origin", headers:{ "Content-Type":"application/json" }, body:"{}" });
+
+    function applyNotificationConfig(config, envStatus) {
+      const cfg = config || {};
+      document.getElementById("dingtalkEnabledCheckbox").checked = cfg?.channels?.dingtalkEnabled !== false;
+      document.getElementById("dingtalkTestUserIdInput").value = String(cfg?.recipients?.dingtalkTestUserId || "");
+      document.getElementById("ruleDailySummaryCheckbox").checked = !!cfg?.rules?.dailySummaryEnabled;
+      document.getElementById("ruleSleepingCheckbox").checked = !!cfg?.rules?.sleepingMemberAlertEnabled;
+      document.getElementById("ruleSalespersonCheckbox").checked = !!cfg?.rules?.salespersonAlertEnabled;
+      const envEl = document.getElementById("dingtalkEnvStatus");
+      if (!envEl) return;
+      const status = envStatus || {};
+      envEl.className = "meta";
+      envEl.textContent =
+        `环境检查：CorpId ${status.corpIdConfigured ? "已配置" : "未配置"} / AppKey ${status.appKeyConfigured ? "已配置" : "未配置"} / AppSecret ${status.appSecretConfigured ? "已配置" : "未配置"} / AgentId ${status.agentIdConfigured ? "已配置" : "未配置"}`;
+    }
+
+    async function loadNotificationConfig() {
+      const res = await fetch("/api/v2/admin/notifications/config", { credentials: "same-origin" });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok !== false) { msgEl.textContent = "已发送应用内测试通知"; msgEl.className = "meta ok"; showToast("已发送应用内测试通知","success"); return; }
-      msgEl.textContent = data.error || `请求失败（${res.status}）`; msgEl.className = "meta err"; showToast(msgEl.textContent,"error");
+      if (!res.ok) {
+        showToast(data.error || "通知配置加载失败", "error");
+        return;
+      }
+      applyNotificationConfig(data.config, data.envStatus);
+    }
+
+    async function saveNotificationConfig() {
+      const payload = {
+        config: {
+          channels: {
+            dingtalkEnabled: !!document.getElementById("dingtalkEnabledCheckbox").checked,
+          },
+          rules: {
+            dailySummaryEnabled: !!document.getElementById("ruleDailySummaryCheckbox").checked,
+            sleepingMemberAlertEnabled: !!document.getElementById("ruleSleepingCheckbox").checked,
+            salespersonAlertEnabled: !!document.getElementById("ruleSalespersonCheckbox").checked,
+          },
+          recipients: {
+            dingtalkTestUserId: String(document.getElementById("dingtalkTestUserIdInput").value || "").trim(),
+          },
+        },
+      };
+      const res = await fetch("/api/v2/admin/notifications/config", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "通知配置保存失败", "error");
+        return;
+      }
+      applyNotificationConfig(data.config);
+      showToast("通知配置已保存", "success");
     }
 
     document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
@@ -893,8 +973,8 @@
 
     document.getElementById("adminImportBtn").addEventListener("click", (event) => withLoading(event.currentTarget, "导入中...", uploadImportFile));
     document.getElementById("adminImportFile").addEventListener("change", renderImportFileSelection);
+    document.getElementById("saveNotifConfigBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "保存中...", saveNotificationConfig));
     document.getElementById("dingtalkTestBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "发送中...", sendDingTalkTestNotification));
-    document.getElementById("inAppNotifBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "发送中...", sendInAppTestNotification));
 
     (async () => {
       const meRes = await fetch("/api/auth/me");
@@ -910,8 +990,8 @@
         if (applyRoleBtn) applyRoleBtn.disabled = true;
       }
       if (meJson?.user?.role === "admin") {
-        document.getElementById("dingtalkTestCard").removeAttribute("hidden");
-        document.getElementById("inAppNotifCard").removeAttribute("hidden");
+        document.getElementById("notifConfigCard").removeAttribute("hidden");
+        await loadNotificationConfig();
       }
       await loadPermissionOptions();
       await loadUsers();

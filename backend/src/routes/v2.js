@@ -1,10 +1,14 @@
 import express from "express";
 import multer from "multer";
+import path from "path";
 import {
   applyPermissionScopeToFilters,
   hasPermission,
   maskSensitiveMemberRows,
 } from "../auth/permissionModel.js";
+import { env } from "../config/env.js";
+import { sendDingTalkTestWorkNotification } from "../services/dingtalkWorkNotifyService.js";
+import { NotificationService } from "../services/notificationService.js";
 
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const FILTER_OPTIONS_CACHE_TTL_MS = 5 * 60_000;
@@ -14,6 +18,9 @@ const MAX_CONCURRENT_ANALYTICS = 4;
 const MAX_QUEUE_WAIT_MS = 1_500;
 const QUERY_TIMEOUT_MESSAGE = "查询耗时较长，请稍后重试";
 const QUERY_BUSY_MESSAGE = "系统正在处理较多请求，请稍后再试";
+const notificationConfigPath = path.resolve(env.dataDir, "notification-config.json");
+const notificationService = new NotificationService({ configPath: notificationConfigPath });
+const notificationServiceReady = notificationService.init().catch(() => null);
 
 function stableJson(value) {
   if (value == null) return "null";
@@ -194,10 +201,7 @@ export function createV2Router({
     storage: multer.memoryStorage(),
     limits: { fileSize: Math.max(1, maxUploadSizeMb) * 1024 * 1024 },
   });
-  const uploadFields = upload.fields([
-    { name: "file", maxCount: 20 },
-    { name: "files", maxCount: 20 },
-  ]);
+  const uploadAny = upload.any();
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true, service: "analytics-v2", now: new Date().toISOString() });
@@ -209,14 +213,16 @@ export function createV2Router({
     return res.json({ ok: true, dataset: dataset || null });
   });
 
-  router.post("/uploads", uploadFields, async (req, res) => {
+  router.post("/uploads", uploadAny, async (req, res) => {
     if (!hasPermission(req.currentUser, "canImportExcel")) {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });
     }
-    const fileList = [
-      ...((req.files && Array.isArray(req.files.file) ? req.files.file : []) || []),
-      ...((req.files && Array.isArray(req.files.files) ? req.files.files : []) || []),
-    ].filter(Boolean);
+    const fileList = (Array.isArray(req.files) ? req.files : [])
+      .filter(Boolean)
+      .filter((f) => {
+        const name = String(f.originalname || "").toLowerCase();
+        return name.endsWith(".xls") || name.endsWith(".xlsx");
+      });
     if (!fileList.length) {
       return res.status(400).json({ error: "file/files is required (multipart field name: file or files)" });
     }
@@ -670,6 +676,68 @@ export function createV2Router({
     } catch (error) {
       return res.status(400).json({ error: error?.message || "表格查询失败" });
     }
+  });
+
+  router.get("/admin/notifications/config", async (req, res) => {
+    if (!ensurePermission(req, res, "canManageDingTalkSettings")) return;
+    await notificationServiceReady;
+    return res.json({
+      ok: true,
+      config: notificationService.getSafeConfig(),
+      envStatus: {
+        corpIdConfigured: !!env.dingtalkCorpId,
+        appKeyConfigured: !!env.dingtalkAppKey,
+        appSecretConfigured: !!env.dingtalkAppSecret,
+        agentIdConfigured: !!env.dingtalkAgentId,
+      },
+    });
+  });
+
+  router.put("/admin/notifications/config", express.json(), async (req, res) => {
+    if (!ensurePermission(req, res, "canManageDingTalkSettings")) return;
+    await notificationServiceReady;
+    const nextConfig = req.body?.config && typeof req.body.config === "object" ? req.body.config : {};
+    const saved = await notificationService.updateConfig(
+      nextConfig,
+      String(req.currentUser?.username || req.currentUser?.id || "")
+    );
+    return res.json({ ok: true, config: saved });
+  });
+
+  router.post("/admin/notifications/test-dingtalk", express.json(), async (req, res) => {
+    if (!ensurePermission(req, res, "canManageDingTalkSettings")) return;
+    await notificationServiceReady;
+    const cfg = notificationService.getSafeConfig();
+    if (!cfg?.channels?.dingtalkEnabled) {
+      return res.status(400).json({ ok: false, error: "钉钉通知渠道未启用，请先开启后再测试" });
+    }
+    const preferredUserId = String(req.body?.testUserId || cfg?.recipients?.dingtalkTestUserId || env.dingtalkTestUserId || "");
+    const result = await sendDingTalkTestWorkNotification({
+      appKey: env.dingtalkAppKey,
+      appSecret: env.dingtalkAppSecret,
+      agentId: env.dingtalkAgentId,
+      testUserId: preferredUserId,
+      publicBaseUrl: env.publicBaseUrl,
+    });
+    if (!result.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: result.error || "钉钉测试通知发送失败",
+        dingtalk: {
+          errcode: result?.dingtalk?.errcode ?? null,
+          errmsg: result?.dingtalk?.errmsg ? String(result.dingtalk.errmsg) : "",
+        },
+      });
+    }
+    return res.json({
+      ok: true,
+      message: "已发送钉钉测试通知",
+      dingtalk: {
+        errcode: result?.dingtalk?.errcode ?? 0,
+        errmsg: "ok",
+        task_id: result?.dingtalk?.task_id || "",
+      },
+    });
   });
 
   router.get("/feature-flags", (_req, res) => {
