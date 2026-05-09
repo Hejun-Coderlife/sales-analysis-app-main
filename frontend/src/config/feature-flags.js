@@ -24,6 +24,8 @@ export const featureFlags = {
   enableV2Upload: queryV2 ?? readLocalStorageFlag("enableV2Upload", false),
   enableVirtualizedTable: readLocalStorageFlag("enableVirtualizedTable", true),
   enableParityChecker: readLocalStorageFlag("enableParityChecker", true),
+  // Default ON: merge all ready imports, with server-side de-duplication.
+  enableAggregateReadyDatasets: readLocalStorageFlag("enableAggregateReadyDatasets", true),
 };
 
 window.__analyticsFeatureFlags = featureFlags;

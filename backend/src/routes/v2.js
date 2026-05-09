@@ -1,12 +1,15 @@
 import express from "express";
 import multer from "multer";
 import path from "path";
+import fs from "fs/promises";
 import {
   applyPermissionScopeToFilters,
   hasPermission,
   maskSensitiveMemberRows,
 } from "../auth/permissionModel.js";
 import { env } from "../config/env.js";
+import { AGGREGATE_ALL_READY_DATASET_ID } from "../services/analyticsService.js";
+import { normalizeUploadFilename } from "../utils/uploadFilename.js";
 import { sendDingTalkTestWorkNotification } from "../services/dingtalkWorkNotifyService.js";
 import { NotificationService } from "../services/notificationService.js";
 
@@ -21,6 +24,16 @@ const QUERY_BUSY_MESSAGE = "系统正在处理较多请求，请稍后再试";
 const notificationConfigPath = path.resolve(env.dataDir, "notification-config.json");
 const notificationService = new NotificationService({ configPath: notificationConfigPath });
 const notificationServiceReady = notificationService.init().catch(() => null);
+
+async function safeUnlink(filePath) {
+  const target = String(filePath || "").trim();
+  if (!target) return;
+  try {
+    await fs.unlink(target);
+  } catch (_error) {
+    // Ignore cleanup errors: temp files may already be removed.
+  }
+}
 
 function collectUploadedFiles(req) {
   const fromAny = Array.isArray(req?.files) ? req.files : [];
@@ -207,6 +220,15 @@ function ensurePermission(req, res, permissionName) {
   return false;
 }
 
+async function expandRouteDatasetIds(analyticsService, routeDatasetId) {
+  const raw = String(routeDatasetId || "").trim();
+  if (raw === AGGREGATE_ALL_READY_DATASET_ID) {
+    return await analyticsService.listReadyDatasetIds();
+  }
+  if (!raw) return [];
+  return [raw];
+}
+
 export function createV2Router({
   ingestionService,
   analyticsService,
@@ -214,9 +236,13 @@ export function createV2Router({
   jobQueue,
   maxUploadSizeMb = 100,
   onImportEvent = null,
+  registerResponseCacheInvalidate = null,
 }) {
   const router = express.Router();
   const responseCache = new InMemoryTtlCache();
+  if (typeof registerResponseCacheInvalidate === "function") {
+    registerResponseCacheInvalidate(() => responseCache.clear());
+  }
   const queryLimiter = new ConcurrencyLimiter(MAX_CONCURRENT_ANALYTICS);
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -234,6 +260,18 @@ export function createV2Router({
     return res.json({ ok: true, dataset: dataset || null });
   });
 
+  /** Bootstrap: IDs included in merged dashboard (`__all_ready__`). */
+  router.get("/datasets/aggregate-scope", async (_req, res) => {
+    if (!ensurePermission(_req, res, "canViewDashboard")) return;
+    const datasetIds = await analyticsService.listReadyDatasetIds();
+    return res.json({
+      ok: true,
+      aggregateDatasetId: AGGREGATE_ALL_READY_DATASET_ID,
+      datasetIds,
+      datasetCount: datasetIds.length,
+    });
+  });
+
   router.post("/uploads", uploadAny, async (req, res) => {
     if (!hasPermission(req.currentUser, "canImportExcel")) {
       return res.status(403).json({ error: "仅管理员可上传或导入数据" });
@@ -241,6 +279,7 @@ export function createV2Router({
     const uploadedFiles = collectUploadedFiles(req);
     const fileList = uploadedFiles
       .filter(Boolean)
+      .map((f) => ({ ...f, originalname: normalizeUploadFilename(f.originalname) }))
       .filter((f) => {
         const name = String(f.originalname || "").toLowerCase();
         return name.endsWith(".xls") || name.endsWith(".xlsx");
@@ -351,6 +390,8 @@ export function createV2Router({
           progress: 100,
           error: error?.message || "导入失败",
         });
+      } finally {
+        await Promise.all(uploadedPaths.map((p) => safeUnlink(p)));
       }
     });
 
@@ -370,25 +411,47 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/summary", async (req, res) => {
     if (!ensurePermission(req, res, "canViewDashboard")) return;
-    const summary = await analyticsService.getDatasetSummary(req.params.datasetId);
+    const param = req.params.datasetId;
+    if (param === AGGREGATE_ALL_READY_DATASET_ID) {
+      const datasetIds = await analyticsService.listReadyDatasetIds();
+      if (!datasetIds.length) {
+        return res.status(404).json({ error: "暂无就绪数据集" });
+      }
+      const totalRows = await analyticsService.sumDeclaredRowCountsForDatasetIds(datasetIds);
+      return res.json({
+        ok: true,
+        summary: {
+          dataset_id: AGGREGATE_ALL_READY_DATASET_ID,
+          source_name: `全部就绪导入汇总（${datasetIds.length} 个数据集）`,
+          row_count: totalRows,
+          merged_dataset_ids: datasetIds,
+          status: "ready",
+        },
+      });
+    }
+    const summary = await analyticsService.getDatasetSummary(param);
     if (!summary) return res.status(404).json({ error: "dataset not found" });
     return res.json({ ok: true, summary });
   });
 
-  async function ensureDatasetReady(datasetId) {
-    const summary = await analyticsService.getDatasetSummary(datasetId);
-    if (!summary) return { ok: false, code: 404, message: "dataset not found" };
-    if (String(summary.status || "") !== "ready") {
-      return { ok: false, code: 409, message: "数据导入处理中，请稍后重试" };
+  /** Resolves `__all_ready__` to all ready dataset IDs; validates before query. */
+  async function ensureRouteDatasetsReady(routeDatasetId) {
+    const ids = await expandRouteDatasetIds(analyticsService, routeDatasetId);
+    if (!ids.length) {
+      return { ok: false, code: 404, message: "暂无就绪数据，请先在后台导入 Excel" };
     }
-    return { ok: true };
+    const verified = await analyticsService.verifyDatasetIdsReady(ids);
+    if (!verified) {
+      return { ok: false, code: 409, message: "数据导入处理中或数据集不可用，请稍后重试" };
+    }
+    return { ok: true, datasetIds: ids };
   }
 
-  function makeCacheKey({ endpointName, datasetId, req, filters, extras = {} }) {
+  function makeCacheKey({ endpointName, routeDatasetId, req, filters, extras = {} }) {
     const scopeHash = scopeHashFromRequest(req);
     return [
       `ep:${endpointName}`,
-      `dataset:${String(datasetId || "")}`,
+      `dataset:${String(routeDatasetId || "")}`,
       `scope:${scopeHash}`,
       `filters:${stableJson({
         startDate: String(filters?.startDate || ""),
@@ -404,7 +467,7 @@ export function createV2Router({
   async function executeProtectedQuery(req, res, options, handler) {
     const {
       endpointName,
-      datasetId,
+      routeDatasetId,
       filters = {},
       cacheTtlMs = DEFAULT_CACHE_TTL_MS,
       cacheExtras = {},
@@ -414,7 +477,7 @@ export function createV2Router({
     } = options || {};
     const cacheKey = makeCacheKey({
       endpointName,
-      datasetId,
+      routeDatasetId,
       req,
       filters,
       extras: cacheExtras,
@@ -433,11 +496,12 @@ export function createV2Router({
           return res.status(503).json({ error: QUERY_BUSY_MESSAGE });
         }
       }
-      const ready = await ensureDatasetReady(datasetId);
+      const ready = await ensureRouteDatasetsReady(routeDatasetId);
       if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+      const datasetIds = ready.datasetIds;
 
       const payload = await withTimeout(
-        Promise.resolve().then(() => handler()),
+        Promise.resolve().then(() => handler(datasetIds)),
         timeoutMs,
         QUERY_TIMEOUT_MESSAGE
       );
@@ -445,7 +509,7 @@ export function createV2Router({
         endpoint: endpointName,
         durationMs: Date.now() - startedAt,
         user: req.currentUser,
-        datasetId,
+        datasetId: routeDatasetId,
       });
       if (useCache) responseCache.set(cacheKey, payload, cacheTtlMs);
       return res.json(payload);
@@ -468,12 +532,12 @@ export function createV2Router({
       res,
       {
         endpointName: "kpis",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const kpis = await analyticsService.getKpis(req.params.datasetId, filters);
+      async (datasetIds) => {
+        const kpis = await analyticsService.getKpis(datasetIds, filters);
         return { ok: true, kpis };
       }
     );
@@ -489,13 +553,13 @@ export function createV2Router({
       res,
       {
         endpointName: "rankings_stores",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheExtras: { limit, offset },
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const rows = await analyticsService.getTopStores(req.params.datasetId, {
+      async (datasetIds) => {
+        const rows = await analyticsService.getTopStores(datasetIds, {
           filters,
           limit,
           offset,
@@ -515,13 +579,13 @@ export function createV2Router({
       res,
       {
         endpointName: "rankings_salespeople",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheExtras: { limit, offset },
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const rows = await analyticsService.getTopSalespeople(req.params.datasetId, {
+      async (datasetIds) => {
+        const rows = await analyticsService.getTopSalespeople(datasetIds, {
           filters,
           limit,
           offset,
@@ -541,13 +605,13 @@ export function createV2Router({
       res,
       {
         endpointName: "rankings_products",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheExtras: { limit, offset },
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const rows = await analyticsService.getTopProducts(req.params.datasetId, {
+      async (datasetIds) => {
+        const rows = await analyticsService.getTopProducts(datasetIds, {
           filters,
           limit,
           offset,
@@ -559,7 +623,9 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/members/top", async (req, res) => {
     if (!ensurePermission(req, res, "canViewMemberAnalysis")) return;
-    const rows = await analyticsService.getTopMembers(req.params.datasetId, {
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const rows = await analyticsService.getTopMembers(ready.datasetIds, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
@@ -571,6 +637,16 @@ export function createV2Router({
     });
   });
 
+  router.get("/datasets/:datasetId/members/repurchase-distribution", async (req, res) => {
+    if (!ensurePermission(req, res, "canViewMemberAnalysis")) return;
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const rows = await analyticsService.getRepurchaseDistribution(ready.datasetIds, {
+      filters: parseFilters(req.query, req.accessScope),
+    });
+    return res.json({ ok: true, rows });
+  });
+
   router.get("/datasets/:datasetId/filters/options", async (req, res) => {
     if (!ensurePermission(req, res, "canUseFilters")) return;
     const filters = parseFilters(req.query, req.accessScope);
@@ -579,12 +655,12 @@ export function createV2Router({
       res,
       {
         endpointName: "filters_options",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheTtlMs: FILTER_OPTIONS_CACHE_TTL_MS,
       },
-      async () => {
-        const options = await analyticsService.getFilterOptions(req.params.datasetId, {
+      async (datasetIds) => {
+        const options = await analyticsService.getFilterOptions(datasetIds, {
           filters,
         });
         return { ok: true, options };
@@ -600,12 +676,12 @@ export function createV2Router({
       res,
       {
         endpointName: "trends",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const trends = await analyticsService.getTrendSeries(req.params.datasetId, {
+      async (datasetIds) => {
+        const trends = await analyticsService.getTrendSeries(datasetIds, {
           filters,
         });
         return { ok: true, ...trends };
@@ -615,7 +691,9 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/data-quality", async (req, res) => {
     if (!ensurePermission(req, res, "canViewDataQuality")) return;
-    const report = await analyticsService.getDataQualityReport(req.params.datasetId, {
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const report = await analyticsService.getDataQualityReport(ready.datasetIds, {
       filters: parseFilters(req.query, req.accessScope),
     });
     return res.json({ ok: true, ...report });
@@ -637,7 +715,7 @@ export function createV2Router({
       res,
       {
         endpointName: "mobile_sleeping_summary",
-        datasetId: req.params.datasetId,
+        routeDatasetId: req.params.datasetId,
         filters,
         cacheExtras: {
           sleepDays,
@@ -651,8 +729,8 @@ export function createV2Router({
         },
         cacheTtlMs: DEFAULT_CACHE_TTL_MS,
       },
-      async () => {
-        const result = await analyticsService.getSleepingAnalytics(req.params.datasetId, {
+      async (datasetIds) => {
+        const result = await analyticsService.getSleepingAnalytics(datasetIds, {
           filters,
           sleepDays,
           sleepMinOrders,
@@ -674,7 +752,9 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/orders/highest", async (req, res) => {
     if (!ensurePermission(req, res, "canViewRawRows")) return;
-    const row = await analyticsService.getHighestOrder(req.params.datasetId, {
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const row = await analyticsService.getHighestOrder(ready.datasetIds, {
       filters: parseFilters(req.query, req.accessScope),
     });
     return res.json({ ok: true, row });
@@ -682,7 +762,9 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/orders/top", async (req, res) => {
     if (!ensurePermission(req, res, "canViewRawRows")) return;
-    const rows = await analyticsService.getOrders(req.params.datasetId, {
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const rows = await analyticsService.getOrders(ready.datasetIds, {
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
       offset: clamp(req.query.offset, 0, 0, 1_000_000),
@@ -692,8 +774,10 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/leaders", async (req, res) => {
     if (!ensurePermission(req, res, "canViewTrendCharts")) return;
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
     const granularity = String(req.query.granularity || "month");
-    const rows = await analyticsService.getLeadersByGranularity(req.params.datasetId, {
+    const rows = await analyticsService.getLeadersByGranularity(ready.datasetIds, {
       granularity,
       filters: parseFilters(req.query, req.accessScope),
       limit: clamp(req.query.limit, 20, 1, 500),
@@ -703,8 +787,10 @@ export function createV2Router({
 
   router.get("/datasets/:datasetId/table/:tableName", async (req, res) => {
     if (!ensurePermission(req, res, "canViewRawRows")) return;
+    const ready = await ensureRouteDatasetsReady(req.params.datasetId);
+    if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
     try {
-      const data = await analyticsService.getTablePage(req.params.datasetId, req.params.tableName, {
+      const data = await analyticsService.getTablePage(ready.datasetIds, req.params.tableName, {
         limit: clamp(req.query.limit, 100, 1, 2000),
         offset: clamp(req.query.offset, 0, 0, 10_000_000),
       });

@@ -25,6 +25,20 @@ function asBool(value, fallback = false) {
   return fallback;
 }
 
+function resolveSessionSecret() {
+  const raw = String(process.env.SESSION_SECRET || "").trim();
+  if (raw) {
+    if (process.env.NODE_ENV === "production" && raw === "change-this-session-secret") {
+      throw new Error("SESSION_SECRET must not use the default value in production");
+    }
+    return raw;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required in production");
+  }
+  return "change-this-session-secret";
+}
+
 export const env = {
   backendRoot,
   dataDir: path.resolve(backendRoot, "data"),
@@ -37,7 +51,7 @@ export const env = {
   duckdbPath: process.env.DUCKDB_PATH || path.resolve(backendRoot, "data", "analytics.duckdb"),
   cacheTtlMs: Number(process.env.ANALYTICS_CACHE_TTL_MS || 20_000),
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_MB || 100),
-  sessionSecret: process.env.SESSION_SECRET || "change-this-session-secret",
+  sessionSecret: resolveSessionSecret(),
   sessionMaxAgeMs: Number(process.env.SESSION_MAX_AGE_MS || 1000 * 60 * 60 * 12),
   /** "memory" | "file" — default memory on Windows, file elsewhere unless SESSION_STORE is set */
   sessionStore: resolveSessionStore(),

@@ -15,7 +15,9 @@ import { NotificationStore } from "./backend/src/services/notificationStore.js";
 import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
 
 const app = express();
+app.disable("x-powered-by");
 const port = process.env.PORT || 3000;
+const disableV2Api = String(process.env.DISABLE_V2_API || "0") === "1";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MAX_HISTORY_MESSAGES = 24;
@@ -26,10 +28,20 @@ const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
 const authService = new AuthService({ usersPath: env.usersPath });
 const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requireAdminApi } =
   createAuthMiddleware(authService);
-const { analyticsService, jobStore } = getV2Services();
+const { analyticsService, jobStore, invalidateV2ResponseCache } = getV2Services();
 const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
 const agentDatasetToolsService = createAgentDatasetToolsService({ analyticsService });
 const notificationStore = new NotificationStore({ notificationsPath: env.notificationsPath });
+const loginAttempts = new Map();
+const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_RATE_MAX_ATTEMPTS = 10;
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("[process] uncaughtException:", error);
+});
 
 async function appendAuditLog(entry = {}) {
   try {
@@ -37,6 +49,28 @@ async function appendAuditLog(entry = {}) {
   } catch (_error) {
     // Audit persistence should never break main business flow.
   }
+}
+
+/** Prefer real uploaded filenames when a job lists multiple files (payload.fileNames). */
+function formatImportJobDisplayName(job) {
+  const payload = job?.payload || {};
+  const names = payload.fileNames;
+  if (Array.isArray(names) && names.length > 0) {
+    const clean = names.map((n) => String(n || "").trim()).filter(Boolean);
+    if (!clean.length) return String(payload.sourceName || "");
+    if (clean.length === 1) return clean[0];
+    const joined = clean.join(" · ");
+    if (joined.length <= 200) return joined;
+    return `${clean[0]} 等 ${clean.length} 个文件`;
+  }
+  return String(payload.sourceName || "");
+}
+
+async function findIngestJobByDatasetId(datasetId) {
+  const id = String(datasetId || "").trim();
+  if (!id) return null;
+  const data = await jobStore.listJobs({ type: "ingest", limit: 500, offset: 0 });
+  return (data.rows || []).find((j) => j.datasetId === id) || null;
 }
 
 async function getDingTalkAccessToken({ appKey, appSecret }) {
@@ -72,6 +106,85 @@ function ensurePermissionOrDeny(res, user, permissionName) {
   if (hasPermission(user, permissionName)) return true;
   res.status(403).json({ error: "无权限访问" });
   return false;
+}
+
+function setSecurityHeaders(req, res, next) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  next();
+}
+
+function requestLooksSameOrigin(req) {
+  const origin = String(req.get("origin") || "").trim();
+  const referer = String(req.get("referer") || "").trim();
+  const host = String(req.get("host") || "").trim();
+  const fallbackBase = host ? `${req.protocol}://${host}` : "";
+  const expectedBase = String(env.publicBaseUrl || "").trim() || fallbackBase;
+  if (!expectedBase) return true;
+  const expected = new URL(expectedBase).origin;
+  if (origin) {
+    return origin === expected;
+  }
+  if (referer) {
+    try {
+      return new URL(referer).origin === expected;
+    } catch (_error) {
+      return false;
+    }
+  }
+  // Non-browser clients may omit both Origin/Referer. Allow local loopback only.
+  const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1"]);
+  const hostNoPort = host.split(":")[0].toLowerCase();
+  return loopbackHosts.has(hostNoPort);
+}
+
+function csrfLikeOriginGuard(req, res, next) {
+  const method = String(req.method || "").toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
+  if (!requestLooksSameOrigin(req)) {
+    return res.status(403).json({ error: "跨站请求被拒绝" });
+  }
+  return next();
+}
+
+function cleanupExpiredLoginAttempts(nowMs) {
+  for (const [key, item] of loginAttempts.entries()) {
+    if (!item || nowMs - Number(item.firstAt || 0) > LOGIN_RATE_WINDOW_MS) {
+      loginAttempts.delete(key);
+    }
+  }
+}
+
+function loginRateLimit(req, res, next) {
+  const now = Date.now();
+  cleanupExpiredLoginAttempts(now);
+  const username = String(req.body?.username || "").trim().toLowerCase();
+  const ip = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const key = `${ip}|${username || "_"}`;
+  const bucket = loginAttempts.get(key);
+  if (bucket && now - bucket.firstAt <= LOGIN_RATE_WINDOW_MS && bucket.count >= LOGIN_RATE_MAX_ATTEMPTS) {
+    return res.status(429).json({ error: "登录尝试过于频繁，请稍后重试" });
+  }
+  req.__loginRateKey = key;
+  return next();
+}
+
+function markLoginAttemptResult(req, ok) {
+  const key = req.__loginRateKey;
+  if (!key) return;
+  if (ok) {
+    loginAttempts.delete(key);
+    return;
+  }
+  const now = Date.now();
+  const prev = loginAttempts.get(key);
+  if (!prev || now - prev.firstAt > LOGIN_RATE_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAt: now });
+    return;
+  }
+  loginAttempts.set(key, { count: Number(prev.count || 0) + 1, firstAt: prev.firstAt });
 }
 
 function getConversationId(rawValue) {
@@ -1267,6 +1380,7 @@ const sessionOptions = {
     maxAge: env.sessionMaxAgeMs,
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
   },
 };
 if (env.sessionStore === "file") {
@@ -1280,13 +1394,19 @@ if (env.sessionStore === "file") {
 
 app.use(express.json({ limit: "20mb" }));
 app.use(session(sessionOptions));
+app.use(setSecurityHeaders);
+app.use("/api", csrfLikeOriginGuard);
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", loginRateLimit, async (req, res) => {
   const username = String(req.body?.username || "");
   const password = String(req.body?.password || "");
   const result = await authService.authenticate(username, password);
-  if (!result.ok) return res.status(401).json({ error: result.error || "登录失败" });
+  if (!result.ok) {
+    markLoginAttemptResult(req, false);
+    return res.status(401).json({ error: result.error || "登录失败" });
+  }
   req.session.user = result.user;
+  markLoginAttemptResult(req, true);
   return res.json({ ok: true, user: result.user });
 });
 
@@ -1558,7 +1678,16 @@ app.get("/api/admin/permission-options", requireAdminApi, async (_req, res) => {
 app.get("/api/admin/import/latest", requireAdminApi, async (_req, res) => {
   if (!ensurePermissionOrDeny(res, _req.currentUser, "canViewImportHistory")) return;
   const latest = await analyticsService.getLatestDatasetSummary();
-  return res.json({ ok: true, latest: latest || null });
+  if (!latest) return res.json({ ok: true, latest: null });
+  const job = await findIngestJobByDatasetId(latest.dataset_id);
+  const display_source_name = job ? formatImportJobDisplayName(job) : String(latest.source_name || "");
+  return res.json({
+    ok: true,
+    latest: {
+      ...latest,
+      display_source_name: display_source_name || String(latest.source_name || ""),
+    },
+  });
 });
 
 app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
@@ -1568,7 +1697,7 @@ app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
   const data = await jobStore.listJobs({ type: "ingest", limit, offset });
   const rows = (data.rows || []).map((job) => ({
     jobId: job.id,
-    filename: String(job?.payload?.sourceName || ""),
+    filename: formatImportJobDisplayName(job) || String(job?.payload?.sourceName || ""),
     importedAt: job.updatedAt || job.createdAt,
     rowCount: Number(job?.stats?.rowCount || 0),
     status: String(job?.status || ""),
@@ -1576,6 +1705,60 @@ app.get("/api/admin/import/history", requireAdminApi, async (req, res) => {
     datasetId: job?.datasetId || null,
   }));
   return res.json({ ok: true, rows, total: data.total, limit: data.limit, offset: data.offset });
+});
+
+app.delete("/api/admin/import/jobs/:jobId", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canDeleteImportedData")) return;
+  const jobId = String(req.params.jobId || "").trim();
+  const forceDelete = String(req.query.force || "").trim() === "1";
+  if (!jobId) {
+    return res.status(400).json({ error: "缺少导入任务 ID" });
+  }
+  const job = await jobStore.getJob(jobId);
+  if (!job) {
+    return res.status(404).json({ error: "未找到该导入记录" });
+  }
+  const status = String(job.status || "").toLowerCase();
+  if (!forceDelete && (status === "queued" || status === "running")) {
+    const lastUpdateMs = new Date(job.updatedAt || job.createdAt || 0).getTime();
+    const ageMs = Number.isFinite(lastUpdateMs) ? Date.now() - lastUpdateMs : 0;
+    const STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
+    if (ageMs < STALE_JOB_THRESHOLD_MS) {
+      return res.status(409).json({ error: "该导入仍在排队或进行中，请稍后再试删除" });
+    }
+  }
+  try {
+    const datasetId = job.datasetId ? String(job.datasetId).trim() : "";
+    if (datasetId) {
+      await analyticsService.deleteDatasetById(datasetId);
+    }
+    const removed = await jobStore.deleteJob(jobId);
+    if (!removed) {
+      return res.status(404).json({ error: "删除导入记录失败" });
+    }
+    const remainingIngest = await jobStore.listJobs({ type: "ingest", limit: 1, offset: 0 });
+    let clearedOrphanedData = false;
+    if (Number(remainingIngest?.total || 0) === 0) {
+      // Keep admin history and frontend dataset state consistent:
+      // when no ingest job remains, clear residual datasets (including legacy orphan datasets).
+      await analyticsService.deleteAllDatasets();
+      clearedOrphanedData = true;
+    }
+    invalidateV2ResponseCache?.();
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "delete_import_job",
+      targetType: "import_job",
+      targetId: jobId,
+      summary: datasetId
+        ? `删除导入记录并移除数据集 ${datasetId}${forceDelete ? "（强制）" : ""}${clearedOrphanedData ? "；已清理残留数据" : ""}`
+        : `删除导入记录（无数据集）${forceDelete ? "（强制）" : ""}${clearedOrphanedData ? "；已清理残留数据" : ""}`,
+    });
+    return res.json({ ok: true, jobId, clearedOrphanedData });
+  } catch (error) {
+    console.warn("[admin] delete import job", error?.message || error);
+    return res.status(400).json({ error: error?.message || "删除失败" });
+  }
 });
 
 app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
@@ -1612,16 +1795,25 @@ app.post("/api/admin/dingtalk/test-notification", requireAdminApi, async (req, r
   }
 });
 
-app.use("/api/v2", (req, res, next) => {
-  if (req.path === "/health") return next();
-  return requireAuthApi(req, res, next);
-});
-app.use(
-  "/api/v2",
-  getV2Router({
-    onImportEvent: (entry) => appendAuditLog(entry),
-  })
-);
+if (disableV2Api) {
+  app.use("/api/v2", (_req, res) => {
+    return res.status(503).json({
+      error: "v2 分析接口临时维护中，请先使用页面内置分析流程。",
+      code: "V2_TEMP_DISABLED",
+    });
+  });
+} else {
+  app.use("/api/v2", (req, res, next) => {
+    if (req.path === "/health") return next();
+    return requireAuthApi(req, res, next);
+  });
+  app.use(
+    "/api/v2",
+    getV2Router({
+      onImportEvent: (entry) => appendAuditLog(entry),
+    })
+  );
+}
 
 app.post("/api/chat/context", requireAuthApi, (req, res) => {
   if (!hasPermission(req.currentUser, "canUseAgentChat")) {
@@ -1819,20 +2011,42 @@ app.get("/", (req, res) => {
   return res.redirect("/dashboard");
 });
 
-app.use(express.static(__dirname, { index: false }));
+function setFrontendStaticHeaders(res, absolutePath) {
+  const norm = absolutePath.replace(/\\/g, "/");
+  // Dev-friendly: dashboard loads many ES-module chunks (`import "./x.js"` has no cache-bust).
+  // Stale chunks produced "shell loads, KPI/charts stay "-" / empty".
+  if (norm.includes("/frontend/") && norm.endsWith(".js")) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  }
+}
 
-Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init(), notificationStore.init()])
-  .catch((error) => {
-    console.error("[startup] init failed:", error?.message || error);
+app.get(["/favicon.png", "/favicon.ico"], (_req, res) => {
+  res.sendFile(path.join(__dirname, "favicon.png"));
+});
+
+app.use(
+  "/frontend",
+  express.static(path.join(__dirname, "frontend"), {
+    index: false,
+    dotfiles: "ignore",
+    setHeaders: setFrontendStaticHeaders,
   })
-  .finally(() => {
-    app.listen(port, () => {
-      console.log(`Server running at http://localhost:${port}`);
-      console.log(
-        `[session] store=${env.sessionStore}` +
-          (env.sessionStore === "memory"
-            ? " (sessions cleared on process restart; set SESSION_STORE=file on non-Windows if you need disk persistence)"
-            : ` (files in ${env.sessionDir})`)
-      );
-    });
+);
+
+async function bootstrap() {
+  await Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init(), notificationStore.init()]);
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+    console.log(
+      `[session] store=${env.sessionStore}` +
+        (env.sessionStore === "memory"
+          ? " (sessions cleared on process restart; set SESSION_STORE=file on non-Windows if you need disk persistence)"
+          : ` (files in ${env.sessionDir})`)
+    );
   });
+}
+
+bootstrap().catch((error) => {
+  console.error("[startup] init failed:", error?.message || error);
+  process.exitCode = 1;
+});

@@ -11,7 +11,11 @@ async function boot() {
   } catch (error) {
     console.error("[auth-ui] init failed", error);
   }
-  initV2Bridge();
+  try {
+    initV2Bridge();
+  } catch (error) {
+    console.error("[v2-bridge] init failed", error);
+  }
 }
 
 if (document.readyState === "loading") {

@@ -15,15 +15,40 @@ function compileNamedParams(sql, params) {
   return { compiledSql, values };
 }
 
+/** DuckDB TIMESTAMP often arrives as `{ micros }` (microseconds since Unix epoch). */
+function duckTimestampObjectToIso(value) {
+  if (!value || typeof value !== "object") return null;
+  const keys = Object.keys(value);
+  if (keys.length !== 1 || keys[0] !== "micros") return null;
+  const raw = value.micros;
+  const micros = typeof raw === "bigint" ? Number(raw) : Number(raw);
+  if (!Number.isFinite(micros)) return null;
+  return new Date(micros / 1000).toISOString();
+}
+
 function toJsonSafe(value) {
   if (typeof value === "bigint") return Number(value);
   if (Array.isArray(value)) return value.map(toJsonSafe);
   if (value && typeof value === "object") {
+    const iso = duckTimestampObjectToIso(value);
+    if (iso) return iso;
     const out = {};
     for (const [k, v] of Object.entries(value)) out[k] = toJsonSafe(v);
     return out;
   }
   return value;
+}
+
+function errorMessage(error) {
+  return String(error?.message || "").toLowerCase();
+}
+
+function shouldResetDuckDbInstance(error) {
+  const msg = errorMessage(error);
+  return (
+    msg.includes("database has been invalidated") ||
+    msg.includes("vector::reference used on vector of different type")
+  );
 }
 
 export class DuckDBService {
@@ -42,11 +67,23 @@ export class DuckDBService {
     return this.instancePromise;
   }
 
+  async resetInstance() {
+    this.instanceCache = new DuckDBInstanceCache();
+    this.instancePromise = null;
+    this.schemaReady = false;
+    await this.init();
+  }
+
   async withConnection(fn) {
     const instance = await this.init();
     const connection = await instance.connect();
     try {
       return await fn(connection);
+    } catch (error) {
+      if (shouldResetDuckDbInstance(error)) {
+        await this.resetInstance();
+      }
+      throw error;
     } finally {
       connection.closeSync();
     }
@@ -86,31 +123,50 @@ export class DuckDBService {
           phone VARCHAR
         );
       `);
-
-      await conn.run(`CREATE INDEX IF NOT EXISTS idx_fact_sales_dataset ON fact_sales(dataset_id);`);
-      await conn.run(`CREATE INDEX IF NOT EXISTS idx_fact_sales_order_date ON fact_sales(order_date);`);
-      await conn.run(`CREATE INDEX IF NOT EXISTS idx_fact_sales_store ON fact_sales(store);`);
-      await conn.run(`CREATE INDEX IF NOT EXISTS idx_fact_sales_salesperson ON fact_sales(salesperson);`);
-      await conn.run(`CREATE INDEX IF NOT EXISTS idx_fact_sales_member_name ON fact_sales(member_name);`);
+      // Stability-first: disable secondary indexes for now.
+      // We observed rare DuckDB internal errors in index replay path
+      // ("Vector::Reference used on vector of different type").
+      // Full-table scans are acceptable for current dataset scale.
+      await conn.run(`DROP INDEX IF EXISTS idx_fact_sales_dataset;`);
+      await conn.run(`DROP INDEX IF EXISTS idx_fact_sales_order_date;`);
+      await conn.run(`DROP INDEX IF EXISTS idx_fact_sales_store;`);
+      await conn.run(`DROP INDEX IF EXISTS idx_fact_sales_salesperson;`);
+      await conn.run(`DROP INDEX IF EXISTS idx_fact_sales_member_name;`);
     });
     this.schemaReady = true;
   }
 
   async query(sql, params = {}) {
-    await this.ensureSchema();
-    return this.withConnection(async (conn) => {
-      const { compiledSql, values } = compileNamedParams(sql, params);
-      const result = await conn.run(compiledSql, values);
-      const rows = await result.getRowObjects();
-      return rows.map((row) => toJsonSafe(row));
-    });
+    const execute = async () => {
+      await this.ensureSchema();
+      return this.withConnection(async (conn) => {
+        const { compiledSql, values } = compileNamedParams(sql, params);
+        const result = await conn.run(compiledSql, values);
+        const rows = await result.getRowObjects();
+        return rows.map((row) => toJsonSafe(row));
+      });
+    };
+    try {
+      return await execute();
+    } catch (error) {
+      if (!shouldResetDuckDbInstance(error)) throw error;
+      return execute();
+    }
   }
 
   async run(sql, params = {}) {
-    await this.ensureSchema();
-    return this.withConnection(async (conn) => {
-      const { compiledSql, values } = compileNamedParams(sql, params);
-      return conn.run(compiledSql, values);
-    });
+    const execute = async () => {
+      await this.ensureSchema();
+      return this.withConnection(async (conn) => {
+        const { compiledSql, values } = compileNamedParams(sql, params);
+        return conn.run(compiledSql, values);
+      });
+    };
+    try {
+      return await execute();
+    } catch (error) {
+      if (!shouldResetDuckDbInstance(error)) throw error;
+      return execute();
+    }
   }
 }

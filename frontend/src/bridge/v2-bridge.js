@@ -1,5 +1,6 @@
 import { featureFlags } from "../config/feature-flags.js";
 import {
+  getAggregateScope,
   getDataQualityReport,
   getDatasetKpis,
   getFilterOptions,
@@ -7,6 +8,7 @@ import {
   getMemberRankings,
   getPagedTable,
   getProductRankings,
+  getRepurchaseDistribution,
   getSalespersonRankings,
   getSleepingMembers,
   getStoreRankings,
@@ -25,6 +27,9 @@ import {
 import { setHtml } from "../dom/safe-dom.js";
 import { renderVirtualTable } from "../tables/virtual-table.js";
 
+let readyDatasetImportCount = 0;
+const AGGREGATE_ALL_READY_DATASET_ID = "__all_ready__";
+
 function setStatus(message, isError = false) {
   const html = isError ? `<span class="warn">错误：</span>${message}` : message;
   setHtml("status", html);
@@ -39,6 +44,13 @@ function mapKpisToLegacyShape(kpis) {
   return {
     totalSales: Number(kpis?.totalsales ?? kpis?.totalSales ?? 0),
     totalOrders: Number(kpis?.totalorders ?? kpis?.totalOrders ?? 0),
+    memberOrders: Number(kpis?.memberorders ?? kpis?.memberOrders ?? 0),
+    memberRegistrationRate: Number(kpis?.memberregistrationrate ?? kpis?.memberRegistrationRate ?? 0),
+    uniqueMembers: Number(kpis?.uniquemembers ?? kpis?.uniqueMembers ?? 0),
+    repurchasingMembers: Number(kpis?.repurchasingmembers ?? kpis?.repurchasingMembers ?? 0),
+    repurchaseRate: Number(kpis?.repurchaserate ?? kpis?.repurchaseRate ?? 0),
+    averageRepurchaseTimes: Number(kpis?.averagerepurchasetimes ?? kpis?.averageRepurchaseTimes ?? 0),
+    filesLoaded: Number(kpis?.filesloaded ?? kpis?.filesLoaded ?? 0),
   };
 }
 
@@ -115,7 +127,8 @@ async function optionalSection(promiseFactory, fallbackValue, containerIds = nul
       queueForbiddenContainers(containerIds);
       return fallbackValue;
     }
-    throw error;
+    console.warn("[v2-bridge] section failed (using fallback):", error?.message || error);
+    return fallbackValue;
   }
 }
 
@@ -157,21 +170,10 @@ function buildTicketRankRows(storeRank = []) {
     .sort((a, b) => b.avg_ticket - a.avg_ticket);
 }
 
-function buildRepurchaseDistribution(memberRows = []) {
-  const buckets = [
-    { key: "6+ orders", min: 6, max: Infinity },
-    { key: "4-5 orders", min: 4, max: 5 },
-    { key: "3 orders", min: 3, max: 3 },
-    { key: "2 orders", min: 2, max: 2 },
-    { key: "1 order", min: 1, max: 1 },
-  ];
-  return buckets.map((bucket) => ({
-    order_bucket: bucket.key,
-    member_count: (memberRows || []).filter((m) => {
-      const c = Number(m.order_count || 0);
-      return c >= bucket.min && c <= bucket.max;
-    }).length,
-  }));
+function getSummaryMetricValue(rows = [], metricName, fallback = 0) {
+  const hit = (Array.isArray(rows) ? rows : []).find((row) => String(row?.metric || "") === metricName);
+  const value = Number(hit?.value);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function renderUnavailableMessage(containerId, message) {
@@ -212,8 +214,13 @@ function mergeV2IntoLegacyResults(payload) {
     kpis: {
       ...(prev.kpis || {}),
       ...(payload.kpis || {}),
-      sleepingMembers: Number(payload.sleepList?.length || 0),
-      aClassSleepingMembers: Number((payload.sleepList || []).filter((x) => x.priority === "A").length || 0),
+      filesLoaded: Number(payload.kpis?.filesLoaded ?? payload.fileCheck?.length ?? 0),
+      sleepingMembers: getSummaryMetricValue(payload.sleepSummary, "Sleeping Members", payload.sleepList?.length || 0),
+      aClassSleepingMembers: getSummaryMetricValue(
+        payload.sleepSummary,
+        "A-Class Members",
+        (payload.sleepList || []).filter((x) => x.priority === "A").length || 0
+      ),
     },
     storeRank: payload.storeRank || [],
     salespersonRank: payload.salespersonRank || [],
@@ -289,7 +296,7 @@ async function fetchV2ResultBundle(datasetId) {
   const sleepForbiddenTargets = ["sleepListTable", "sleepByStoreTable", "sleepSummary"];
   const qualityForbiddenTargets = ["fileCheckTable", "mappingTable"];
 
-  const [kpis, storeRank, salespersonRank, productRank, memberRankRaw, sleepingData, trends, quality] =
+  const [kpis, storeRank, salespersonRank, productRank, memberRankRaw, repurchaseDistribution, sleepingData, trends, quality] =
     await Promise.all([
       optionalSection(() => getDatasetKpis(datasetId, filters), { totalSales: 0, totalOrders: 0 }),
       optionalSection(
@@ -312,6 +319,7 @@ async function fetchV2ResultBundle(datasetId) {
         [],
         memberForbiddenTargets
       ),
+      optionalSection(() => getRepurchaseDistribution(datasetId, filters), []),
       optionalSection(
         () =>
           getSleepingMembers(datasetId, {
@@ -347,7 +355,6 @@ async function fetchV2ResultBundle(datasetId) {
     order_count: Number(row.orderCount || row.order_count || 0),
   }));
   const ticketRank = buildTicketRankRows(normalizedStoreRank);
-  const repurchaseDistribution = buildRepurchaseDistribution(memberRank);
   const monthlyRows = Array.isArray(trends?.monthly) ? trends.monthly : [];
   const dailyRows = Array.isArray(trends?.daily) ? trends.daily : [];
   const safeMonthlyRows =
@@ -355,7 +362,9 @@ async function fetchV2ResultBundle(datasetId) {
       ? monthlyRows
       : [{ year_month: getDateFilters().startDate || "当前区间", sales_amount: Number(kpis?.totalSales || 0), store_count: 0 }];
   return {
-    kpis: mapKpisToLegacyShape(kpis),
+    kpis: {
+      ...mapKpisToLegacyShape(kpis),
+    },
     storeRank: normalizedStoreRank,
     salespersonRank: mappedSalespersonRows,
     productRank: (productRank || []).map((row) => ({
@@ -375,22 +384,58 @@ async function fetchV2ResultBundle(datasetId) {
     repurchaseDistribution,
     fileCheck: quality?.fileCheck || [],
     mappingRows: quality?.mappingRows || [],
+    readyDatasetImportCount,
     qualityMessages: salespersonMissing
       ? normalizeQualityMessages([...(quality?.messages || []), "销售员字段未识别，无法生成销售员排行"])
       : normalizeQualityMessages(quality?.messages || []),
   };
 }
 
-async function populateV2FilterOptions() {
+function isDateOutOfBounds(dateValue, minDate, maxDate) {
+  if (!dateValue) return true;
+  if (minDate && dateValue < minDate) return true;
+  if (maxDate && dateValue > maxDate) return true;
+  return false;
+}
+
+/** Duck/API may return timestamps; `<input type="date">` only accepts YYYY-MM-DD. */
+function normalizeApiDateToInput(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const head = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (head) return head[1];
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function populateV2FilterOptions({ forceResetDate = false } = {}) {
   if (!v2State.activeDatasetId) return;
-  const options = await getFilterOptions(v2State.activeDatasetId, getDateFilters());
+  // Always query canonical date bounds without current date filters.
+  // Otherwise stale inputs (e.g. old dataset range) can keep narrowing new datasets.
+  const options = await getFilterOptions(v2State.activeDatasetId, {});
   setFilterOptions(options);
   const startInput = document.getElementById("dashboardStartDate");
   const endInput = document.getElementById("dashboardEndDate");
-  const minDate = String(options?.dateRange?.minDate || "");
-  const maxDate = String(options?.dateRange?.maxDate || "");
-  if (startInput && minDate && !startInput.value) startInput.value = minDate;
-  if (endInput && maxDate && !endInput.value) endInput.value = maxDate;
+  const minDate = normalizeApiDateToInput(options?.dateRange?.minDate);
+  const maxDate = normalizeApiDateToInput(options?.dateRange?.maxDate);
+  if (startInput && minDate) {
+    if (forceResetDate || isDateOutOfBounds(startInput.value, minDate, maxDate)) {
+      startInput.value = minDate;
+    }
+  }
+  if (endInput && maxDate) {
+    if (forceResetDate || isDateOutOfBounds(endInput.value, minDate, maxDate)) {
+      endInput.value = maxDate;
+    }
+  }
+  if (startInput && endInput && startInput.value && endInput.value && startInput.value > endInput.value) {
+    startInput.value = minDate || "";
+    endInput.value = maxDate || "";
+  }
   window.updateDateRangeTriggerText?.();
 }
 
@@ -502,14 +547,20 @@ function wireV2FilterMenus() {
   productSearch?.addEventListener("input", safeRedraw, true);
 }
 
-async function refreshV2Results(keepDropdownOpen = false) {
+async function refreshV2Results(keepDropdownOpen = false, options = {}) {
   if (!v2State.activeDatasetId) return;
+  document.getElementById("resultArea")?.classList.remove("hidden");
   forbiddenRenderIds.clear();
   setV2Loading(true);
   if ((window.__CURRENT_USER || {}).role === "admin") window.setAnalyzeLoading?.(true);
   setStatus("正在加载 v2 分析结果...");
   try {
-    await populateV2FilterOptions();
+    try {
+      await populateV2FilterOptions(options);
+    } catch (filterErr) {
+      console.warn("[v2-bridge] filter options skipped:", filterErr);
+      window.showToast?.("筛选项未能更新，已用当前条件继续加载看板。", "warning");
+    }
     const payload = await fetchV2ResultBundle(v2State.activeDatasetId);
     const merged = mergeV2IntoLegacyResults(payload);
     setLatestResults(merged);
@@ -521,7 +572,9 @@ async function refreshV2Results(keepDropdownOpen = false) {
   } catch (error) {
     forbiddenRenderIds.clear();
     console.error("[v2-bridge] refresh failed:", error);
-    setStatus(error?.message || "v2 分析刷新失败", true);
+    const msg = error?.message || "v2 分析刷新失败";
+    setStatus(msg, true);
+    window.showToast?.(msg, "error");
   } finally {
     setV2Loading(false);
     if ((window.__CURRENT_USER || {}).role === "admin") window.setAnalyzeLoading?.(false);
@@ -534,9 +587,8 @@ async function runBackendUploadPath() {
     setStatus("请至少上传一个文件。", true);
     return;
   }
-  const firstFile = files[0];
   setStatus("正在上传文件并创建异步导入任务...");
-  const started = await startUploadJob(firstFile);
+  const started = await startUploadJob(files);
   const completed = await waitForJob(started.jobId, (job) => {
     setLatestJob(job);
     setStatus(`导入状态：${job?.status || "running"}（${job?.progress ?? 0}%）`);
@@ -545,10 +597,22 @@ async function runBackendUploadPath() {
   if (!datasetId) {
     throw new Error("导入任务已完成，但缺少 datasetId");
   }
-  setDatasetId(datasetId);
-  await refreshV2Results(false);
+  try {
+    const scope = await getAggregateScope();
+    readyDatasetImportCount = Math.max(0, Number(scope?.datasetCount ?? 0));
+    if (featureFlags.enableAggregateReadyDatasets && readyDatasetImportCount > 0) {
+      setDatasetId(AGGREGATE_ALL_READY_DATASET_ID);
+    } else {
+      setDatasetId(String(datasetId));
+      readyDatasetImportCount = 1;
+    }
+  } catch (_e) {
+    setDatasetId(String(datasetId));
+    readyDatasetImportCount = Math.max(1, readyDatasetImportCount);
+  }
+  await refreshV2Results(false, { forceResetDate: true });
   if (featureFlags.enableVirtualizedTable) {
-    const firstPage = await getPagedTable(datasetId, "fact_sales", { limit: 400, offset: 0 });
+    const firstPage = await getPagedTable(String(datasetId), "fact_sales", { limit: 400, offset: 0 });
     let container = document.getElementById("v2VirtualTable");
     if (!container) {
       container = document.createElement("div");
@@ -570,7 +634,9 @@ async function runBackendUploadPath() {
       });
     }
   }
-  setStatus(`<span class="ok">完成。</span>v2 数据导入完成，数据集 ${datasetId.slice(0, 8)}...`);
+  setStatus(
+    `<span class="ok">完成。</span>v2 数据已导入并已汇总到全部看板（本批 dataset ${datasetId.slice(0, 8)}…）`
+  );
 }
 
 function wireV2FilterRefreshHooks() {
@@ -584,22 +650,53 @@ function wireV2FilterRefreshHooks() {
 }
 
 async function loadLatestDatasetOnBoot() {
-  const latest = await getLatestDatasetSummary();
+  readyDatasetImportCount = 0;
+  let latest = null;
+  let scope = null;
+  if (featureFlags.enableAggregateReadyDatasets) {
+    try {
+      scope = await getAggregateScope();
+    } catch (_error) {
+      scope = null;
+    }
+    const datasetCount = Math.max(0, Number(scope?.datasetCount || 0));
+    if (datasetCount > 0) {
+      readyDatasetImportCount = datasetCount;
+      setDatasetId(AGGREGATE_ALL_READY_DATASET_ID);
+      setStatus(`已加载全部导入汇总（共 ${datasetCount} 个数据集），正在刷新看板…`);
+      await refreshV2Results(false, { forceResetDate: true });
+      return;
+    }
+  }
+  try {
+    latest = await getLatestDatasetSummary();
+  } catch (_) {
+    latest = null;
+  }
   if (!latest?.dataset_id) {
-    setStatus("暂无数据，请管理员先在后台导入 Excel", true);
+    const msg =
+      "看板没有加载数据：未找到就绪数据集。请确认后台已导入；若仍如此，对本页强制刷新（Ctrl+F5 或 ⌘⇧R）并重开 Node。";
+    setStatus(msg, true);
+    window.showToast?.(msg, "error");
     return;
   }
+  readyDatasetImportCount = 1;
   setDatasetId(String(latest.dataset_id));
-  setStatus("已加载后台最新数据集，正在刷新看板...");
-  await refreshV2Results(false);
+  setStatus("已加载最近一次导入的数据集，正在刷新看板…");
+  await refreshV2Results(false, { forceResetDate: true });
 }
 
 export function initV2Bridge() {
   const currentUser = window.__CURRENT_USER || null;
   if (!currentUser) return;
+  document.getElementById("resultArea")?.classList.remove("hidden");
   const analyzeBtn = document.getElementById("analyzeBtn");
   wireV2FilterRefreshHooks();
   wireV2FilterMenus();
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted || !v2State.activeDatasetId) return;
+    void refreshV2Results(false, { forceResetDate: true });
+  });
   void loadLatestDatasetOnBoot();
 
   if (featureFlags.enableV2Upload && currentUser.role === "admin" && analyzeBtn) {

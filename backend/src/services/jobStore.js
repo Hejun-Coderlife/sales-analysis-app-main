@@ -90,4 +90,13 @@ export class JobStore {
       offset: safeOffset,
     };
   }
+
+  async deleteJob(id) {
+    await this.init();
+    const safeId = String(id || "").trim();
+    if (!safeId) return false;
+    const ok = this.jobs.delete(safeId);
+    if (ok) await this.persist();
+    return ok;
+  }
 }

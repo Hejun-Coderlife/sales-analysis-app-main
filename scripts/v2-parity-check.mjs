@@ -122,6 +122,43 @@ async function main() {
     throw new Error("table paging mismatch");
   }
 
+  await db.run(
+    `UPDATE datasets
+     SET mapping_json = $mapping_json
+     WHERE dataset_id = $dataset_id`,
+    {
+      dataset_id: datasetId,
+      mapping_json: JSON.stringify([
+        {
+          fileName: "fixture.xlsx",
+          sheets: [
+            {
+              sheet: "Sheet1",
+              mapping: {
+                store: "门店",
+                salesperson: "销售员",
+                product: "商品",
+                amount: "金额",
+                date: "日期",
+                order_no: "订单号",
+                member_id: "会员编号",
+                member_name: "会员姓名",
+                phone: "手机号",
+              },
+            },
+          ],
+        },
+      ]),
+    }
+  );
+  const quality = await analytics.getDataQualityReport(datasetId);
+  if (quality.messages.length) {
+    throw new Error(`data quality mapping mismatch: ${quality.messages.join(", ")}`);
+  }
+  if (!quality.mappingRows.some((row) => row.target_field === "salesperson" && row.source_field === "销售员")) {
+    throw new Error("data quality mapping rows should include nested sheet mapping");
+  }
+
   console.log("v2 parity check passed");
 }
 

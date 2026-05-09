@@ -541,6 +541,28 @@
     filterBase: null,
     storeParam: null,
   };
+  const DEBUG_FRONTEND_DATASET_CHECK = (function () {
+    try {
+      var params = new URLSearchParams(window.location.search || "");
+      var fromQuery = params.get("debugDataCheck") === "1" || params.get("debug") === "1";
+      var fromStorage = window.localStorage && window.localStorage.getItem("debugDataCheck") === "1";
+      return Boolean(fromQuery || fromStorage);
+    } catch (_err) {
+      return false;
+    }
+  })();
+
+  function debugDatasetConsistency(stage, payload) {
+    if (!DEBUG_FRONTEND_DATASET_CHECK) return;
+    try {
+      console.log("[mobile-data-check]", stage, Object.assign({
+        ts: new Date().toISOString(),
+        datasetId: datasetId || "",
+        startDate: state.startDate || "",
+        endDate: state.endDate || "",
+      }, payload || {}));
+    } catch (_err) {}
+  }
 
   function destroyRankChart(key) {
     if (rankCharts[key]) {
@@ -1013,8 +1035,8 @@
   }
 
   async function loadLatestDataset() {
-    const data = await fetchJson("/api/v2/datasets/latest");
-    return data.dataset && data.dataset.dataset_id ? String(data.dataset.dataset_id) : null;
+    const data = await fetchJson("/api/v2/datasets/aggregate-scope");
+    return data.ok && Number(data.datasetCount) > 0 ? "__all_ready__" : null;
   }
 
   async function loadFilterOptions() {
@@ -1281,6 +1303,21 @@
     }
 
     const totalRows = coreKpis ? Number(coreKpis.totalRows || 0) : 0;
+    debugDatasetConsistency("loadAllData", {
+      storeFilter: state.store || "",
+      queryReturnedRows: {
+        kpiTotalRows: totalRows,
+        trendDaily: Array.isArray(trendDaily) ? trendDaily.length : 0,
+        storeRank: Array.isArray(stores) ? stores.length : 0,
+        salespersonRank: Array.isArray(sales) ? sales.length : 0,
+        productRank: Array.isArray(products) ? products.length : 0,
+        memberRowsLoaded: Array.isArray(memberPagingState.rows) ? memberPagingState.rows.length : 0,
+        sleepingRows:
+          Array.isArray(sleeping && sleeping.rows) ? sleeping.rows.length
+          : Array.isArray(sleeping && sleeping.sleepList) ? sleeping.sleepList.length
+          : 0,
+      },
+    });
     const fullRange =
       Boolean(dateBounds.min) &&
       Boolean(dateBounds.max) &&
@@ -1976,6 +2013,12 @@
       document.getElementById("startDate").value = state.startDate;
       document.getElementById("endDate").value = state.endDate;
       updateDateRangeLabel();
+      debugDatasetConsistency("initDefaultDateRange", {
+        dateBoundsMin: dateBounds.min || "",
+        dateBoundsMax: dateBounds.max || "",
+        appliedStartDate: state.startDate || "",
+        appliedEndDate: state.endDate || "",
+      });
       populateStoreSelect((opt && opt.options && opt.options.stores) || []);
     } else {
       document.getElementById("startDate").disabled = true;

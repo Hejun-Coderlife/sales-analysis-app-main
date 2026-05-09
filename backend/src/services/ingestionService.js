@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { normalizeUploadFilename } from "../utils/uploadFilename.js";
 import XLSX from "xlsx";
 import { randomUUID } from "crypto";
 
@@ -185,6 +186,33 @@ function createRowDedupKey(row) {
   ].join("|");
 }
 
+const INSERT_COLUMNS = [
+  "dataset_id",
+  "order_no",
+  "order_date",
+  "year",
+  "month_key",
+  "week_start",
+  "day_key",
+  "store",
+  "salesperson",
+  "product",
+  "qty",
+  "amount",
+  "member_id",
+  "member_name",
+  "phone",
+];
+
+const INSERT_SQL = `INSERT INTO fact_sales (
+  dataset_id, order_no, order_date, year, month_key, week_start, day_key, store, salesperson,
+  product, qty, amount, member_id, member_name, phone
+) VALUES (?, ?, CAST(? AS DATE), ?, ?, CAST(? AS DATE), ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const BATCH_INSERT_ROW_SIZE = 200;
+
+const IMPORT_PROGRESS_ROW_STEP = 2000;
+const IMPORT_PROGRESS_TIME_STEP_MS = 1200;
+
 export class IngestionService {
   constructor({ duckdbService, uploadsDir }) {
     this.duckdbService = duckdbService;
@@ -197,7 +225,9 @@ export class IngestionService {
 
   async persistUploadBuffer(file) {
     await this.ensureUploadDir();
-    const filename = `${Date.now()}-${randomUUID()}-${file.originalname || "upload.xlsx"}`;
+    const baseRaw = normalizeUploadFilename(file.originalname) || "upload.xlsx";
+    const safeBase = String(baseRaw).replace(/[/\\?*:|"<>]/g, "_").slice(0, 180) || "upload.xlsx";
+    const filename = `${Date.now()}-${randomUUID()}-${safeBase}`;
     const outputPath = path.resolve(this.uploadsDir, filename);
     await fs.writeFile(outputPath, file.buffer);
     return outputPath;
@@ -287,6 +317,63 @@ export class IngestionService {
     };
   }
 
+  /**
+   * Write rows in a single DB connection + transaction to avoid per-row
+   * connection setup/teardown overhead.
+   */
+  async writeRowsToDataset(datasetId, rows, onProgress) {
+    const total = Array.isArray(rows) ? rows.length : 0;
+    if (!total) return 0;
+    const buildBatchInsertSql = (rowCount) => {
+      if (rowCount <= 1) return INSERT_SQL;
+      const tuple = "(?, ?, CAST(? AS DATE), ?, ?, CAST(? AS DATE), ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      const tuples = new Array(rowCount).fill(tuple).join(", ");
+      return `INSERT INTO fact_sales (
+  dataset_id, order_no, order_date, year, month_key, week_start, day_key, store, salesperson,
+  product, qty, amount, member_id, member_name, phone
+) VALUES ${tuples}`;
+    };
+
+    await this.duckdbService.withConnection(async (conn) => {
+      await conn.run("BEGIN");
+      try {
+        await conn.run("DELETE FROM fact_sales WHERE dataset_id = ?", [datasetId]);
+        let inserted = 0;
+        let lastProgressAt = Date.now();
+        for (let i = 0; i < rows.length; i += BATCH_INSERT_ROW_SIZE) {
+          const batch = rows.slice(i, i + BATCH_INSERT_ROW_SIZE);
+          const sql = buildBatchInsertSql(batch.length);
+          const values = [];
+          for (const row of batch) {
+            for (const col of INSERT_COLUMNS) {
+              values.push(col === "dataset_id" ? datasetId : row[col]);
+            }
+          }
+          await conn.run(sql, values);
+          inserted += batch.length;
+          if (
+            onProgress &&
+            (inserted % IMPORT_PROGRESS_ROW_STEP === 0 ||
+              Date.now() - lastProgressAt >= IMPORT_PROGRESS_TIME_STEP_MS ||
+              inserted === total)
+          ) {
+            lastProgressAt = Date.now();
+            onProgress(inserted, total);
+          }
+        }
+        await conn.run("COMMIT");
+      } catch (error) {
+        try {
+          await conn.run("ROLLBACK");
+        } catch (_rollbackError) {
+          // noop: original error should be propagated
+        }
+        throw error;
+      }
+    });
+    return total;
+  }
+
   async ingestDataset({ sourceName, filePath, overrides = {}, onProgress }) {
     const datasetId = randomUUID();
     await this.duckdbService.ensureSchema();
@@ -321,29 +408,10 @@ export class IngestionService {
       }
     );
 
-    await this.duckdbService.run("DELETE FROM fact_sales WHERE dataset_id = $dataset_id", {
-      dataset_id: datasetId,
+    await this.writeRowsToDataset(datasetId, rows, (inserted, total) => {
+      const pct = 45 + Math.floor((inserted / Math.max(1, total)) * 45);
+      onProgress?.(Math.min(90, pct), `Inserted ${inserted}/${total}`);
     });
-
-    let inserted = 0;
-    for (const row of rows) {
-      // Row-wise inserts keep implementation straightforward and deterministic for phase-1 migration.
-      await this.duckdbService.run(
-        `INSERT INTO fact_sales (
-            dataset_id, order_no, order_date, year, month_key, week_start, day_key, store, salesperson,
-            product, qty, amount, member_id, member_name, phone
-         ) VALUES (
-            $dataset_id, $order_no, $order_date, $year, $month_key, $week_start, $day_key, $store, $salesperson,
-            $product, $qty, $amount, $member_id, $member_name, $phone
-         )`,
-        { dataset_id: datasetId, ...row }
-      );
-      inserted += 1;
-      if (inserted % 500 === 0) {
-        const pct = 45 + Math.floor((inserted / rows.length) * 45);
-        onProgress?.(Math.min(90, pct), `Inserted ${inserted}/${rows.length}`);
-      }
-    }
 
     await this.duckdbService.run(
       `UPDATE datasets
@@ -380,7 +448,6 @@ export class IngestionService {
     const datasetId = randomUUID();
     await this.duckdbService.ensureSchema();
     const allRows = [];
-    const seenRows = new Set();
     const mapping = [];
     const warnings = [];
     const successfulFiles = [];
@@ -404,16 +471,12 @@ export class IngestionService {
           }
         );
         const parsed = await this.parseWorkbook(entry.filePath, overrides);
-        const before = seenRows.size;
+        const beforeRows = allRows.length;
         for (const row of parsed.cleanedRows) {
-          const rowKey = createRowDedupKey(row);
-          if (seenRows.has(rowKey)) continue;
-          seenRows.add(rowKey);
           allRows.push(row);
         }
-        const uniqueAdded = seenRows.size - before;
-        const duplicateInFile = Math.max(0, parsed.cleanedRows.length - uniqueAdded);
-        duplicateRowsSkipped += duplicateInFile;
+        const uniqueAdded = allRows.length - beforeRows;
+        const duplicateInFile = 0;
         cumulativeRows += uniqueAdded;
         successfulFiles.push({
           fileName: entry.sourceName,
@@ -498,36 +561,18 @@ export class IngestionService {
       }
     );
 
-    await this.duckdbService.run("DELETE FROM fact_sales WHERE dataset_id = $dataset_id", {
-      dataset_id: datasetId,
+    await this.writeRowsToDataset(datasetId, allRows, (inserted, total) => {
+      const pct = 45 + Math.floor((inserted / Math.max(1, total)) * 45);
+      onProgress?.(Math.min(90, pct), `已写入 ${inserted}/${total} 行`, {
+        currentFileIndex: entries.length,
+        fileCount: entries.length,
+        currentFileName: "",
+        cumulativeRowCount: inserted,
+        successfulFileCount: successfulFiles.length,
+        failedFileCount: failedFiles.length,
+        duplicateRowsSkipped,
+      });
     });
-
-    let inserted = 0;
-    for (const row of allRows) {
-      await this.duckdbService.run(
-        `INSERT INTO fact_sales (
-            dataset_id, order_no, order_date, year, month_key, week_start, day_key, store, salesperson,
-            product, qty, amount, member_id, member_name, phone
-         ) VALUES (
-            $dataset_id, $order_no, $order_date, $year, $month_key, $week_start, $day_key, $store, $salesperson,
-            $product, $qty, $amount, $member_id, $member_name, $phone
-         )`,
-        { dataset_id: datasetId, ...row }
-      );
-      inserted += 1;
-      if (inserted % 500 === 0) {
-        const pct = 45 + Math.floor((inserted / Math.max(1, allRows.length)) * 45);
-        onProgress?.(Math.min(90, pct), `已写入 ${inserted}/${allRows.length} 行`, {
-          currentFileIndex: entries.length,
-          fileCount: entries.length,
-          currentFileName: "",
-          cumulativeRowCount: inserted,
-          successfulFileCount: successfulFiles.length,
-          failedFileCount: failedFiles.length,
-          duplicateRowsSkipped,
-        });
-      }
-    }
 
     await this.duckdbService.run(
       `UPDATE datasets

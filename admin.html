@@ -286,6 +286,15 @@
     const uniq = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
     const joinCsv = (list) => (Array.isArray(list) ? list : []).join(", ");
     const fmtTime = (v) => { if (!v) return "暂无"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "暂无" : d.toLocaleString("zh-CN"); };
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+    const escapeAttr = escapeHtml;
 
     function showToast(message, type = "info") {
       const toast = document.getElementById("toast");
@@ -357,7 +366,7 @@
         { type: "allStores", value: "", label: "全部门店" },
         ...stores.map((s) => ({ type: "store", value: s, label: s })),
       ];
-      document.getElementById("orgTree").innerHTML = nodes.map((n) => `<button class="tree-node${selectedTree.type===n.type&&selectedTree.value===n.value?" active":""}" data-tree-type="${n.type}" data-tree-value="${n.value.replace(/"/g,"&quot;")}">${n.label}</button>`).join("");
+      document.getElementById("orgTree").innerHTML = nodes.map((n) => `<button class="tree-node${selectedTree.type===n.type&&selectedTree.value===n.value?" active":""}" data-tree-type="${escapeAttr(n.type)}" data-tree-value="${escapeAttr(n.value)}">${escapeHtml(n.label)}</button>`).join("");
     }
 
     function renderUsersTable() {
@@ -366,23 +375,23 @@
       if (!rows.length) { tbody.innerHTML = `<tr><td colspan="13" class="muted">暂无匹配员工</td></tr>`; return; }
       tbody.innerHTML = rows.map((u) => `
         <tr>
-          <td class="sticky-left"><b>${u.username || "-"}</b></td>
-          <td>${positionMap[u.role] || u.role || "-"}</td>
-          <td>${summarizeScope(u)}</td>
-          <td>${summarizeCount(u.allowAllStores, u.allowedStores, "家")}</td>
-          <td>${summarizeCount(u.allowAllSalespeople, u.allowedSalespeople, "人")}</td>
-          <td>${summarizeCount(u.allowAllProducts, u.allowedProducts, "个")}</td>
-          <td>${hasAgentEnabled(u) ? "已开启" : "未开启"}</td>
-          <td>${summarizePrivacy(u.allowedMemberFields || {})}</td>
+          <td class="sticky-left"><b>${escapeHtml(u.username || "-")}</b></td>
+          <td>${escapeHtml(positionMap[u.role] || u.role || "-")}</td>
+          <td>${escapeHtml(summarizeScope(u))}</td>
+          <td>${escapeHtml(summarizeCount(u.allowAllStores, u.allowedStores, "家"))}</td>
+          <td>${escapeHtml(summarizeCount(u.allowAllSalespeople, u.allowedSalespeople, "人"))}</td>
+          <td>${escapeHtml(summarizeCount(u.allowAllProducts, u.allowedProducts, "个"))}</td>
+          <td>${escapeHtml(hasAgentEnabled(u) ? "已开启" : "未开启")}</td>
+          <td>${escapeHtml(summarizePrivacy(u.allowedMemberFields || {}))}</td>
           <td>${u.dingtalkUserId ? '<span class="badge badge-ok">已绑定</span>' : '<span class="badge">未绑定</span>'}</td>
-          <td>${u.dingtalkUserId || "-"}</td>
+          <td>${escapeHtml(u.dingtalkUserId || "-")}</td>
           <td class="sticky-right-2"><span class="badge ${u.enabled ? "badge-ok":"badge-off"}">${u.enabled ? "启用":"停用"}</span></td>
-          <td>${fmtTime(u.lastLoginAt)}</td>
+          <td>${escapeHtml(fmtTime(u.lastLoginAt))}</td>
           <td class="sticky-right">
             <div class="cell-actions">
-              <button class="btn btn-light" data-action="edit" data-id="${u.id}">编辑</button>
-              <button class="btn ${u.enabled ? "btn-danger":"btn-light"}" data-action="toggle" data-id="${u.id}">${u.enabled ? "停用":"启用"}</button>
-              <button class="btn btn-light" data-action="reset" data-id="${u.id}">重置密码</button>
+              <button class="btn btn-light" data-action="edit" data-id="${escapeAttr(u.id)}">编辑</button>
+              <button class="btn ${u.enabled ? "btn-danger":"btn-light"}" data-action="toggle" data-id="${escapeAttr(u.id)}">${u.enabled ? "停用":"启用"}</button>
+              <button class="btn btn-light" data-action="reset" data-id="${escapeAttr(u.id)}">重置密码</button>
             </div>
           </td>
         </tr>
@@ -402,12 +411,12 @@
         return `
           <article class="role-card">
             <div style="display:flex;justify-content:space-between;gap:8px;align-items:start;">
-              <div><b>${positionMap[role]}</b><div class="meta" style="margin-top:4px;">${positionDesc[role] || "系统预设岗位"}</div></div>
+              <div><b>${escapeHtml(positionMap[role])}</b><div class="meta" style="margin-top:4px;">${escapeHtml(positionDesc[role] || "系统预设岗位")}</div></div>
               <span class="badge ${role==="disabled"?"badge-off":"badge-ok"}">${role==="disabled"?"停用":"启用"}</span>
             </div>
-            <div class="meta" style="margin-top:8px;">默认管理范围：${scopeText}</div>
+            <div class="meta" style="margin-top:8px;">默认管理范围：${escapeHtml(scopeText)}</div>
             <div style="margin-top:8px;">
-              <button class="btn btn-light" data-action="view-position" data-role="${role}">查看/编辑</button>
+              <button class="btn btn-light" data-action="view-position" data-role="${escapeAttr(role)}">查看/编辑</button>
             </div>
           </article>
         `;
@@ -417,8 +426,12 @@
     async function loadUsers() {
       const res = await fetch("/api/admin/users");
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        window.location.href = "/login?next=/admin";
+        return;
+      }
       if (!res.ok) {
-        document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="11" class="muted">${data.error || "员工列表加载失败"}</td></tr>`;
+        document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="11" class="muted">${escapeHtml(data.error || "员工列表加载失败")}</td></tr>`;
         return;
       }
       usersCache = data.users || [];
@@ -429,8 +442,45 @@
     async function loadPermissionOptions() {
       const res = await fetch("/api/admin/permission-options");
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        window.location.href = "/login?next=/admin";
+        return;
+      }
       if (res.ok) permissionOptions = data.options || { stores: [], salespeople: [], products: [] };
       renderOrgTree();
+    }
+
+    function canDeleteImportHistory() {
+      return !!currentUser?.permissions?.canDeleteImportedData;
+    }
+
+    async function deleteImportJob(jobId, filenameHint) {
+      const id = String(jobId || "").trim();
+      if (!id) return;
+      const hint = filenameHint ? `「${filenameHint}」` : "该条目";
+      const ok = confirm(
+        `确认删除导入记录 ${hint}？若该次导入已形成数据集，将同时从数据库移除对应订单明细与数据集元数据，且不可恢复。`
+      );
+      if (!ok) return;
+      try {
+        let res = await fetch(`/api/admin/import/jobs/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "same-origin" });
+        let data = await res.json().catch(() => ({}));
+        if (!res.ok && res.status === 409) {
+          const force = confirm("该任务显示仍在进行中。若你确认它已卡住，可强制删除。是否继续强制删除？");
+          if (force) {
+            res = await fetch(`/api/admin/import/jobs/${encodeURIComponent(id)}?force=1`, { method: "DELETE", credentials: "same-origin" });
+            data = await res.json().catch(() => ({}));
+          }
+        }
+        if (!res.ok) {
+          showToast(data.error || "删除失败", "error");
+          return;
+        }
+        showToast("已删除导入记录", "success");
+        await Promise.all([refreshLatestImportMeta(), loadImportHistory(), loadPermissionOptions().catch(() => null)]);
+      } catch (error) {
+        showToast(error?.message || "网络异常，删除失败", "error");
+      }
     }
 
     async function refreshLatestImportMeta() {
@@ -440,7 +490,8 @@
       if (!res.ok) { el.className = "meta err"; el.textContent = data.error || "加载最新导入信息失败"; return; }
       const latest = data.latest;
       el.className = "meta";
-      el.textContent = latest ? `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${latest.source_name}，行数：${latest.row_count}）` : "最新数据更新时间：暂无";
+      const fileLabel = latest.display_source_name || latest.source_name || "-";
+      el.textContent = latest ? `最新数据更新时间：${fmtTime(latest.created_at)}（文件：${fileLabel}，行数：${latest.row_count}）` : "最新数据更新时间：暂无";
     }
     async function loadImportHistory() {
       const wrap = document.getElementById("importHistoryWrap");
@@ -450,7 +501,20 @@
       const rows = data.rows || [];
       if (!rows.length) { wrap.className = "meta"; wrap.textContent = "暂无导入历史"; return; }
       wrap.className = "";
-      wrap.innerHTML = rows.map((r) => `<div style="padding:6px 0;border-bottom:1px solid #eef2f7;"><b>${r.filename || "-"}</b><div class="meta">${fmtTime(r.importedAt)} · ${r.status || "-"} · ${r.rowCount || 0} 行</div></div>`).join("");
+      const showDel = canDeleteImportHistory();
+      wrap.innerHTML = rows
+        .map(
+          (r) =>
+            `<div class="import-history-row" style="padding:6px 0;border-bottom:1px solid #eef2f7;">` +
+            `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">` +
+            `<div style="flex:1;min-width:0;"><b>${escapeHtml(r.filename || "-")}</b>` +
+            `<div class="meta">${escapeHtml(fmtTime(r.importedAt))} · ${escapeHtml(r.status || "-")} · ${escapeHtml(r.rowCount || 0)} 行</div></div>` +
+            (showDel
+              ? `<button type="button" class="btn btn-light import-job-del-btn" style="flex:0 0 auto;white-space:nowrap;min-height:32px;font-size:12px;padding:0 10px;" data-delete-import-job="${escapeAttr(r.jobId)}">删除</button>`
+              : "") +
+            `</div></div>`
+        )
+        .join("");
     }
 
     async function uploadImportFile() {
@@ -565,7 +629,7 @@
     function renderImportFileSelection() {
       const files = [...(document.getElementById("adminImportFile").files || [])];
       document.getElementById("adminImportFileMeta").textContent = `已选择 ${files.length} 个文件`;
-      document.getElementById("adminImportFileList").innerHTML = files.map((f) => `<div>${f.name}（${Math.ceil((Number(f.size) || 0) / 1024)} KB）</div>`).join("");
+      document.getElementById("adminImportFileList").innerHTML = files.map((f) => `<div>${escapeHtml(f.name)}（${Math.ceil((Number(f.size) || 0) / 1024)} KB）</div>`).join("");
     }
 
     function getPermissionSearchKey(kind, userId) { return `${kind}:${userId}`; }
@@ -578,7 +642,7 @@
       return false;
     }
     function renderPermissionFlagsCheckboxes(userId, groupName, flags = {}) {
-      return (permissionGroups[groupName] || []).map((key) => `<label><input type="checkbox" data-perm-group="${groupName}" data-perm-key="${key}" data-id="${userId}"${flags?.[key] ? " checked":""}/> ${permissionLabelMap[key] || key}</label>`).join("");
+      return (permissionGroups[groupName] || []).map((key) => `<label><input type="checkbox" data-perm-group="${escapeAttr(groupName)}" data-perm-key="${escapeAttr(key)}" data-id="${escapeAttr(userId)}"${flags?.[key] ? " checked":""}/> ${escapeHtml(permissionLabelMap[key] || key)}</label>`).join("");
     }
     function collectPermissionFlags(userId, groupName) {
       const values = {};
@@ -595,7 +659,7 @@
       if (!options.length) return '<div class="muted">暂无可选项，可使用手工输入兜底</div>';
       const filtered = options.filter((v) => selectedSet.has(v) || !search || String(v).toLowerCase().includes(search));
       if (!filtered.length) return '<div class="muted">无匹配项</div>';
-      return filtered.map((v) => `<label><input type="checkbox" data-kind="${kind}" data-id="${userId}" value="${v.replace(/"/g,"&quot;")}"${selectedSet.has(v) ? " checked":""}/> ${v}</label>`).join("");
+      return filtered.map((v) => `<label><input type="checkbox" data-kind="${escapeAttr(kind)}" data-id="${escapeAttr(userId)}" value="${escapeAttr(v)}"${selectedSet.has(v) ? " checked":""}/> ${escapeHtml(v)}</label>`).join("");
     }
     function collectPermissionValues(kind, userId) {
       const checked = [...document.querySelectorAll(`input[type="checkbox"][data-kind="${kind}"][data-id="${userId}"]:checked`)].map((x) => x.value);
@@ -606,7 +670,7 @@
       const el = document.getElementById(targetId);
       if (!el) return;
       const rows = uniq(values);
-      el.innerHTML = rows.length ? rows.map((v) => `<span class="tag">${v}</span>`).join("") : '<span class="muted">未选择</span>';
+      el.innerHTML = rows.length ? rows.map((v) => `<span class="tag">${escapeHtml(v)}</span>`).join("") : '<span class="muted">未选择</span>';
     }
     function renderSelectedCount(kind, userId, selectedValues) {
       const el = document.getElementById(`count-${kind}-${userId}`);
@@ -636,12 +700,12 @@
       const u = usersCache.find((x) => String(x.id) === editingUserId);
       if (!u) return;
       const body = document.getElementById("drawerBody");
-      const optionsPos = Object.keys(positionMap).map((k) => `<option value="${k}"${k===u.role?" selected":""}>${positionMap[k]}</option>`).join("");
+      const optionsPos = Object.keys(positionMap).map((k) => `<option value="${escapeAttr(k)}"${k===u.role?" selected":""}>${escapeHtml(positionMap[k])}</option>`).join("");
       const adminOnly = !isAdminOperator();
       body.innerHTML = `
         <div class="group"><h4>基本信息</h4>
-          <div class="field"><label>账号</label><input value="${u.username || ""}" disabled /></div>
-          <div class="field"><label>显示名称</label><input data-edit-field="displayName" value="${(u.displayName || "").replace(/"/g,"&quot;")}" /></div>
+          <div class="field"><label>账号</label><input value="${escapeAttr(u.username || "")}" disabled /></div>
+          <div class="field"><label>显示名称</label><input data-edit-field="displayName" value="${escapeAttr(u.displayName || "")}" /></div>
           <div class="field"><label>岗位</label><select data-edit-field="role"${adminOnly ? " disabled" : ""}>${optionsPos}</select></div>
           <label class="muted"><input type="checkbox" data-edit-field="enabled" ${u.enabled ? "checked":""}/> 启用账号</label>
         </div>
@@ -652,19 +716,19 @@
           <label class="muted"><input type="checkbox" data-edit-field="allowAllProducts" ${u.allowAllProducts ? "checked":""}/> 所有商品</label>
         </div>
         <div class="group"><h4>数据范围 - 门店</h4>
-          <div class="perm-toolbar"><input data-search-kind="stores" data-id="${u.id}" placeholder="搜索门店..." value="${getPermissionSearchValue("stores", u.id).replace(/"/g,"&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="stores" data-id="${u.id}">全选门店</button><button class="btn btn-light" data-action="perm-clear" data-kind="stores" data-id="${u.id}">清空门店</button></div>
-          <div id="count-stores-${u.id}" class="meta"></div><div id="perm-list-stores-${u.id}" class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [], getPermissionSearchValue("stores", u.id))}</div><div id="tags-stores-${u.id}" class="tag-wrap"></div>
-          <div class="field"><label>手工兜底</label><textarea data-fallback="stores" data-id="${u.id}">${joinCsv(u.allowedStores || [])}</textarea></div>
+          <div class="perm-toolbar"><input data-search-kind="stores" data-id="${escapeAttr(u.id)}" placeholder="搜索门店..." value="${escapeAttr(getPermissionSearchValue("stores", u.id))}"/><button class="btn btn-light" data-action="perm-all" data-kind="stores" data-id="${escapeAttr(u.id)}">全选门店</button><button class="btn btn-light" data-action="perm-clear" data-kind="stores" data-id="${escapeAttr(u.id)}">清空门店</button></div>
+          <div id="count-stores-${escapeAttr(u.id)}" class="meta"></div><div id="perm-list-stores-${escapeAttr(u.id)}" class="perm-list">${renderPermissionCheckboxes("stores", u.id, u.allowedStores || [], getPermissionSearchValue("stores", u.id))}</div><div id="tags-stores-${escapeAttr(u.id)}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="stores" data-id="${escapeAttr(u.id)}">${escapeHtml(joinCsv(u.allowedStores || []))}</textarea></div>
         </div>
         <div class="group"><h4>数据范围 - 销售员</h4>
-          <div class="perm-toolbar"><input data-search-kind="salespeople" data-id="${u.id}" placeholder="搜索销售员..." value="${getPermissionSearchValue("salespeople", u.id).replace(/"/g,"&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="salespeople" data-id="${u.id}">全选销售员</button><button class="btn btn-light" data-action="perm-clear" data-kind="salespeople" data-id="${u.id}">清空销售员</button></div>
-          <div id="count-salespeople-${u.id}" class="meta"></div><div id="perm-list-salespeople-${u.id}" class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [], getPermissionSearchValue("salespeople", u.id))}</div><div id="tags-salespeople-${u.id}" class="tag-wrap"></div>
-          <div class="field"><label>手工兜底</label><textarea data-fallback="salespeople" data-id="${u.id}">${joinCsv(u.allowedSalespeople || [])}</textarea></div>
+          <div class="perm-toolbar"><input data-search-kind="salespeople" data-id="${escapeAttr(u.id)}" placeholder="搜索销售员..." value="${escapeAttr(getPermissionSearchValue("salespeople", u.id))}"/><button class="btn btn-light" data-action="perm-all" data-kind="salespeople" data-id="${escapeAttr(u.id)}">全选销售员</button><button class="btn btn-light" data-action="perm-clear" data-kind="salespeople" data-id="${escapeAttr(u.id)}">清空销售员</button></div>
+          <div id="count-salespeople-${escapeAttr(u.id)}" class="meta"></div><div id="perm-list-salespeople-${escapeAttr(u.id)}" class="perm-list">${renderPermissionCheckboxes("salespeople", u.id, u.allowedSalespeople || [], getPermissionSearchValue("salespeople", u.id))}</div><div id="tags-salespeople-${escapeAttr(u.id)}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="salespeople" data-id="${escapeAttr(u.id)}">${escapeHtml(joinCsv(u.allowedSalespeople || []))}</textarea></div>
         </div>
         <div class="group"><h4>数据范围 - 商品</h4>
-          <div class="perm-toolbar"><input data-search-kind="products" data-id="${u.id}" placeholder="搜索商品..." value="${getPermissionSearchValue("products", u.id).replace(/"/g,"&quot;")}"/><button class="btn btn-light" data-action="perm-all" data-kind="products" data-id="${u.id}">全选商品</button><button class="btn btn-light" data-action="perm-clear" data-kind="products" data-id="${u.id}">清空商品</button></div>
-          <div id="count-products-${u.id}" class="meta"></div><div id="perm-list-products-${u.id}" class="perm-list">${renderPermissionCheckboxes("products", u.id, u.allowedProducts || [], getPermissionSearchValue("products", u.id))}</div><div id="tags-products-${u.id}" class="tag-wrap"></div>
-          <div class="field"><label>手工兜底</label><textarea data-fallback="products" data-id="${u.id}">${joinCsv(u.allowedProducts || [])}</textarea></div>
+          <div class="perm-toolbar"><input data-search-kind="products" data-id="${escapeAttr(u.id)}" placeholder="搜索商品..." value="${escapeAttr(getPermissionSearchValue("products", u.id))}"/><button class="btn btn-light" data-action="perm-all" data-kind="products" data-id="${escapeAttr(u.id)}">全选商品</button><button class="btn btn-light" data-action="perm-clear" data-kind="products" data-id="${escapeAttr(u.id)}">清空商品</button></div>
+          <div id="count-products-${escapeAttr(u.id)}" class="meta"></div><div id="perm-list-products-${escapeAttr(u.id)}" class="perm-list">${renderPermissionCheckboxes("products", u.id, u.allowedProducts || [], getPermissionSearchValue("products", u.id))}</div><div id="tags-products-${escapeAttr(u.id)}" class="tag-wrap"></div>
+          <div class="field"><label>手工兜底</label><textarea data-fallback="products" data-id="${escapeAttr(u.id)}">${escapeHtml(joinCsv(u.allowedProducts || []))}</textarea></div>
         </div>
         <div class="group"><h4>员工特殊权限（可覆盖岗位）</h4><div class="meta">默认继承岗位，以下配置用于员工个体覆盖。</div><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "dashboard", u.permissions || {})}</div><div class="perm-list" style="margin-top:8px;">${renderPermissionFlagsCheckboxes(u.id, "admin", u.permissions || {})}</div><div class="perm-list" style="margin-top:8px;">${renderPermissionFlagsCheckboxes(u.id, "agent", u.permissions || {})}</div><div class="perm-list" style="margin-top:8px;">${renderPermissionFlagsCheckboxes(u.id, "reminders", u.permissions || {})}</div></div>
         <div class="group"><h4>会员隐私权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(u.id, "memberFields", u.allowedMemberFields || {})}</div></div>
@@ -785,7 +849,7 @@
       const p = sample?.permissions || {};
       const mf = sample?.allowedMemberFields || {};
       body.innerHTML = `
-        <div class="meta">岗位说明：${positionDesc[role] || "系统预设岗位"}</div>
+        <div class="meta">岗位说明：${escapeHtml(positionDesc[role] || "系统预设岗位")}</div>
         <div class="group"><h4>默认看板权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(`position-${role}`, "dashboard", p).replace(/type="checkbox"/g,'type="checkbox" disabled')}</div></div>
         <div class="group"><h4>默认管理权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(`position-${role}`, "admin", p).replace(/type="checkbox"/g,'type="checkbox" disabled')}</div></div>
         <div class="group"><h4>默认 Agent 权限</h4><div class="perm-list">${renderPermissionFlagsCheckboxes(`position-${role}`, "agent", p).replace(/type="checkbox"/g,'type="checkbox" disabled')}</div></div>
@@ -990,6 +1054,15 @@
       renderSelectedCount(kind, userId, selected);
     });
 
+    document.getElementById("importHistoryWrap").addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-delete-import-job]");
+      if (!btn || !canDeleteImportHistory()) return;
+      const jobId = btn.getAttribute("data-delete-import-job") || "";
+      const rowEl = btn.closest(".import-history-row");
+      const filenameEl = rowEl ? rowEl.querySelector("b") : null;
+      const filenameHint = filenameEl ? filenameEl.textContent || "" : "";
+      deleteImportJob(jobId, filenameHint);
+    });
     document.getElementById("adminImportBtn").addEventListener("click", (event) => withLoading(event.currentTarget, "导入中...", uploadImportFile));
     document.getElementById("adminImportFile").addEventListener("change", renderImportFileSelection);
     document.getElementById("saveNotifConfigBtn")?.addEventListener("click", (event) => withLoading(event.currentTarget, "保存中...", saveNotificationConfig));
@@ -1010,7 +1083,11 @@
       }
       if (meJson?.user?.role === "admin") {
         document.getElementById("notifConfigCard").removeAttribute("hidden");
-        await loadNotificationConfig();
+        try {
+          await loadNotificationConfig();
+        } catch (_error) {
+          // Keep admin core data loading even when v2 notification APIs are temporarily unavailable.
+        }
       }
       await loadPermissionOptions();
       await loadUsers();

@@ -9,17 +9,37 @@ function normalizeDate(value) {
   return `${y}-${m}-${day}`;
 }
 
-function buildWhereClause({ datasetId, filters = {} }) {
-  const clauses = ["dataset_id = $dataset_id"];
-  const params = { dataset_id: datasetId };
+/** Route token: aggregated analytics over every `status=ready` dataset. */
+export const AGGREGATE_ALL_READY_DATASET_ID = "__all_ready__";
+
+function distinctOrderSql() {
+  return `CAST(dataset_id AS VARCHAR) || '#' || CAST(COALESCE(order_no,'') AS VARCHAR)`;
+}
+
+function buildDatasetWhereClause(datasetIds, filters = {}) {
+  const ids = (Array.isArray(datasetIds) ? datasetIds : [])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length) {
+    throw new Error("datasetIds is required");
+  }
+  const clauses = [];
+  const params = {};
+  if (ids.length === 1) {
+    clauses.push("dataset_id = $dataset_id");
+    params.dataset_id = ids[0];
+  } else {
+    clauses.push(`dataset_id IN (${ids.map((_, idx) => `$d_${idx}`).join(", ")})`);
+    for (let i = 0; i < ids.length; i += 1) params[`d_${i}`] = ids[i];
+  }
   const startDate = normalizeDate(filters.startDate);
   const endDate = normalizeDate(filters.endDate);
   if (startDate) {
-    clauses.push("order_date >= $start_date");
+    clauses.push("order_date >= CAST($start_date AS DATE)");
     params.start_date = startDate;
   }
   if (endDate) {
-    clauses.push("order_date <= $end_date");
+    clauses.push("order_date <= CAST($end_date AS DATE)");
     params.end_date = endDate;
   }
   if (Array.isArray(filters.stores) && filters.stores.length) {
@@ -41,6 +61,46 @@ function buildWhereClause({ datasetId, filters = {} }) {
     }
   }
   return { whereSql: clauses.join(" AND "), params };
+}
+
+function kpisDistinctOrderSelect() {
+  return `COUNT(DISTINCT ${distinctOrderSql()})`;
+}
+
+function extractPrimaryMapping(mappingRaw) {
+  if (!mappingRaw || typeof mappingRaw !== "object") return {};
+  if (!Array.isArray(mappingRaw)) {
+    return mappingRaw.mapping && typeof mappingRaw.mapping === "object" ? mappingRaw.mapping : mappingRaw;
+  }
+  for (const entry of mappingRaw) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.mapping && typeof entry.mapping === "object") return entry.mapping;
+    if (Array.isArray(entry.sheets)) {
+      const sheet = entry.sheets.find((item) => item?.mapping && typeof item.mapping === "object");
+      if (sheet) return sheet.mapping;
+    }
+  }
+  return {};
+}
+
+function inferImportedFileCount(summaryRow = {}) {
+  try {
+    const mappingRaw = JSON.parse(String(summaryRow?.mapping_json || "{}"));
+    if (Array.isArray(mappingRaw) && mappingRaw.length > 0) {
+      return mappingRaw.length;
+    }
+  } catch (_error) {
+    // Fallback to source_name if mapping_json is unavailable.
+  }
+  const sourceName = String(summaryRow?.source_name || "").trim();
+  if (!sourceName) return 0;
+  if (sourceName.includes(" · ")) {
+    return sourceName
+      .split(" · ")
+      .map((x) => String(x || "").trim())
+      .filter(Boolean).length;
+  }
+  return 1;
 }
 
 export class AnalyticsService {
@@ -78,31 +138,174 @@ export class AnalyticsService {
     return rows[0] || null;
   }
 
-  async getKpis(datasetId, filters = {}) {
-    const key = `kpis:${datasetId}:${JSON.stringify(filters)}`;
+  /** All ready datasets (oldest→newest) for merged dashboard analytics. */
+  async listReadyDatasetIds() {
+    const rows = await this.duckdbService.query(
+      `SELECT dataset_id FROM datasets WHERE status = $status ORDER BY created_at ASC`,
+      { status: "ready" }
+    );
+    return rows.map((r) => String(r.dataset_id || "")).filter(Boolean);
+  }
+
+  /** Sum declared row counts from dataset metadata. */
+  async sumDeclaredRowCountsForDatasetIds(datasetIds) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : []).map((x) => String(x || "").trim()).filter(Boolean);
+    if (!ids.length) return 0;
+    const inList = ids.map((_, idx) => `$id_${idx}`).join(", ");
+    const params = { status: "ready" };
+    ids.forEach((id, idx) => {
+      params[`id_${idx}`] = id;
+    });
+    const rows = await this.duckdbService.query(
+      `SELECT COALESCE(SUM(row_count), 0)::BIGINT AS total
+       FROM datasets
+       WHERE status = $status AND dataset_id IN (${inList})`,
+      params
+    );
+    return Number(rows[0]?.total || 0);
+  }
+
+  async verifyDatasetIdsReady(datasetIds) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : []).map((x) => String(x || "").trim()).filter(Boolean);
+    if (!ids.length) return false;
+    const inList = ids.map((_, idx) => `$id_${idx}`).join(", ");
+    const params = { status: "ready" };
+    ids.forEach((id, idx) => {
+      params[`id_${idx}`] = id;
+    });
+    const rows = await this.duckdbService.query(
+      `SELECT COUNT(*)::BIGINT AS c
+       FROM datasets
+       WHERE status = $status AND dataset_id IN (${inList})`,
+      params
+    );
+    return Number(rows[0]?.c || 0) === ids.length;
+  }
+
+  /**
+   * Remove one dataset's fact rows and metadata from DuckDB.
+   */
+  async deleteDatasetById(datasetId) {
+    const id = String(datasetId || "").trim();
+    if (!id) throw new Error("datasetId is required");
+    await this.duckdbService.run("DELETE FROM fact_sales WHERE dataset_id = $dataset_id", {
+      dataset_id: id,
+    });
+    await this.duckdbService.run("DELETE FROM datasets WHERE dataset_id = $dataset_id", {
+      dataset_id: id,
+    });
+    this.queryCache.clear();
+    return true;
+  }
+
+  async deleteAllDatasets() {
+    await this.duckdbService.run("DELETE FROM fact_sales");
+    await this.duckdbService.run("DELETE FROM datasets");
+    this.queryCache.clear();
+    return true;
+  }
+
+  async getKpis(datasetIds, filters = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const key = `kpis:${ids.sort().join("|")}:${JSON.stringify(filters)}`;
     return this.cached(key, async () => {
-      const { whereSql, params } = buildWhereClause({ datasetId, filters });
+      const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+      const distinctOrderSelect = kpisDistinctOrderSelect();
       const rows = await this.duckdbService.query(
-        `SELECT
-          COALESCE(SUM(amount), 0) AS totalSales,
-          COALESCE(COUNT(DISTINCT order_no), 0) AS totalOrders,
-          COALESCE(COUNT(DISTINCT member_id), 0) AS uniqueMembers,
-          COALESCE(COUNT(*), 0) AS totalRows
-         FROM fact_sales
-         WHERE ${whereSql}`,
+        `WITH base AS (
+           SELECT *
+           FROM fact_sales
+           WHERE ${whereSql}
+         ),
+         order_view AS (
+           SELECT
+             ${distinctOrderSql()} AS order_key,
+             MAX(
+               CASE
+                 WHEN COALESCE(NULLIF(member_id, ''), NULLIF(phone, ''), NULLIF(member_name, '')) <> '' THEN 1
+                 ELSE 0
+               END
+             ) AS is_member_order
+           FROM base
+           GROUP BY 1
+         ),
+         member_order_counts AS (
+           SELECT
+             COALESCE(NULLIF(member_id, ''), NULLIF(phone, ''), NULLIF(member_name, '')) ||
+               '|||' || COALESCE(member_name, '') AS member_group_key,
+             COUNT(DISTINCT ${distinctOrderSql()})::BIGINT AS order_count
+           FROM base
+           WHERE COALESCE(NULLIF(member_id, ''), NULLIF(phone, ''), NULLIF(member_name, '')) <> ''
+           GROUP BY 1
+         )
+         SELECT
+           COALESCE((SELECT SUM(amount) FROM base), 0) AS totalSales,
+           COALESCE((SELECT ${distinctOrderSelect} FROM base), 0)::BIGINT AS totalOrders,
+           COALESCE((SELECT COUNT(*) FROM order_view WHERE is_member_order = 1), 0)::BIGINT AS memberOrders,
+           COALESCE((SELECT COUNT(*) FROM member_order_counts), 0)::BIGINT AS uniqueMembers,
+           COALESCE((SELECT COUNT(*) FROM member_order_counts WHERE order_count >= 2), 0)::BIGINT AS repurchasingMembers,
+           COALESCE(
+             (
+               SELECT AVG(CAST(order_count - 1 AS DOUBLE))
+               FROM member_order_counts
+               WHERE order_count >= 2
+             ),
+             0
+           ) AS averageRepurchaseTimes,
+           COALESCE((SELECT COUNT(*) FROM base), 0)::BIGINT AS totalRows`,
         params
       );
-      return rows[0] || { totalSales: 0, totalOrders: 0, uniqueMembers: 0, totalRows: 0 };
+      const kpi = rows[0] || {};
+      let filesLoaded = 0;
+      if (ids.length === 1) {
+        const summary = await this.getDatasetSummary(ids[0]);
+        filesLoaded = inferImportedFileCount(summary);
+      } else {
+        const inList = ids.map((_, idx) => `$sum_${idx}`).join(", ");
+        const sumParams = {};
+        ids.forEach((id, idx) => {
+          sumParams[`sum_${idx}`] = id;
+        });
+        const summaries = await this.duckdbService.query(
+          `SELECT dataset_id, source_name, mapping_json
+           FROM datasets
+           WHERE dataset_id IN (${inList})`,
+          sumParams
+        );
+        filesLoaded = summaries.reduce((acc, row) => acc + inferImportedFileCount(row), 0);
+      }
+      const totalOrders = Number(kpi.totalOrders || 0);
+      const memberOrders = Number(kpi.memberOrders || 0);
+      const uniqueMembers = Number(kpi.uniqueMembers || 0);
+      const repurchasingMembers = Number(kpi.repurchasingMembers || 0);
+      return {
+        totalSales: Number(kpi.totalSales || 0),
+        totalOrders,
+        memberOrders,
+        memberRegistrationRate: totalOrders > 0 ? memberOrders / totalOrders : 0,
+        uniqueMembers,
+        repurchasingMembers,
+        repurchaseRate: uniqueMembers > 0 ? repurchasingMembers / uniqueMembers : 0,
+        averageRepurchaseTimes: Number(kpi.averageRepurchaseTimes || 0),
+        filesLoaded: Math.max(0, Number(filesLoaded || 0)),
+        totalRows: Number(kpi.totalRows || 0),
+      };
     });
   }
 
-  async getTopStores(datasetId, { filters = {}, limit = 20, offset = 0 } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getTopStores(datasetIds, { filters = {}, limit = 20, offset = 0 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
     return this.duckdbService.query(
       `SELECT
           store,
           SUM(amount) AS performance,
-          COUNT(DISTINCT order_no) AS orderCount
+          COUNT(DISTINCT ${dOrder})::BIGINT AS orderCount
        FROM fact_sales
        WHERE ${whereSql}
        GROUP BY store
@@ -112,13 +315,17 @@ export class AnalyticsService {
     );
   }
 
-  async getTopSalespeople(datasetId, { filters = {}, limit = 20, offset = 0 } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getTopSalespeople(datasetIds, { filters = {}, limit = 20, offset = 0 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
     return this.duckdbService.query(
       `SELECT
           salesperson,
           SUM(amount) AS performance,
-          COUNT(DISTINCT order_no) AS orderCount
+          COUNT(DISTINCT ${dOrder})::BIGINT AS orderCount
        FROM fact_sales
        WHERE ${whereSql}
        GROUP BY salesperson
@@ -128,14 +335,18 @@ export class AnalyticsService {
     );
   }
 
-  async getTopProducts(datasetId, { filters = {}, limit = 20, offset = 0 } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getTopProducts(datasetIds, { filters = {}, limit = 20, offset = 0 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
     return this.duckdbService.query(
       `SELECT
           product,
           SUM(amount) AS sales_amount,
           SUM(qty) AS sales_qty,
-          COUNT(DISTINCT order_no) AS sales_orders
+          COUNT(DISTINCT ${dOrder})::BIGINT AS sales_orders
        FROM fact_sales
        WHERE ${whereSql}
        GROUP BY product
@@ -145,19 +356,23 @@ export class AnalyticsService {
     );
   }
 
-  async getTopMembers(datasetId, { filters = {}, limit = 20, offset = 0, keyword = "" } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getTopMembers(datasetIds, { filters = {}, limit = 20, offset = 0, keyword = "" } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     const search = String(keyword || "").trim();
     const memberClause = search
       ? ` AND (member_name LIKE $keyword OR phone LIKE $keyword OR member_id LIKE $keyword)`
       : "";
+    const dOrder = distinctOrderSql();
     return this.duckdbService.query(
       `SELECT
           COALESCE(NULLIF(member_id, ''), member_name || '|' || phone) AS member_id,
           member_name,
           phone,
           SUM(amount) AS total_spend,
-          COUNT(DISTINCT order_no) AS order_count,
+          COUNT(DISTINCT ${dOrder})::BIGINT AS order_count,
           CAST(MAX(order_date) AS VARCHAR) AS last_order_date
        FROM fact_sales
        WHERE ${whereSql}
@@ -175,8 +390,59 @@ export class AnalyticsService {
     );
   }
 
-  async getFilterOptions(datasetId, { filters = {} } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getRepurchaseDistribution(datasetIds, { filters = {} } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    return this.duckdbService.query(
+      `WITH member_order_counts AS (
+         SELECT
+           COALESCE(NULLIF(member_id, ''), NULLIF(phone, ''), NULLIF(member_name, '')) AS member_key,
+           COUNT(DISTINCT ${distinctOrderSql()})::BIGINT AS order_count
+         FROM fact_sales
+         WHERE ${whereSql}
+           AND COALESCE(NULLIF(member_id, ''), NULLIF(phone, ''), NULLIF(member_name, '')) <> ''
+         GROUP BY 1
+       )
+       SELECT order_bucket, member_count
+       FROM (
+         SELECT '6+ orders' AS order_bucket, COUNT(*)::BIGINT AS member_count
+         FROM member_order_counts
+         WHERE order_count >= 6
+         UNION ALL
+         SELECT '4-5 orders' AS order_bucket, COUNT(*)::BIGINT AS member_count
+         FROM member_order_counts
+         WHERE order_count BETWEEN 4 AND 5
+         UNION ALL
+         SELECT '3 orders' AS order_bucket, COUNT(*)::BIGINT AS member_count
+         FROM member_order_counts
+         WHERE order_count = 3
+         UNION ALL
+         SELECT '2 orders' AS order_bucket, COUNT(*)::BIGINT AS member_count
+         FROM member_order_counts
+         WHERE order_count = 2
+         UNION ALL
+         SELECT '1 order' AS order_bucket, COUNT(*)::BIGINT AS member_count
+         FROM member_order_counts
+         WHERE order_count = 1
+       ) t
+       ORDER BY CASE order_bucket
+         WHEN '6+ orders' THEN 1
+         WHEN '4-5 orders' THEN 2
+         WHEN '3 orders' THEN 3
+         WHEN '2 orders' THEN 4
+         ELSE 5
+       END`,
+      params
+    );
+  }
+
+  async getFilterOptions(datasetIds, { filters = {} } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     const [stores, salespeople, products, dateRange] = await Promise.all([
       this.duckdbService.query(
         `SELECT DISTINCT store FROM fact_sales WHERE ${whereSql} AND COALESCE(store, '') <> '' ORDER BY store`,
@@ -210,8 +476,11 @@ export class AnalyticsService {
     };
   }
 
-  async getTrendSeries(datasetId, { filters = {} } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getTrendSeries(datasetIds, { filters = {} } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     const [daily, weekly, monthly] = await Promise.all([
       this.duckdbService.query(
         `SELECT
@@ -250,14 +519,32 @@ export class AnalyticsService {
     return { daily, weekly, monthly };
   }
 
-  async getDataQualityReport(datasetId, { filters = {} } = {}) {
-    const summary = await this.getDatasetSummary(datasetId);
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getDataQualityReport(datasetIds, { filters = {} } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const inList = ids.map((_, idx) => `$sum_${idx}`).join(", ");
+    const sumParams = {};
+    ids.forEach((id, idx) => {
+      sumParams[`sum_${idx}`] = id;
+    });
+    const summaryRows =
+      ids.length === 1
+        ? [(await this.getDatasetSummary(ids[0]))].filter(Boolean)
+        : await this.duckdbService.query(
+            `SELECT dataset_id, source_name, row_count, created_at, status, mapping_json, validation_json
+             FROM datasets
+             WHERE dataset_id IN (${inList})
+             ORDER BY created_at DESC`,
+            sumParams
+          );
+    const summary = summaryRows[0] || null;
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     const [fileCheckRows, unknownStats] = await Promise.all([
       this.duckdbService.query(
         `SELECT
            COUNT(*) AS included_rows,
-           COUNT(DISTINCT order_no) AS order_count,
+           COUNT(DISTINCT ${distinctOrderSql()}) AS order_count,
            SUM(amount) AS q_sum,
            SUM(CASE WHEN amount < 0 THEN 1 ELSE 0 END) AS negative_rows,
            SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS negative_sum
@@ -284,12 +571,7 @@ export class AnalyticsService {
     } catch (_error) {
       mappingRaw = {};
     }
-    const mapping =
-      Array.isArray(mappingRaw) && mappingRaw.length && mappingRaw[0] && typeof mappingRaw[0] === "object"
-        ? mappingRaw[0].mapping || {}
-        : mappingRaw && typeof mappingRaw === "object"
-          ? mappingRaw.mapping || mappingRaw
-          : {};
+    const mapping = extractPrimaryMapping(mappingRaw);
     try {
       validation = JSON.parse(String(summary?.validation_json || "{}"));
     } catch (_error) {
@@ -316,7 +598,10 @@ export class AnalyticsService {
       messages.push("会员字段未识别或无会员数据");
     }
 
-    const sourceName = String(summary?.source_name || "当前数据集");
+    const sourceName =
+      ids.length > 1
+        ? `全部导入汇总（${ids.length} 个数据集，映射取最近一次导入）`
+        : String(summary?.source_name || "当前数据集");
     const statRow = fileCheckRows?.[0] || {};
     const fileCheck = [
       {
@@ -331,10 +616,13 @@ export class AnalyticsService {
 
     return {
       summary: {
-        source_file: String(summary?.source_name || ""),
-        included_rows: Number(summary?.row_count || 0),
-        metric: "后端数据集",
-        value: String(summary?.dataset_id || ""),
+        source_file: ids.length > 1 ? sourceName : String(summary?.source_name || ""),
+        included_rows:
+          ids.length > 1
+            ? Number(statRow.included_rows || totalRows || 0)
+            : Number(summary?.row_count || 0),
+        metric: ids.length > 1 ? "合并数据集（全部就绪导入）" : "后端数据集",
+        value: ids.length > 1 ? AGGREGATE_ALL_READY_DATASET_ID : String(summary?.dataset_id || ""),
       },
       fileCheck,
       mappingRows: Object.entries(mapping || {}).map(([target, source]) => ({
@@ -347,7 +635,7 @@ export class AnalyticsService {
   }
 
   async getSleepingAnalytics(
-    datasetId,
+    datasetIds,
     {
       filters = {},
       sleepDays = 90,
@@ -360,7 +648,10 @@ export class AnalyticsService {
       offset = 0,
     } = {}
   ) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     const effectiveAnalysisDate = normalizeDate(analysisDate) || normalizeDate(filters.endDate) || "";
     const maxDateRow = await this.duckdbService.query(
       `SELECT CAST(MAX(order_date) AS VARCHAR) AS max_date FROM fact_sales WHERE ${whereSql}`,
@@ -383,7 +674,7 @@ export class AnalyticsService {
           member_name,
           phone,
           SUM(amount) AS total_spend,
-          COUNT(DISTINCT order_no) AS order_count,
+          COUNT(DISTINCT ${distinctOrderSql()}) AS order_count,
           CAST(MAX(order_date) AS DATE) AS last_purchase_date
         FROM fact_sales
         WHERE ${whereSql} AND COALESCE(member_name, '') <> ''
@@ -396,7 +687,7 @@ export class AnalyticsService {
           salesperson AS last_salesperson,
           ROW_NUMBER() OVER (
             PARTITION BY COALESCE(NULLIF(member_id, ''), member_name || '|' || phone)
-            ORDER BY order_date DESC, order_no DESC
+            ORDER BY order_date DESC, dataset_id DESC, order_no DESC
           ) AS rn
         FROM fact_sales
         WHERE ${whereSql} AND COALESCE(member_name, '') <> ''
@@ -518,8 +809,11 @@ export class AnalyticsService {
     };
   }
 
-  async getOrders(datasetId, { filters = {}, limit = 20, offset = 0 } = {}) {
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+  async getOrders(datasetIds, { filters = {}, limit = 20, offset = 0 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     return this.duckdbService.query(
       `SELECT
           order_no,
@@ -529,19 +823,22 @@ export class AnalyticsService {
           SUM(amount) AS total_amount
        FROM fact_sales
        WHERE ${whereSql}
-       GROUP BY order_no, order_date, store, salesperson
+       GROUP BY dataset_id, order_no, order_date, store, salesperson
        ORDER BY total_amount DESC
        LIMIT $limit OFFSET $offset`,
       { ...params, limit: Number(limit), offset: Number(offset) }
     );
   }
 
-  async getHighestOrder(datasetId, { filters = {} } = {}) {
-    const rows = await this.getOrders(datasetId, { filters, limit: 1, offset: 0 });
+  async getHighestOrder(datasetIds, { filters = {} } = {}) {
+    const rows = await this.getOrders(datasetIds, { filters, limit: 1, offset: 0 });
     return rows[0] || null;
   }
 
-  async getLeadersByGranularity(datasetId, { granularity = "month", filters = {}, limit = 20 } = {}) {
+  async getLeadersByGranularity(datasetIds, { granularity = "month", filters = {}, limit = 20 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
     const groupExpr =
       granularity === "year"
         ? "CAST(year AS VARCHAR)"
@@ -551,7 +848,7 @@ export class AnalyticsService {
             ? "day_key"
             : "month_key";
     const groupAlias = granularity === "year" ? "year" : granularity === "week" ? "weekStart" : granularity;
-    const { whereSql, params } = buildWhereClause({ datasetId, filters });
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
     return this.duckdbService.query(
       `WITH agg AS (
         SELECT ${groupExpr} AS period, salesperson, SUM(amount) AS performance
@@ -572,25 +869,36 @@ export class AnalyticsService {
     );
   }
 
-  async getTablePage(datasetId, tableName, { limit = 100, offset = 0 } = {}) {
+  async getTablePage(datasetIds, tableName, { limit = 100, offset = 0 } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
     const safeTable = String(tableName || "").trim();
     const supported = new Set(["fact_sales"]);
     if (!supported.has(safeTable)) {
       throw new Error(`Unsupported table for paging: ${safeTable}`);
     }
+    if (!ids.length) {
+      throw new Error("datasetIds is required");
+    }
+    const inClause = ids.map((_, idx) => `$tid_${idx}`).join(", ");
+    const baseParams = {};
+    ids.forEach((id, idx) => {
+      baseParams[`tid_${idx}`] = id;
+    });
     const rows = await this.duckdbService.query(
       `SELECT * FROM ${safeTable}
-       WHERE dataset_id = $dataset_id
+       WHERE dataset_id IN (${inClause})
        LIMIT $limit OFFSET $offset`,
       {
-        dataset_id: datasetId,
+        ...baseParams,
         limit: Number(limit),
         offset: Number(offset),
       }
     );
     const totalRows = await this.duckdbService.query(
-      `SELECT COUNT(*) AS total FROM ${safeTable} WHERE dataset_id = $dataset_id`,
-      { dataset_id: datasetId }
+      `SELECT COUNT(*) AS total FROM ${safeTable} WHERE dataset_id IN (${inClause})`,
+      baseParams
     );
     return {
       rows,

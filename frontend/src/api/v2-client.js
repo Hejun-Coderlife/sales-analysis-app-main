@@ -8,9 +8,13 @@ async function fetchJson(url, init) {
   return data;
 }
 
-export async function startUploadJob(file, mapping = {}) {
+export async function startUploadJob(files, mapping = {}) {
+  const fileList = Array.isArray(files) ? files.filter(Boolean) : files ? [files] : [];
+  if (!fileList.length) throw new Error("请选择至少一个文件");
   const form = new FormData();
-  form.append("file", file);
+  fileList.forEach((file) => {
+    form.append("files", file);
+  });
   form.append("mapping", JSON.stringify(mapping || {}));
   return fetchJson("/api/v2/uploads", {
     method: "POST",
@@ -112,6 +116,16 @@ export async function getMemberRankings(
   return data.rows || [];
 }
 
+export async function getRepurchaseDistribution(datasetId, filters = {}) {
+  const url = new URL(
+    `/api/v2/datasets/${encodeURIComponent(datasetId)}/members/repurchase-distribution`,
+    window.location.origin
+  );
+  withFilterParams(url, filters);
+  const data = await fetchJson(url.pathname + url.search);
+  return data.rows || [];
+}
+
 export async function getSleepingMembers(
   datasetId,
   {
@@ -155,6 +169,11 @@ export async function getFilterOptions(datasetId, filters = {}) {
 export async function getLatestDatasetSummary() {
   const data = await fetchJson("/api/v2/datasets/latest");
   return data.dataset || null;
+}
+
+/** Resolved ready imports count for merged dashboard bootstrap (see `AGGREGATE_ALL_READY_DATASET_ID`). */
+export async function getAggregateScope() {
+  return fetchJson("/api/v2/datasets/aggregate-scope");
 }
 
 export async function getTrendSeries(datasetId, filters = {}) {

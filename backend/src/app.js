@@ -21,6 +21,8 @@ const analyticsService = new AnalyticsService({
   cacheTtlMs: env.cacheTtlMs,
 });
 
+let clearV2RouteResponseCache = () => {};
+
 export async function initV2AnalyticsModule() {
   await duckdbService.ensureSchema();
   await jobStore.init();
@@ -34,6 +36,9 @@ export function getV2Router(options = {}) {
     jobQueue,
     maxUploadSizeMb: env.maxUploadSizeMb,
     onImportEvent: options.onImportEvent || null,
+    registerResponseCacheInvalidate: (fn) => {
+      if (typeof fn === "function") clearV2RouteResponseCache = fn;
+    },
   });
 }
 
@@ -41,5 +46,9 @@ export function getV2Services() {
   return {
     analyticsService,
     jobStore,
+    invalidateV2ResponseCache: () => {
+      clearV2RouteResponseCache();
+      analyticsService.queryCache.clear();
+    },
   };
 }

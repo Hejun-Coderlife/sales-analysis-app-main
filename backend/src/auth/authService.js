@@ -30,6 +30,14 @@ export class AuthService {
       const parsed = JSON.parse(raw);
       this.users = Array.isArray(parsed?.users) ? parsed.users.map(sanitizeUserWithPermissions) : [];
     } catch (_error) {
+      if (
+        process.env.NODE_ENV === "production" &&
+        String(process.env.ALLOW_SEED_USERS_IN_PROD || "").toLowerCase() !== "true"
+      ) {
+        throw new Error(
+          "users.json is missing in production. Refusing to auto-seed demo users; set ALLOW_SEED_USERS_IN_PROD=true only for emergency bootstrap."
+        );
+      }
       this.users = seedUsers.map(sanitizeUserWithPermissions);
       await this.persist();
     }
