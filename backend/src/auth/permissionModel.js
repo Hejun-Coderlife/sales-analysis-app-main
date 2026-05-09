@@ -336,6 +336,16 @@ function intersectAllowed(requested, allowed, allowAll) {
   return requested.filter((item) => allowSet.has(item));
 }
 
+/**
+ * Derives server-side data scope for `/api/v2`, AI tools (`agentDatasetToolsService`), and synced chat context.
+ *
+ * - **全库（字面全集团）:** 仅 **`admin`** → `unrestricted: true`，可看库里全部门店/销售员/商品。
+ * - **非管理员:** 在账号配置的 `allowAll*` / `allowedStores` / `allowedSalespeople` / `allowedProducts` 内，
+ *   可取到**该范围内的一切订单与指标**（例如管辖多店时，即这些店里的全部数据，不是“抽一部分”）。
+ * - **`canAskCompanyWideQuestions`:** 允许在对话中使用「全公司/整体」等表述（见 `server.js` `/api/chat` 关键字），
+ *   汇总口径仍以**本人数据范围**为准；与上一条一致，不是额外缩小取数。
+ * - **No scope configured:** `forceNoData: true`。
+ */
 export function buildPermissionScope(user) {
   if (!user) {
     return {
@@ -351,7 +361,7 @@ export function buildPermissionScope(user) {
     };
   }
   const role = normalizeRole(user.role);
-  if (role === "admin" || user.permissions?.canAskCompanyWideQuestions) {
+  if (role === "admin") {
     return {
       unrestricted: true,
       role,

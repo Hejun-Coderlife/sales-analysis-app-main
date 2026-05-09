@@ -12,7 +12,11 @@ import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
 import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
 import { NotificationStore } from "./backend/src/services/notificationStore.js";
-import { hasPermission, maskSensitiveMemberRows } from "./backend/src/auth/permissionModel.js";
+import {
+  applyPermissionScopeToFilters,
+  hasPermission,
+  maskSensitiveMemberRows,
+} from "./backend/src/auth/permissionModel.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -973,6 +977,8 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
     toolArgs,
   });
   if (datasetToolResult) return datasetToolResult;
+  /** Legacy tools read mostly from pre-synced `salesContext` (already scoped in `/api/chat/context`).
+   *  Any live `analyticsService` fallback MUST apply `accessScope` via `applyPermissionScopeToFilters`. */
   const context = contextEntry?.context || null;
   if (!context) {
     return {
@@ -1047,15 +1053,17 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
       const intersectStart = contextFilters.startDate && contextFilters.startDate > yearStart ? contextFilters.startDate : yearStart;
       const intersectEnd = contextFilters.endDate && contextFilters.endDate < yearEnd ? contextFilters.endDate : yearEnd;
       if (intersectStart <= intersectEnd) {
-        const latest = await analyticsService.getLatestDatasetSummary({ onlyReady: true });
-        const datasetId = context.datasetId || latest?.dataset_id;
-        if (datasetId) {
-          const scopedFilters = {
-            ...contextFilters,
-            startDate: intersectStart,
-            endDate: intersectEnd,
-          };
-          const queriedRows = await analyticsService.getTopSalespeople(datasetId, {
+        const datasetIds = await analyticsService.listReadyDatasetIds();
+        if (datasetIds.length) {
+          const scopedFilters = applyPermissionScopeToFilters(
+            {
+              ...contextFilters,
+              startDate: intersectStart,
+              endDate: intersectEnd,
+            },
+            accessScope
+          );
+          const queriedRows = await analyticsService.getTopSalespeople(datasetIds, {
             filters: scopedFilters,
             limit,
             offset: 0,
@@ -1866,6 +1874,8 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
         "You are an operations advisor for retail business users. " +
         "Always answer in Chinese and in this order: 先给结论，再给数据依据，最后给可执行建议。 " +
         "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
+        "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
+        "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
         "When data is not enough, explicitly say: 当前数据不足以判断。 " +
         "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
         "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +

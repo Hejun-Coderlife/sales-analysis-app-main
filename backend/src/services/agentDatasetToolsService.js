@@ -3,6 +3,7 @@ import {
   hasPermission,
   maskSensitiveMemberRows,
 } from "../auth/permissionModel.js";
+import { AGGREGATE_ALL_READY_DATASET_ID } from "./analyticsService.js";
 
 const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
 const DATA_NOT_READY_MESSAGE = "当前数据不足以判断。";
@@ -109,9 +110,18 @@ function buildTrendRange(preset) {
 }
 
 export function createAgentDatasetToolsService({ analyticsService }) {
-  async function getReadyDatasetId() {
-    const latest = await analyticsService.getLatestDatasetSummary({ onlyReady: true });
-    return String(latest?.dataset_id || "");
+  /**
+   * Must match mobile /dashboard `/api/v2` aggregate scope: every `status=ready` dataset,
+   * not only the latest row in `datasets` — otherwise AI KPIs can be 0 while the UI shows sales.
+   */
+  async function getReadyDatasetIds() {
+    return await analyticsService.listReadyDatasetIds();
+  }
+
+  function routeDatasetIdForAgent(ids) {
+    if (!Array.isArray(ids) || !ids.length) return "";
+    if (ids.length === 1) return String(ids[0]);
+    return AGGREGATE_ALL_READY_DATASET_ID;
   }
 
   function getToolDefinitions() {
@@ -120,7 +130,8 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         type: "function",
         function: {
           name: "getKpiFromDataset",
-          description: "Query KPI from current dataset with permission-scoped filters.",
+          description:
+            "Query KPI from all ready datasets; the server intersects filters with the user's allowed stores/salespeople/products, so results match what this user may see in the dashboard.",
           parameters: {
             type: "object",
             properties: {
@@ -294,16 +305,17 @@ export function createAgentDatasetToolsService({ analyticsService }) {
     try {
       const args = toolArgs && typeof toolArgs === "object" ? toolArgs : {};
       const deny = () => ({ ok: false, error: OUT_OF_SCOPE_MESSAGE, code: "OUT_OF_SCOPE" });
-      const datasetId = await getReadyDatasetId();
-      if (!datasetId) {
+      const datasetIds = await getReadyDatasetIds();
+      if (!datasetIds.length) {
         return { ok: false, error: DATA_NOT_READY_MESSAGE, code: "DATA_NOT_READY" };
       }
+      const datasetId = routeDatasetIdForAgent(datasetIds);
 
       if (toolName === "getKpiFromDataset") {
         if (!hasPermission(currentUser, "canViewKpi")) return deny();
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
-        const kpis = await analyticsService.getKpis(datasetId, scoped.scoped);
+        const kpis = await analyticsService.getKpis(datasetIds, scoped.scoped);
         const totalSales = Number(kpis?.totalSales ?? kpis?.totalsales ?? 0);
         const totalOrders = Number(kpis?.totalOrders ?? kpis?.totalorders ?? 0);
         const uniqueMembers = Number(kpis?.uniqueMembers ?? kpis?.uniquemembers ?? 0);
@@ -322,7 +334,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
         const limit = sanitizeLimit(args.limit, 20, 200);
-        const rows = await analyticsService.getTopStores(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        const rows = await analyticsService.getTopStores(datasetIds, { filters: scoped.scoped, limit, offset: 0 });
         return {
           ok: true,
           datasetId,
@@ -338,7 +350,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
         const limit = sanitizeLimit(args.limit, 20, 200);
-        const rows = await analyticsService.getTopSalespeople(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        const rows = await analyticsService.getTopSalespeople(datasetIds, { filters: scoped.scoped, limit, offset: 0 });
         return {
           ok: true,
           datasetId,
@@ -354,7 +366,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
         const limit = sanitizeLimit(args.limit, 20, 200);
-        const rows = await analyticsService.getTopProducts(datasetId, { filters: scoped.scoped, limit, offset: 0 });
+        const rows = await analyticsService.getTopProducts(datasetIds, { filters: scoped.scoped, limit, offset: 0 });
         return {
           ok: true,
           datasetId,
@@ -370,7 +382,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
         const limit = sanitizeLimit(args.limit, 20, 100);
-        const sleeping = await analyticsService.getSleepingAnalytics(datasetId, {
+        const sleeping = await analyticsService.getSleepingAnalytics(datasetIds, {
           filters: scoped.scoped,
           analysisDate: scoped.scoped.endDate || "",
           limit,
@@ -400,7 +412,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
           startDate: range.startDate,
           endDate: range.endDate,
         };
-        const trends = await analyticsService.getTrendSeries(datasetId, { filters: trendFilters });
+        const trends = await analyticsService.getTrendSeries(datasetIds, { filters: trendFilters });
         return {
           ok: true,
           datasetId,
@@ -415,7 +427,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         if (!hasPermission(currentUser, "canViewDataQuality")) return deny();
         const scoped = buildScopedFilters(args.filters, accessScope);
         if (!scoped.ok) return deny();
-        const report = await analyticsService.getDataQualityReport(datasetId, { filters: scoped.scoped });
+        const report = await analyticsService.getDataQualityReport(datasetIds, { filters: scoped.scoped });
         const messages = Array.isArray(report?.messages) ? report.messages : [];
         const warnings = Array.isArray(report?.warnings) ? report.warnings : [];
         const suggestions = [];
