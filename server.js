@@ -71,6 +71,10 @@ const CHAT_API_MAX_PER_WINDOW = Math.max(
   Math.min(200, Number(process.env.CHAT_API_MAX_PER_WINDOW || 20))
 );
 const chatApiBuckets = new Map();
+const AI_VERIFICATION_TIER = String(process.env.AI_VERIFICATION_TIER || "medium").trim().toLowerCase();
+const CHAT_MODEL_MAX_RETRIES =
+  AI_VERIFICATION_TIER === "high" ? 3 : AI_VERIFICATION_TIER === "medium" ? 2 : 1;
+const MEDIUM_TIER_DOUBLE_CHECK_TOOLS = new Set(["getKpiFromDataset", "getStoreRankingFromDataset"]);
 
 process.on("unhandledRejection", (reason) => {
   console.error("[process] unhandledRejection:", reason);
@@ -334,6 +338,63 @@ function rememberChatConversationOwner(conversationId, userId) {
   chatConversationOwners.set(id, uid);
 }
 
+/**
+ * OpenAI 要求：每条 role=tool 的消息必须紧跟在带对应 tool_calls 的 assistant 之后。
+ * 会话用 slice(-N) 截断时，常把前面的 assistant(tool_calls) 切掉、却留下 tool，导致报错：
+ * "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'".
+ */
+function repairChatMessagesForApi(messages) {
+  if (!Array.isArray(messages)) return [];
+  const m = messages.filter((x) => x && typeof x === "object");
+
+  while (m.length > 0 && String(m[0].role || "") === "tool") {
+    m.shift();
+  }
+
+  let i = 0;
+  while (i < m.length) {
+    const role = String(m[i].role || "");
+    if (role === "assistant" && Array.isArray(m[i].tool_calls) && m[i].tool_calls.length > 0) {
+      const idSet = new Map(
+        (m[i].tool_calls || []).map((tc) => [String(tc?.id || "").trim(), true]).filter(([id]) => id)
+      );
+      let j = i + 1;
+      const got = Object.create(null);
+      while (j < m.length && String(m[j].role || "") === "tool") {
+        const tid = String(m[j].tool_call_id || "").trim();
+        if (!idSet.has(tid) || got[tid]) break;
+        got[tid] = true;
+        j++;
+      }
+      const complete = idSet.size > 0 && idSet.size === Object.keys(got).length;
+      if (complete) {
+        i = j;
+        continue;
+      }
+      let end = i + 1;
+      while (end < m.length && String(m[end].role || "") === "tool") end += 1;
+      m.splice(i, end - i);
+      while (i < m.length && String(m[i].role || "") === "tool") m.splice(i, 1);
+      continue;
+    }
+    i += 1;
+  }
+
+  while (m.length > 0 && String(m[0].role || "") === "tool") {
+    m.shift();
+  }
+  while (m.length > 0) {
+    const last = m[m.length - 1];
+    if (String(last.role || "") === "assistant" && Array.isArray(last.tool_calls) && last.tool_calls.length > 0) {
+      m.pop();
+      continue;
+    }
+    break;
+  }
+
+  return m;
+}
+
 /** Build client-safe bubbles: drop system/tool and assistant rows that only carried tool_calls. */
 function sanitizeChatMessagesForHistoryClient(messages) {
   const out = [];
@@ -459,12 +520,14 @@ function getSessionMessages(conversationId) {
     return [];
   }
   touchChatConversation(id);
-  return sessions.get(conversationId) || [];
+  const raw = sessions.get(conversationId) || [];
+  return repairChatMessagesForApi(raw);
 }
 
 function setSessionMessages(conversationId, messages) {
   if (!conversationId || !Array.isArray(messages)) return;
-  sessions.set(conversationId, messages.slice(-MAX_HISTORY_MESSAGES));
+  const truncated = messages.slice(-MAX_HISTORY_MESSAGES);
+  sessions.set(conversationId, repairChatMessagesForApi(truncated));
   touchChatConversation(conversationId);
 }
 
@@ -485,6 +548,7 @@ function getEarthEdgesData() {
 function stripThinkingBlocks(text) {
   let out = String(text || "");
   const blockPatterns = [
+    new RegExp("<think>[\\s\\S]*?<" + "/think>", "gi"),
     new RegExp("<think" + "ing>[\\s\\S]*?<" + "/think" + "ing>", "gi"),
     new RegExp("<think" + "ing>[\\s\\S]*?<" + "/think" + ">", "gi"),
     new RegExp("<redacted_reason" + "ing>[\\s\\S]*?<" + "/redacted_reason" + "ing>", "gi"),
@@ -492,6 +556,7 @@ function stripThinkingBlocks(text) {
   for (const re of blockPatterns) {
     out = out.replace(re, "");
   }
+  out = out.replace(/<\/?think>/gi, "");
   return out.trim();
 }
 
@@ -504,8 +569,8 @@ function normalizeAssistantReply(text) {
     .replace(/__(.*?)__/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/^\s*[-*]\s+/gm, "• ");
-  // Remove emoji/pictograph symbols that look noisy in compact chat bubbles.
-  value = value.replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "");
+  // Keep emoji in replies for分段可读性；仅在连续重复时轻度收敛（不删合法表情）。
+  value = value.replace(/([\p{Extended_Pictographic}\uFE0F])\1{3,}/gu, "$1$1$1");
 
   // Convert markdown-like tables to plain text rows.
   const lines = value.split("\n");
@@ -534,6 +599,61 @@ function normalizeAssistantReply(text) {
   // Clean extra whitespace introduced by replacements.
   value = value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   return value;
+}
+
+function firstRankingRow(result) {
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  if (!rows.length) return null;
+  return rows[0] || null;
+}
+
+function sameFilterRange(a, b) {
+  const fa = a && typeof a === "object" ? a : {};
+  const fb = b && typeof b === "object" ? b : {};
+  return String(fa.startDate || "") === String(fb.startDate || "") && String(fa.endDate || "") === String(fb.endDate || "");
+}
+
+function verifyCriticalConsistency(toolName, firstResult, secondResult) {
+  if (!firstResult?.ok || !secondResult?.ok) return true;
+  if (toolName === "getKpiFromDataset") {
+    const a = firstResult?.data || {};
+    const b = secondResult?.data || {};
+    const salesDiff = Math.abs(Number(a.totalSales || 0) - Number(b.totalSales || 0));
+    const orderDiff = Math.abs(Number(a.totalOrders || 0) - Number(b.totalOrders || 0));
+    return salesDiff < 0.01 && orderDiff < 0.01 && sameFilterRange(firstResult.filters, secondResult.filters);
+  }
+  if (toolName === "getStoreRankingFromDataset") {
+    const ra = firstRankingRow(firstResult);
+    const rb = firstRankingRow(secondResult);
+    if (!ra && !rb) return sameFilterRange(firstResult.filters, secondResult.filters);
+    if (!ra || !rb) return false;
+    const nameA = String(ra.store || ra.name || "").trim();
+    const nameB = String(rb.store || rb.name || "").trim();
+    const perfDiff = Math.abs(Number(ra.performance || ra.sales_amount || 0) - Number(rb.performance || rb.sales_amount || 0));
+    return nameA === nameB && perfDiff < 0.01 && sameFilterRange(firstResult.filters, secondResult.filters);
+  }
+  return true;
+}
+
+async function callChatCompletionsWithRetry(baseUrl, apiKey, payload, maxRetries = 2) {
+  let lastStatus = 502;
+  let lastData = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) return { ok: true, data };
+    lastStatus = response.status;
+    lastData = data;
+    if (attempt >= maxRetries) break;
+  }
+  return { ok: false, status: lastStatus, data: lastData || {} };
 }
 
 function normalizeDatePart(value) {
@@ -2302,7 +2422,9 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     const filterHint = buildDashboardFilterHintFromSyncedContext(ctxEntry?.context || null);
     const baseSystem =
       "You are an operations advisor for retail business users. " +
-      "Always answer in Chinese and in this order: 先给结论，再给数据依据，最后给可执行建议。 " +
+      "Always answer in Chinese. Be concise: no filler, no repeating the user's question, no long intros/outros. Only facts and actions the user needs now; if one short paragraph is enough, stop there. " +
+      "Structure in this order: 结论 → 数据依据（只列关键数字）→ 可执行建议（每条单独一行，短句）. " +
+      "Formatting: use short sections separated by a blank line; prefer fixed mini-headings on their own line like 「📌 结论：」「📊 数据：」「💡 建议：」 so the UI can break paragraphs. Use about 3–6 common emojis per reply for section cues—never spam emojis or put one on every sentence. " +
       "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
       "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
       "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
@@ -2321,27 +2443,24 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     let finalUsage = null;
 
     for (let step = 0; step < MAX_TOOL_CALL_STEPS; step += 1) {
-      const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
+      const completion = await callChatCompletionsWithRetry(
+        baseUrl,
+        apiKey,
+        {
           model,
           messages: workingMessages,
           tools,
           tool_choice: "auto",
-          temperature: 0.3,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        return res.status(response.status).json({
-          error: data?.error?.message || "上游 AI 接口调用失败",
+          temperature: 0.25,
+        },
+        CHAT_MODEL_MAX_RETRIES
+      );
+      if (!completion.ok) {
+        return res.status(completion.status || 502).json({
+          error: completion?.data?.error?.message || "上游 AI 接口调用失败",
         });
       }
+      const data = completion.data || {};
 
       finalUsage = data?.usage || finalUsage;
       const assistantMessage = data?.choices?.[0]?.message;
@@ -2378,7 +2497,17 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
         if (contextEntry?.userId && contextEntry.userId !== String(req.currentUser?.id || "")) {
           return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
         }
-        const toolResult = await runToolCall(contextEntry, req.currentUser, req.accessScope, toolName, parsedArgs);
+        let toolResult = await runToolCall(contextEntry, req.currentUser, req.accessScope, toolName, parsedArgs);
+        if (AI_VERIFICATION_TIER === "medium" && MEDIUM_TIER_DOUBLE_CHECK_TOOLS.has(toolName) && toolResult?.ok) {
+          const secondCheck = await runToolCall(contextEntry, req.currentUser, req.accessScope, toolName, parsedArgs);
+          if (!verifyCriticalConsistency(toolName, toolResult, secondCheck)) {
+            toolResult = {
+              ok: false,
+              error: "关键指标核验未通过，请稍后重试",
+              code: "CONSISTENCY_CHECK_FAILED",
+            };
+          }
+        }
         workingMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -2389,20 +2518,18 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
 
     if (!finalReply) {
       try {
-        const lastPass = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
+        const lastPass = await callChatCompletionsWithRetry(
+          baseUrl,
+          apiKey,
+          {
             model,
             messages: workingMessages,
-            temperature: 0.3,
-          }),
-        });
-        const lastData = await lastPass.json();
+            temperature: 0.25,
+          },
+          CHAT_MODEL_MAX_RETRIES
+        );
         if (lastPass.ok) {
+          const lastData = lastPass.data || {};
           const lastMsg = lastData?.choices?.[0]?.message;
           const txt = stripThinkingBlocks(lastMsg?.content || "");
           if (txt && String(txt).trim()) {

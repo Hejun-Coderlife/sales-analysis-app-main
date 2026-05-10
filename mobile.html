@@ -328,6 +328,7 @@
       background: #ecfdf5;
       border-radius: 10px;
       padding: 8px 10px;
+      line-height: 1.55;
     }
     .assistant-paragraph { margin: 0 0 7px 0; }
     .assistant-paragraph:last-child { margin-bottom: 0; }
@@ -365,6 +366,7 @@
       <h1>赫眉经营助手</h1>
       <p class="sub">数据看板（手机版）</p>
       <p class="sub" style="margin-top:2px" id="userLabel">加载中…</p>
+      <p class="sub" style="margin-top:2px" id="dataUpdatedLabel">数据更新日期：—</p>
     </div>
     <div class="actions">
       <button type="button" class="btn btn-light" id="logoutBtn">退出登录</button>
@@ -466,6 +468,24 @@
 
   <section class="card hidden" id="sleepCard">
     <h2>沉睡会员摘要</h2>
+    <div style="border:1px dashed var(--border);border-radius:10px;padding:8px;margin-bottom:8px;background:rgba(255,255,255,.45)">
+      <p class="muted" style="margin:0 0 6px 0">子筛选（仅作用于沉睡会员清单）</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end">
+      <label class="muted" style="display:flex;flex-direction:column;gap:4px">
+        <span>沉睡天数（天）</span>
+        <input id="sleepDaysInput" type="number" min="1" step="1" value="90" style="height:34px;border:1px solid var(--border);border-radius:8px;padding:0 8px" />
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:4px">
+        <span>最低历史订单数</span>
+        <input id="sleepMinOrdersInput" type="number" min="0" step="1" value="2" style="height:34px;border:1px solid var(--border);border-radius:8px;padding:0 8px" />
+      </label>
+      <label class="muted" style="display:flex;flex-direction:column;gap:4px">
+        <span>最低累计消费额</span>
+        <input id="sleepMinAmountInput" type="number" min="0" step="1" value="1000" style="height:34px;border:1px solid var(--border);border-radius:8px;padding:0 8px" />
+      </label>
+      <button type="button" class="btn btn-light" id="sleepFilterApplyBtn" style="min-height:34px">应用筛选</button>
+    </div>
+    </div>
     <div id="sleepSummary"></div>
   </section>
 
@@ -510,9 +530,15 @@
     endDate: "",
     store: "",
   };
+  let sleepFilterState = {
+    sleepDays: 90,
+    sleepMinOrders: 2,
+    sleepMinAmount: 1000,
+  };
   let dateRefreshTimer = null;
   let toastTimer = null;
   let dingtalkBindTried = false;
+  let latestDatasetUpdatedAt = "";
 
   const AGENT_CHAT_SESSION_KEY = "salesAgentConversationId";
   function persistAgentConversationId(nid) {
@@ -556,6 +582,9 @@
   const MEMBER_INITIAL_LIMIT = 100;
   const MEMBER_LOAD_STEP = 100;
   const MEMBER_MAX_ROWS = 50000;
+  const SLEEP_INITIAL_LIMIT = 100;
+  const SLEEP_LOAD_STEP = 100;
+  const SLEEP_MAX_ROWS = 50000;
   let fabIgnoreClickUntil = 0;
   let memberPagingState = {
     rows: [],
@@ -563,6 +592,14 @@
     hasMore: false,
     filterBase: null,
     storeParam: null,
+  };
+  let sleepPagingState = {
+    rows: [],
+    loading: false,
+    hasMore: false,
+    filterBase: null,
+    storeParam: null,
+    sleepSummary: [],
   };
   const DEBUG_FRONTEND_DATASET_CHECK = (function () {
     try {
@@ -981,11 +1018,14 @@
       el.innerHTML = "";
       return;
     }
+    function stripLeadingRankPrefix(name) {
+      return String(name || "").replace(/^\s*\d+\s*[.。．、)\]]\s*/, "").trim();
+    }
     el.innerHTML = rows
       .map(function (r) {
         return (
           '<li><span class="name">' +
-          escapeHtml(r.name) +
+          escapeHtml(stripLeadingRankPrefix(r.name)) +
           '</span><span class="rank-value">' +
           fmtVal(r.val) +
           "</span></li>"
@@ -1057,9 +1097,42 @@
     queueDateRefresh();
   }
 
+  function readSleepFilterFromInputs() {
+    var d = Number((document.getElementById("sleepDaysInput") || {}).value || 90);
+    var o = Number((document.getElementById("sleepMinOrdersInput") || {}).value || 2);
+    var a = Number((document.getElementById("sleepMinAmountInput") || {}).value || 1000);
+    sleepFilterState.sleepDays = Math.max(1, Math.floor(Number.isFinite(d) ? d : 90));
+    sleepFilterState.sleepMinOrders = Math.max(0, Math.floor(Number.isFinite(o) ? o : 2));
+    sleepFilterState.sleepMinAmount = Math.max(0, Math.floor(Number.isFinite(a) ? a : 1000));
+  }
+
+  function formatDateYmd(value) {
+    var s = String(value || "").trim();
+    if (!s) return "";
+    var m = s.match(/^\d{4}-\d{2}-\d{2}/);
+    if (m) return m[0];
+    var d = new Date(s);
+    if (Number.isNaN(d.getTime())) return "";
+    return ymd(d);
+  }
+
+  function refreshDataUpdatedLabel() {
+    var el = document.getElementById("dataUpdatedLabel");
+    if (!el) return;
+    var day = formatDateYmd(latestDatasetUpdatedAt);
+    el.textContent = "数据更新日期：" + (day || "—");
+  }
+
   async function loadLatestDataset() {
-    const data = await fetchJson("/api/v2/datasets/aggregate-scope");
-    return data.ok && Number(data.datasetCount) > 0 ? "__all_ready__" : null;
+    const [scopeData, latestData] = await Promise.all([
+      fetchJson("/api/v2/datasets/aggregate-scope"),
+      fetchJson("/api/v2/datasets/latest").catch(function () { return { ok: false, dataset: null }; }),
+    ]);
+    latestDatasetUpdatedAt = latestData && latestData.dataset
+      ? String(latestData.dataset.created_at || latestData.dataset.createdAt || "")
+      : "";
+    refreshDataUpdatedLabel();
+    return scopeData.ok && Number(scopeData.datasetCount) > 0 ? "__all_ready__" : null;
   }
 
   async function loadFilterOptions() {
@@ -1123,6 +1196,122 @@
     var url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/members/top?" + q;
     var data = await fetchJson(url);
     return Array.isArray(data && data.rows) ? data.rows : [];
+  }
+
+  async function fetchSleepingPage(filterBase, storeParam, limit, offset) {
+    if (!datasetId || !hasPerm("canViewSleepingMembers")) return null;
+    readSleepFilterFromInputs();
+    var safeLimit = Math.max(1, Math.min(2000, Number(limit) || SLEEP_LOAD_STEP));
+    var safeOffset = Math.max(0, Number(offset) || 0);
+    const q =
+      qs(
+        Object.assign({}, filterBase, storeParam, {
+          sleepDays: sleepFilterState.sleepDays,
+          sleepMinOrders: sleepFilterState.sleepMinOrders,
+          sleepMinAmount: sleepFilterState.sleepMinAmount,
+          aclassMinAmount: 3000,
+          aclassMinOrders: 5,
+          analysisDate: state.endDate || "",
+          limit: safeLimit,
+          offset: safeOffset,
+        })
+      ) || "";
+    const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/members/sleeping?" + q;
+    return fetchJson(url);
+  }
+
+  function renderSleepingSection() {
+    if (!hasPerm("canViewSleepingMembers")) {
+      setSectionVisible("sleepCard", false);
+      return;
+    }
+    setSectionVisible("sleepCard", true);
+    const sleepRows = Array.isArray(sleepPagingState.rows) ? sleepPagingState.rows : [];
+    const sleepSummaryRows = Array.isArray(sleepPagingState.sleepSummary) ? sleepPagingState.sleepSummary : [];
+    const showLoadMore = sleepPagingState.hasMore && sleepRows.length < SLEEP_MAX_ROWS;
+    const sleepListHtml = sleepRows.length
+      ? '<p class="muted">沉睡会员清单：</p><ol class="ol member-list-scroll">' +
+        sleepRows
+          .map(function (m) {
+            const who = escapeHtml(m.member_name || m.member_id || m.member_key || "未知会员");
+            const days = Number(m.sleep_days || m.sleepDays || 0);
+            const right = days > 0 ? days + " 天未消费" : "—";
+            return '<li style="padding-left:4px"><span class="name">' + who + '</span><span>' + right + "</span></li>";
+          })
+          .join("") +
+        "</ol>" +
+        (showLoadMore
+          ? '<div style="margin-top:10px;text-align:center;"><button type="button" class="btn btn-light" id="sleepLoadMoreBtn" style="min-height:36px;padding:0 14px;">加载更多沉睡会员（+100）</button></div>'
+          : "")
+      : '<p class="muted">暂无沉睡会员清单</p>';
+    const lines = sleepSummaryRows
+      .map(function (row) {
+        const lab = row.metric;
+        const val = row.value;
+        const isCurrency =
+          typeof val === "number" &&
+          (String(row.metric).indexOf("消费额") >= 0 || String(row.metric).indexOf("Spend") >= 0);
+        const disp = isCurrency ? fmtMoney(val) : typeof val === "number" ? fmtInt(val) : escapeHtml(String(val));
+        return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb;font-size:13px\"><span>" +
+          lab +
+          "</span><span>" +
+          disp +
+          "</span></div>";
+      })
+      .join("");
+    document.getElementById("sleepSummary").innerHTML =
+      sleepListHtml + (lines ? '<p class="muted" style="margin-top:8px">沉睡会员摘要：</p>' + lines : '<p class="muted">暂无沉睡会员统计</p>');
+    wireSleepLoadMore();
+  }
+
+  function wireSleepLoadMore() {
+    var loadMoreBtn = document.getElementById("sleepLoadMoreBtn");
+    if (!loadMoreBtn) return;
+    loadMoreBtn.onclick = function () {
+      loadMoreSleepingAndRender().catch(function () {});
+    };
+  }
+
+  async function loadMoreSleepingAndRender() {
+    if (sleepPagingState.loading || !sleepPagingState.hasMore) return;
+    sleepPagingState.loading = true;
+    var btn = document.getElementById("sleepLoadMoreBtn");
+    var oldList = document.querySelector("#sleepSummary .member-list-scroll");
+    var prevScrollTop = oldList ? oldList.scrollTop : 0;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "加载中...";
+    }
+    try {
+      var offset = (sleepPagingState.rows || []).length;
+      var data = await fetchSleepingPage(
+        sleepPagingState.filterBase || {},
+        sleepPagingState.storeParam || {},
+        SLEEP_LOAD_STEP,
+        offset
+      );
+      var rows = Array.isArray(data && data.rows) ? data.rows : Array.isArray(data && data.sleepList) ? data.sleepList : [];
+      if (rows.length) {
+        sleepPagingState.rows = (sleepPagingState.rows || []).concat(rows).slice(0, SLEEP_MAX_ROWS);
+      }
+      sleepPagingState.hasMore = rows.length === SLEEP_LOAD_STEP && sleepPagingState.rows.length < SLEEP_MAX_ROWS;
+      renderSleepingSection();
+      var newList = document.querySelector("#sleepSummary .member-list-scroll");
+      if (newList) newList.scrollTop = prevScrollTop;
+      cacheForChat.sleeping = {
+        rows: (sleepPagingState.rows || []).slice(),
+        sleepList: (sleepPagingState.rows || []).slice(),
+        sleepSummary: (sleepPagingState.sleepSummary || []).slice(),
+      };
+    } catch (e) {
+      showToast((e && e.message) || "沉睡会员加载失败", "error");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "加载更多沉睡会员（+100）";
+      }
+    } finally {
+      sleepPagingState.loading = false;
+    }
   }
 
   function renderMemberSummary(uq) {
@@ -1296,33 +1485,25 @@
     }
     try {
       if (hasPerm("canViewSleepingMembers")) {
-        const q =
-          qs(
-            Object.assign(
-              {},
-              filterBase,
-              storeParam,
-              {
-                sleepDays: 90,
-                sleepMinOrders: 2,
-                sleepMinAmount: 1000,
-                aclassMinAmount: 3000,
-                aclassMinOrders: 5,
-                analysisDate: state.endDate || "",
-                limit: 20,
-                offset: 0,
-              }
-            )
-          ) || "";
-        const url =
-          "/api/v2/datasets/" +
-          encodeURIComponent(datasetId) +
-          "/members/sleeping?" +
-          q;
-        sleeping = await fetchJson(url);
+        sleeping = await fetchSleepingPage(filterBase, storeParam, SLEEP_INITIAL_LIMIT, 0);
+        var sleepRows = Array.isArray(sleeping && sleeping.rows)
+          ? sleeping.rows
+          : Array.isArray(sleeping && sleeping.sleepList)
+            ? sleeping.sleepList
+            : [];
+        sleepPagingState.rows = sleepRows.slice(0, SLEEP_MAX_ROWS);
+        sleepPagingState.hasMore = sleepRows.length === SLEEP_INITIAL_LIMIT;
+        sleepPagingState.filterBase = Object.assign({}, filterBase);
+        sleepPagingState.storeParam = Object.assign({}, storeParam);
+        sleepPagingState.sleepSummary = Array.isArray(sleeping && sleeping.sleepSummary) ? sleeping.sleepSummary : [];
       }
     } catch (e) {
       sleeping = null;
+      sleepPagingState.rows = [];
+      sleepPagingState.hasMore = false;
+      sleepPagingState.filterBase = Object.assign({}, filterBase);
+      sleepPagingState.storeParam = Object.assign({}, storeParam);
+      sleepPagingState.sleepSummary = [];
     }
 
     const totalRows = coreKpis ? Number(coreKpis.totalRows || 0) : 0;
@@ -1536,28 +1717,7 @@
       memberPagingState.hasMore = false;
     }
 
-    if (hasPerm("canViewSleepingMembers") && sleeping && sleeping.sleepSummary) {
-      setSectionVisible("sleepCard", true);
-      const lines = (sleeping.sleepSummary || [])
-        .map(function (row) {
-          const lab = row.metric;
-          const val = row.value;
-          const isCurrency =
-            typeof val === "number" &&
-            (String(row.metric).indexOf("消费额") >= 0 || String(row.metric).indexOf("Spend") >= 0);
-          const disp = isCurrency ? fmtMoney(val) : typeof val === "number" ? fmtInt(val) : escapeHtml(String(val));
-          return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb;font-size:13px\"><span>" +
-            lab +
-            "</span><span>" +
-            disp +
-            "</span></div>";
-        })
-        .join("");
-      document.getElementById("sleepSummary").innerHTML =
-        lines || '<p class="muted">暂无沉睡会员统计</p>';
-    } else {
-      setSectionVisible("sleepCard", false);
-    }
+    renderSleepingSection();
 
     document.getElementById("chatFab").style.display = hasPerm("canUseAgentChat") ? "block" : "none";
 
@@ -1566,7 +1726,11 @@
     cacheForChat.sales = sales;
     cacheForChat.products = products;
     cacheForChat.members = (memberPagingState.rows || []).slice();
-    cacheForChat.sleeping = sleeping;
+    cacheForChat.sleeping = {
+      rows: (sleepPagingState.rows || []).slice(),
+      sleepList: (sleepPagingState.rows || []).slice(),
+      sleepSummary: (sleepPagingState.sleepSummary || []).slice(),
+    };
   }
 
   function kpiNum(obj, keys) {
@@ -1790,7 +1954,11 @@
     var sectionLines = [];
     function flushSection() {
       if (!sectionTitle && !sectionLines.length) return;
-      var content = sectionLines.join(" ");
+      var content = sectionLines
+        .map(function (ln) {
+          return escapeHtml(String(ln || ""));
+        })
+        .join("<br />");
       sections.push({ title: sectionTitle, content: content });
       sectionTitle = "";
       sectionLines = [];
@@ -1801,11 +1969,14 @@
         flushSection();
         continue;
       }
-      var m = row.match(/^(结论|数据依据|建议|风险提示|后续动作)\s*[：:]\s*(.*)$/);
+      var m = row.match(
+        /^(.*?)(结论|数据依据|建议|风险提示|后续动作|要点|小结|数据|依据)\s*[：:]\s*(.*)$/
+      );
       if (m) {
         flushSection();
-        sectionTitle = m[1];
-        if (m[2]) sectionLines.push(m[2]);
+        var prefix = String(m[1] || "").trim();
+        sectionTitle = (prefix ? prefix + " " : "") + m[2];
+        if (m[3]) sectionLines.push(m[3]);
       } else {
         sectionLines.push(row);
       }
@@ -1813,7 +1984,7 @@
     flushSection();
     if (!sections.length) {
       sections = compact.filter(Boolean).map(function (s) {
-        return { title: "", content: s };
+        return { title: "", content: escapeHtml(String(s || "")) };
       });
     }
 
@@ -1822,7 +1993,8 @@
         var titleHtml = item.title
           ? '<span class="assistant-subtitle">' + escapeHtml(item.title + "：") + "</span>"
           : "";
-        return '<p class="assistant-paragraph">' + titleHtml + escapeHtml(item.content || "") + "</p>";
+        var body = item.content || "";
+        return '<p class="assistant-paragraph">' + titleHtml + body + "</p>";
       })
       .join("");
   }
@@ -1868,12 +2040,14 @@
     if (!t) return;
     input.value = "";
     chatMessages.push({ role: "user", text: t });
+    var thinkingIdx = chatMessages.push({ role: "agent", text: "🤔 正在计算中，请稍候..." }) - 1;
     renderChat();
     btn.disabled = true;
     setButtonLoading(btn, true, "发送中...");
     try {
       const sync = await syncChatContext();
       if (!sync.ok) {
+        if (thinkingIdx >= 0 && chatMessages[thinkingIdx]) chatMessages.splice(thinkingIdx, 1);
         chatMessages.push({ role: "err", text: sync.error || "同步失败" });
         renderChat();
         return;
@@ -1886,14 +2060,17 @@
       });
       const data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
+        if (thinkingIdx >= 0 && chatMessages[thinkingIdx]) chatMessages.splice(thinkingIdx, 1);
         chatMessages.push({ role: "err", text: data.error || "请求失败" });
         showToast(data.error || "发送失败", "error");
       } else {
+        if (thinkingIdx >= 0 && chatMessages[thinkingIdx]) chatMessages.splice(thinkingIdx, 1);
         chatMessages.push({ role: "agent", text: data.reply || "暂无回复" });
         applyMobileUiActions(data.uiActions);
         showToast("发送成功", "success");
       }
     } catch (e) {
+      if (thinkingIdx >= 0 && chatMessages[thinkingIdx]) chatMessages.splice(thinkingIdx, 1);
       chatMessages.push({ role: "err", text: e.message || "网络异常" });
       showToast(e.message || "网络异常", "error");
     }
@@ -2056,7 +2233,46 @@
       }
     }
 
+    function wireSleepFilterUi() {
+      var btn = document.getElementById("sleepFilterApplyBtn");
+      if (!btn || btn.dataset.wired) return;
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", async function () {
+        readSleepFilterFromInputs();
+        setButtonLoading(btn, true, "加载中...");
+        showInlineLoading("正在加载沉睡会员...");
+        try {
+          var filterBase = { startDate: state.startDate, endDate: state.endDate };
+          var storeParam = state.store ? { stores: [state.store] } : {};
+          var sleeping = await fetchSleepingPage(filterBase, storeParam, SLEEP_INITIAL_LIMIT, 0);
+          var sleepRows = Array.isArray(sleeping && sleeping.rows)
+            ? sleeping.rows
+            : Array.isArray(sleeping && sleeping.sleepList)
+              ? sleeping.sleepList
+              : [];
+          sleepPagingState.rows = sleepRows.slice(0, SLEEP_MAX_ROWS);
+          sleepPagingState.hasMore = sleepRows.length === SLEEP_INITIAL_LIMIT;
+          sleepPagingState.filterBase = Object.assign({}, filterBase);
+          sleepPagingState.storeParam = Object.assign({}, storeParam);
+          sleepPagingState.sleepSummary = Array.isArray(sleeping && sleeping.sleepSummary) ? sleeping.sleepSummary : [];
+          renderSleepingSection();
+          cacheForChat.sleeping = {
+            rows: (sleepPagingState.rows || []).slice(),
+            sleepList: (sleepPagingState.rows || []).slice(),
+            sleepSummary: (sleepPagingState.sleepSummary || []).slice(),
+          };
+          showToast("沉睡会员筛选已更新", "success");
+        } catch (e) {
+          showToast((e && e.message) || "加载失败", "error");
+        } finally {
+          hideInlineLoading();
+          setButtonLoading(btn, false);
+        }
+      });
+    }
+
     wireFilterUi();
+    wireSleepFilterUi();
 
     wireDraggableFab();
 
