@@ -4401,7 +4401,16 @@ window.setAnalyzeLoading = setAnalyzeLoading;
     if (text.includes('消息内容不能为空')) return '请输入问题后再发送';
     if (text.includes('上下文同步失败')) return '上下文同步失败，请稍后重试';
     if (text.includes('网络')) return '网络异常，请稍后重试';
-    if (text.includes('AI_API_KEY') || text.includes('上游 AI') || text.includes('tool')) {
+    if (text.includes('工具调用结束，但未生成最终回答')) {
+      return '分析步骤较多未完成，请缩短问题或点击「重置对话」后重试';
+    }
+    // Do not use broad `.includes('tool')` — upstream errors often contain "tools"/"tool_calls" and became统一成「不可用」，掩盖真实原因。
+    if (
+      text.includes('AI_API_KEY') ||
+      text.includes('服务器未配置 AI') ||
+      text.includes('上游 AI 接口调用失败') ||
+      /openai|anthropic|rate limit|billing|insufficient_quota|invalid_api_key/i.test(text)
+    ) {
       return '智能助手暂时不可用，请稍后重试';
     }
     return text;
