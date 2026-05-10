@@ -496,22 +496,16 @@ function buildDashboardFilterHintFromSyncedContext(context) {
   if (!f || typeof f !== "object") return "";
   const start = String(f.startDate || "").trim();
   const end = String(f.endDate || "").trim();
-  const stores = Array.isArray(f.stores) ? f.stores.map((x) => String(x || "").trim()).filter(Boolean) : [];
-  const salespeople = Array.isArray(f.salespeople)
-    ? f.salespeople.map((x) => String(x || "").trim()).filter(Boolean)
-    : [];
-  const products = Array.isArray(f.products) ? f.products.map((x) => String(x || "").trim()).filter(Boolean) : [];
   const parts = [];
   if (start && end) parts.push(`日期 ${start}～${end}`);
   else if (start || end) parts.push(`日期 ${start || "?"}～${end || "?"}`);
-  if (stores.length) parts.push(`门店：${stores.join("、")}`);
-  else parts.push("门店：未限定单店（按权限内全部可见门店）");
-  if (salespeople.length) parts.push(`销售员：${salespeople.join("、")}`);
-  if (products.length) parts.push(`商品：${products.join("、")}`);
+  parts.push(
+    "门店/销售员/商品：不与看板多选联动，filters 中 stores、salespeople、products 默认留空＝该账号在后台权限内的全量；仅当用户这句话里明确只要某一店/某人/某品时才在工具参数中收窄"
+  );
   return (
-    "【本回合已与页面同步的筛选】" +
+    "【本回合数据助手取数口径（与看板列表展示无关）】" +
     parts.join("；") +
-    "。凡查询 KPI、排行、趋势、沉睡会员，以及「销售员—门店」（getSalespersonStoreBreakdownFromDataset / getStoresForSalespersonFromDataset）、「给定会员查导购」（getMemberSalespersonBreakdownFromDataset）、「给定导购查名下会员」（getMembersForSalespersonFromDataset），必须在 filters 中传入与上述一致的 startDate/endDate，并在需要时传入相同的 stores/salespeople/products；后台为已导入明细，优先于页面摘要。"
+    "。凡查询 KPI、排行、趋势、沉睡会员，以及「销售员—门店」（getSalespersonStoreBreakdownFromDataset / getStoresForSalespersonFromDataset）、「给定会员查导购」（getMemberSalespersonBreakdownFromDataset）、「给定导购查名下会员」（getMembersForSalespersonFromDataset），必须在 filters 中传入与上述一致的 startDate/endDate，并按上一句规则处理门店/销售员/商品三项。后台为已导入明细，优先于页面摘要。"
   );
 }
 
@@ -867,6 +861,24 @@ function sanitizeLimit(rawLimit, defaultLimit = 20, maxLimit = 500) {
   const n = Number(rawLimit);
   if (!Number.isFinite(n)) return defaultLimit;
   return Math.max(1, Math.min(maxLimit, Math.floor(n)));
+}
+
+/**
+ * 数据助手应与账号权限内的后台全量一致，不因看板上的门店/销售员/商品多选而缩小取数。
+ * 日期（及沉睡页等特殊字段）仍可与页面同步；维度筛选清空后由 `applyPermissionScopeToFilters` 按权限交集。
+ */
+function stripDashboardDimensionFiltersForAgentChat(context) {
+  if (!context || typeof context !== "object") return context;
+  const f = context.filters && typeof context.filters === "object" ? context.filters : {};
+  return {
+    ...context,
+    filters: {
+      ...f,
+      stores: [],
+      salespeople: [],
+      products: [],
+    },
+  };
 }
 
 function sanitizeSalesContext(raw) {
@@ -2472,7 +2484,9 @@ app.post("/api/chat/context", requireAuthApi, (req, res) => {
   if (!conversationId) {
     return res.status(400).json({ error: "缺少 conversationId" });
   }
-  const salesContext = applyScopeToSalesContext(req.body?.salesContext, req.currentUser, req.accessScope);
+  const salesContext = stripDashboardDimensionFiltersForAgentChat(
+    applyScopeToSalesContext(req.body?.salesContext, req.currentUser, req.accessScope)
+  );
   salesContexts.set(conversationId, {
     userId: String(req.currentUser?.id || ""),
     context: salesContext,
@@ -2555,7 +2569,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     const filterHint = buildDashboardFilterHintFromSyncedContext(ctxEntry?.context || null);
     const baseSystem =
       "你是面向店长、导购主管和老板的零售经营助手，必须用简体中文回复。\n\n" +
-      "【后台数据优先】金额、排行、门店、销售员、会员相关结论，必须以服务端数据集工具查询后台已导入订单（DuckDB）的结果为准；例如 getKpiFromDataset、getStoreRankingFromDataset、getSalespersonRankingFromDataset、getProductRankingFromDataset、getSalespersonStoreBreakdownFromDataset（销售员在哪些门店有业绩）、getMemberSalespersonBreakdownFromDataset（输入会员名→查各导购业绩）、getMembersForSalespersonFromDataset（输入导购名→列名下会员）等。页面同步的 salesContext 只是缓存摘要，不能代替上述查询；也不要在未调用工具前断言「导入缺少某字段」。调用工具时 filters 必须与下方「本回合已与页面同步的筛选」一致。\n\n" +
+      "【后台数据优先】金额、排行、门店、销售员、会员相关结论，必须以服务端数据集工具查询后台已导入订单（DuckDB）的结果为准；例如 getKpiFromDataset、getStoreRankingFromDataset、getSalespersonRankingFromDataset、getProductRankingFromDataset、getSalespersonStoreBreakdownFromDataset（销售员在哪些门店有业绩）、getMemberSalespersonBreakdownFromDataset（输入会员名→查各导购业绩）、getMembersForSalespersonFromDataset（输入导购名→列名下会员）等。页面同步的 salesContext 只是缓存摘要，不能代替上述查询；也不要在未调用工具前断言「导入缺少某字段」。调用工具时：startDate/endDate 须与下方「本回合数据助手取数口径」一致；门店/销售员/商品三项默认留空（不按看板多选缩小），仅在用户明确点名某一店/人/品时才在 filters 里收窄。\n\n" +
       "【问法与工具要对上】用户问「某销售员/导购手下有哪些顾客、会员」→ getMembersForSalespersonFromDataset（salespersonContains）。用户问「某某是哪个店的销售 / 哪家门店 / 谢元平是谁家的」→ 必须调用 getSalespersonStoreBreakdownFromDataset 或别名 getStoresForSalespersonFromDataset，禁止误用 getMemberSalespersonBreakdownFromDataset（后者仅用于输入会员名查导购）。\n\n" +
       "【门店与销售员关系】后台订单明细每一行同时有门店与销售员，不存在「缺映射表就无法关联」。只有在对应工具返回 rows 为空时，才可提示核对姓名或日期筛选；禁止答复「系统无法关联营业员与门店」之类话术。\n\n" +
       "【数字不得打架】同一条回复里，会员人数、名单必须与**同一工具、同一 filters**下的结果一致；不得把 KPI/摘要里的「消费会员人数」与另一工具返回的会员列表混在同一结论里；若只跑了名单工具，会员数以该工具返回的 distinctMemberCount 或 rows 长度为准。\n\n" +

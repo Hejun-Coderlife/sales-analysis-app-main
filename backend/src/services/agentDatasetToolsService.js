@@ -275,7 +275,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         function: {
           name: "getSalespersonStoreBreakdownFromDataset",
           description:
-            "【店员归属哪家门店—必用】后台订单表每一行同时包含门店(store)与销售员(salesperson)，关联来自按订单聚合，不是单独的映射表。用户问「某某是哪个店的销售」「哪家店」「在哪些门店」时必须调用；传入 salespersonContains=姓名关键字（如谢元平）。返回 rows 为各门店业绩，summary.primaryStore 为业绩最高的门店。禁止答复「系统没有销售员与门店的映射」。filters 与当前看板日期一致。",
+            "【店员归属哪家门店—必用】后台订单表每一行同时包含门店(store)与销售员(salesperson)，关联来自按订单聚合，不是单独的映射表。用户问「某某是哪个店的销售」「哪家店」「在哪些门店」时必须调用；传入 salespersonContains=姓名关键字（如谢元平）。返回 rows 为各门店业绩，summary.primaryStore 为业绩最高的门店。禁止答复「系统没有销售员与门店的映射」。filters.startDate/endDate 与当前会话同步的日期一致；stores/salespeople/products 默认留空（权限内全部门店），除非用户明确只要某一店/人/品。",
           parameters: {
             type: "object",
             properties: {
@@ -357,7 +357,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         function: {
           name: "getMembersForSalespersonFromDataset",
           description:
-            "从后台订单明细列出「某销售员/导购名下有哪些会员顾客」（按会员聚合消费）。用户问「张维手里有哪些顾客」「某导购名下会员清单」等时必须调用；salespersonContains 填销售员姓名片段。**不要**误用 getMemberSalespersonBreakdownFromDataset（那是输入会员名查导购）。filters 与当前看板日期、门店筛选一致。",
+            "从后台订单明细列出「某销售员/导购名下有哪些会员顾客」（按会员聚合消费）。用户问「张维手里有哪些顾客」「某导购名下会员清单」等时必须调用；salespersonContains 填销售员姓名片段。**不要**误用 getMemberSalespersonBreakdownFromDataset（那是输入会员名查导购）。filters.startDate/endDate 与当前会话同步；门店/销售员/商品维度默认留空（不按看板多选缩小），除非用户明确点名收窄。",
           parameters: {
             type: "object",
             properties: {
