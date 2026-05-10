@@ -27,7 +27,8 @@ const __dirname = path.dirname(__filename);
 const MAX_HISTORY_MESSAGES = 24;
 const sessions = new Map();
 const salesContexts = new Map();
-const MAX_TOOL_CALL_STEPS = 4;
+/** Model rounds that may each include one or more tool calls; long questions need more than 3–4. */
+const MAX_TOOL_CALL_STEPS = 8;
 const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
 const authService = new AuthService({ usersPath: env.usersPath });
 const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requireAdminApi } =
@@ -1980,6 +1981,37 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
           tool_call_id: toolCall.id,
           content: JSON.stringify(toolResult),
         });
+      }
+    }
+
+    if (!finalReply) {
+      try {
+        const lastPass = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: workingMessages,
+            temperature: 0.3,
+          }),
+        });
+        const lastData = await lastPass.json();
+        if (lastPass.ok) {
+          const lastMsg = lastData?.choices?.[0]?.message;
+          const txt = stripThinkingBlocks(lastMsg?.content || "");
+          if (txt && String(txt).trim()) {
+            finalReply = normalizeAssistantReply(txt);
+            workingMessages.push({
+              role: "assistant",
+              content: finalReply || "暂无回复",
+            });
+          }
+        }
+      } catch (_e) {
+        // fall through to 502 below
       }
     }
 
