@@ -199,6 +199,9 @@
           <div class="field">
             <label for="dingtalkTestUserIdInput">测试接收人（钉钉 UserID）</label>
             <input id="dingtalkTestUserIdInput" placeholder="例如：manager_001" />
+            <p class="muted" style="font-size:12px;margin:6px 0 0;line-height:1.5;">
+              须填<strong>钉钉通讯录</strong>里的 UserID，不要填本后台用户表的主键数字。连续快速点「发送测试」会触发钉钉<strong>工作通知限频</strong>，接口仍可能返回成功但实际只投递少数几条。
+            </p>
           </div>
           <label class="muted" style="display:block;margin:8px 0 4px;">
             <input id="ruleDailySummaryCheckbox" type="checkbox" /> 日报提醒
@@ -243,7 +246,7 @@
   <section id="createModal" class="modal" aria-hidden="true">
     <div class="modal-head"><b>新增员工</b><button id="closeCreateModalBtn" class="btn btn-light">关闭</button></div>
     <div class="modal-body">
-      <div class="field"><label for="createUsername">账号</label><input id="createUsername" placeholder="例如：user_demo" /></div>
+      <div class="field"><label for="createUsername">账号</label><input id="createUsername" placeholder="例如：13912345678（11 位手机号，不可重复注册）" /></div>
       <div class="field"><label for="createDisplayName">显示名称</label><input id="createDisplayName" placeholder="例如：门店经理A" /></div>
       <div class="field"><label for="createRole">岗位</label><select id="createRole"></select></div>
       <div class="field"><label for="createPassword">初始密码（至少8位）</label><input id="createPassword" type="password" /></div>
@@ -1239,7 +1242,7 @@
       const status = envStatus || {};
       envEl.className = "meta";
       envEl.textContent =
-        `环境检查：CorpId ${status.corpIdConfigured ? "已配置" : "未配置"} / AppKey ${status.appKeyConfigured ? "已配置" : "未配置"} / AppSecret ${status.appSecretConfigured ? "已配置" : "未配置"} / AgentId ${status.agentIdConfigured ? "已配置" : "未配置"}`;
+        `环境检查：CorpId ${status.corpIdConfigured ? "已配置" : "未配置"}（多端 JSAPI 用；纯发工作通知可不配）/ AppKey ${status.appKeyConfigured ? "已配置" : "未配置"} / AppSecret ${status.appSecretConfigured ? "已配置" : "未配置"} / AgentId ${status.agentIdConfigured ? "已配置" : "未配置"}`;
     }
 
     async function loadNotificationConfig() {

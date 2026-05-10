@@ -11,10 +11,16 @@ const GET_SEND_RESULT_URL = "https://oapi.dingtalk.com/topapi/message/corpconver
 
 let tokenCache = { accessToken: null, expiresAt: 0 };
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function buildTestMessage() {
   const mobileUrl = env.publishedMobileUrl;
+  const stamp = new Date().toISOString();
   return [
     "【赫眉经营助手测试通知】",
+    `发送时间（UTC）：${stamp}`,
     "这是一条来自赫眉经营助手的测试通知。",
     `点击进入手机版看板：${mobileUrl}`,
   ].join("\n");
@@ -92,6 +98,49 @@ async function querySendResult(accessToken, payload) {
   return { ok: res.ok, data };
 }
 
+function splitCsvIds(value) {
+  return String(value || "")
+    .split(/[,\|;]/g)
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+}
+
+/** 钉钉 getsendresult 返回里 send_result 路径可能多套一层 result。 */
+function extractSendBuckets(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const sr = d.send_result || d.result?.send_result || {};
+  return {
+    invalid: splitCsvIds(sr.invalid_user_id_list),
+    forbidden: splitCsvIds(sr.forbidden_user_id_list),
+    failed: splitCsvIds(sr.failed_user_id_list),
+    read: splitCsvIds(sr.read_user_id_list),
+    unread: splitCsvIds(sr.unread_user_id_list),
+  };
+}
+
+async function pollSendOutcome(accessToken, agentId, taskId) {
+  const attempts = 6;
+  const delayMs = 450;
+  let last = { buckets: extractSendBuckets({}), raw: {} };
+  for (let i = 0; i < attempts; i += 1) {
+    await sleep(delayMs);
+    const resp = await querySendResult(accessToken, { agentId, taskId });
+    const payload = resp.data || {};
+    last.raw = payload;
+    if (Number(payload.errcode || 0) !== 0) {
+      continue;
+    }
+    const buckets = extractSendBuckets(payload);
+    last.buckets = buckets;
+    const blocked = buckets.invalid.length + buckets.forbidden.length + buckets.failed.length;
+    const deliveredHints = buckets.read.length + buckets.unread.length > 0;
+    if (blocked > 0 || deliveredHints || i === attempts - 1) {
+      break;
+    }
+  }
+  return last;
+}
+
 /**
  * @param {object} config
  * @param {string} config.appKey
@@ -151,30 +200,60 @@ export async function sendDingTalkTestWorkNotification(config) {
 
   let sendResultDetail = null;
   if (shouldCheckSendResult && data.task_id) {
-    const resultResp = await querySendResult(tokenResult.accessToken, {
-      agentId: Number(agentId),
-      taskId: String(data.task_id),
-    });
-    const resultData = resultResp.data || {};
-    const invalidList = String(resultData?.send_result?.invalid_user_id_list || "")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
+    const polled = await pollSendOutcome(tokenResult.accessToken, Number(agentId), String(data.task_id));
+    const resultData = polled.raw || {};
+    const b = polled.buckets || extractSendBuckets(resultData);
+
     sendResultDetail = {
-      httpOk: !!resultResp.ok,
+      httpOk: true,
       errcode: Number(resultData?.errcode || 0),
       errmsg: String(resultData?.errmsg || ""),
-      invalidUserIdList: invalidList.map((x) => maskUserId(x)),
-      invalidUserIdCount: invalidList.length,
+      invalidUserIdList: b.invalid.map((x) => maskUserId(x)),
+      invalidUserIdCount: b.invalid.length,
+      forbiddenUserIdList: b.forbidden.map((x) => maskUserId(x)),
+      forbiddenUserIdCount: b.forbidden.length,
+      failedUserIdList: b.failed.map((x) => maskUserId(x)),
+      failedUserIdCount: b.failed.length,
+      readUserIdCount: b.read.length,
+      unreadUserIdCount: b.unread.length,
     };
-    console.log("[dingtalk] getsendresult response", {
-      httpOk: !!resultResp.ok,
-      errcode: sendResultDetail.errcode,
-      errmsg: sendResultDetail.errmsg,
-      invalidUserIdCount: sendResultDetail.invalidUserIdCount,
-      invalidUserIdList: sendResultDetail.invalidUserIdList,
+    console.log("[dingtalk] getsendresult (polled)", {
       task_id: data.task_id,
+      errcode: sendResultDetail.errcode,
+      invalidUserIdCount: sendResultDetail.invalidUserIdCount,
+      forbiddenUserIdCount: sendResultDetail.forbiddenUserIdCount,
+      failedUserIdCount: sendResultDetail.failedUserIdCount,
+      readUserIdCount: sendResultDetail.readUserIdCount,
+      unreadUserIdCount: sendResultDetail.unreadUserIdCount,
     });
+  }
+
+  if (sendResultDetail) {
+    if (sendResultDetail.forbiddenUserIdCount > 0) {
+      return {
+        ok: false,
+        error:
+          "钉钉未投递：命中工作通知「流控/限频」（forbidden）。连续快速点发送时常见，请隔几分钟再试；正式任务也会受此影响。",
+        dingtalk: { errcode: data.errcode, task_id: data.task_id },
+        sendResult: sendResultDetail,
+      };
+    }
+    if (sendResultDetail.failedUserIdCount > 0) {
+      return {
+        ok: false,
+        error: "钉钉未投递：部分接收人发送失败（failed_user_id_list），请核对 DingTalk userid 与应用可见范围。",
+        dingtalk: { errcode: data.errcode, task_id: data.task_id },
+        sendResult: sendResultDetail,
+      };
+    }
+    if (sendResultDetail.invalidUserIdCount > 0) {
+      return {
+        ok: false,
+        error: "钉钉未投递：接收人 userid 无效（不在企业或未授权该应用）。",
+        dingtalk: { errcode: data.errcode, task_id: data.task_id },
+        sendResult: sendResultDetail,
+      };
+    }
   }
 
   return {

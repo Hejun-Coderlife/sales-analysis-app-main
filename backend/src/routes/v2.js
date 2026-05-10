@@ -1021,19 +1021,9 @@ export function createV2Router({
         dingtalk: {
           errcode: result?.dingtalk?.errcode ?? null,
           errmsg: result?.dingtalk?.errmsg ? String(result.dingtalk.errmsg) : "",
-        },
-      });
-    }
-    if (Number(result?.sendResult?.invalidUserIdCount || 0) > 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "钉钉已受理任务，但接收人 userid 无效，请检查是否属于当前企业或当前应用可见范围。",
-        dingtalk: {
-          errcode: result?.dingtalk?.errcode ?? 0,
-          errmsg: "ok",
           task_id: result?.dingtalk?.task_id || "",
-          invalidUserIdCount: Number(result?.sendResult?.invalidUserIdCount || 0),
         },
+        sendResult: result.sendResult || undefined,
       });
     }
     const sourceHint =

@@ -6,7 +6,7 @@ import session from "express-session";
 import FileStoreFactory from "session-file-store";
 import { getV2Router, getV2Services, initV2AnalyticsModule } from "./backend/src/app.js";
 import { env } from "./backend/src/config/env.js";
-import { AuthService } from "./backend/src/auth/authService.js";
+import { AuthService, normalizeAccountName } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware, safeInternalRedirectPath, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
@@ -285,7 +285,7 @@ function cleanupExpiredLoginAttempts(nowMs) {
 function loginRateLimit(req, res, next) {
   const now = Date.now();
   cleanupExpiredLoginAttempts(now);
-  const username = String(req.body?.username || "").trim().toLowerCase();
+  const username = normalizeAccountName(String(req.body?.username || ""));
   const ip = String(req.ip || req.socket?.remoteAddress || "unknown");
   const key = `${ip}|${username || "_"}`;
   const bucket = loginAttempts.get(key);

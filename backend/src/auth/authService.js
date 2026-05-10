@@ -13,7 +13,59 @@ import {
   toPublicUser,
 } from "./permissionModel.js";
 
+const LEGACY_USERNAME_RE = /^[a-z0-9._-]{3,64}$/;
+const CN_MOBILE_RE = /^1[3-9]\d{9}$/;
 const BCRYPT_ROUNDS = 10;
+
+/**
+ * 账号归一：去空白、小写；手机号支持去掉 +86 / 86 国家码。
+ */
+export function normalizeAccountName(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  s = s.replace(/\s+/g, "");
+  s = s.toLowerCase();
+  if (s.startsWith("+86")) s = s.slice(3);
+  if (/^861[3-9]\d{9}$/.test(s)) s = s.slice(2);
+  return s;
+}
+
+/**
+ * 注册/创建用户时的格式校验：
+ * - 11 位纯数字：**须**合法大陆手机号（避免误保存无效号）；
+ * - 其它：**须**落在历史登录名规则（字母数字及 ._- ，3–64 位）。
+ */
+export function validateAccountNameForSignup(normalized) {
+  if (!normalized) return { ok: false, message: "账号不能为空" };
+
+  if (/^\d+$/.test(normalized)) {
+    if (normalized.length === 11) {
+      if (!CN_MOBILE_RE.test(normalized)) {
+        return {
+          ok: false,
+          message: "11 位纯数字必须是合法中国大陆手机号（1 开头，第二位为 3–9）",
+        };
+      }
+      return { ok: true };
+    }
+    if (!LEGACY_USERNAME_RE.test(normalized)) {
+      return {
+        ok: false,
+        message:
+          "纯数字账号：请使用 11 位手机号，或由字母、数字与 . _ - 组成的 3–64 位登录名",
+      };
+    }
+    return { ok: true };
+  }
+
+  if (!LEGACY_USERNAME_RE.test(normalized)) {
+    return {
+      ok: false,
+      message: "账号须为手机号的 11 位数字（可带 +86/空格），或 3–64 位字母、数字及 . _ -",
+    };
+  }
+  return { ok: true };
+}
 
 export class AuthService {
   constructor({ usersPath }) {
@@ -59,7 +111,7 @@ export class AuthService {
 
   async findByUsername(username) {
     await this.init();
-    const key = String(username || "").trim().toLowerCase();
+    const key = normalizeAccountName(username);
     if (!key) return null;
     return this.users.find((x) => x.username === key) || null;
   }
@@ -118,12 +170,12 @@ export class AuthService {
     allowedMemberFields = null,
   }) {
     await this.init();
-    const normalizedUsername = String(username || "").trim().toLowerCase();
-    if (!normalizedUsername) throw new Error("账号不能为空");
-    if (!/^[a-zA-Z0-9._-]{3,64}$/.test(normalizedUsername)) {
-      throw new Error("账号格式不合法（仅支持字母、数字、._-，长度 3-64）");
+    const normalizedUsername = normalizeAccountName(username);
+    const fmt = validateAccountNameForSignup(normalizedUsername);
+    if (!fmt.ok) throw new Error(fmt.message || "账号格式不合法");
+    if (await this.findByUsername(normalizedUsername)) {
+      throw new Error("该账号已存在（含相同手机号），无法重复注册");
     }
-    if (await this.findByUsername(normalizedUsername)) throw new Error("账号已存在");
     const rawPassword = String(password || "");
     if (rawPassword.length < 8) throw new Error("密码至少 8 位");
     const passwordHash = await this.hashPassword(rawPassword);
