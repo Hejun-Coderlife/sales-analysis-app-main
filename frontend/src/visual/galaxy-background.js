@@ -119,7 +119,8 @@
     const section = document.createElement("section");
     section.className = "earth-section";
     section.setAttribute("aria-hidden", "true");
-    section.innerHTML = '<div class="earth-stage"><div id="earth-canvas"></div></div><div class="earth-caption">全球业务网络<span class="earth-hint">拖动旋转 · 滚轮缩放</span></div>';
+    section.innerHTML =
+      '<div class="earth-stage"><div id="earth-canvas"></div></div><div class="earth-caption">GLOBAL BUSINESS NETWORK<span class="earth-hint">DRAG TO ROTATE · SCROLL TO ZOOM</span></div>';
     const footer = document.querySelector("footer");
     if (footer && footer.parentNode) {
       footer.parentNode.insertBefore(section, footer);

@@ -1,75 +1,31 @@
-const ROLE_SET = new Set(["admin", "manager", "store_user", "salesperson", "viewer", "disabled"]);
+import {
+  ALL_PERMISSION_KEYS,
+  DASHBOARD_PERMISSION_KEYS,
+  ADMIN_PERMISSION_KEYS,
+  AGENT_PERMISSION_KEYS,
+  REMINDER_PERMISSION_KEYS,
+  MEMBER_FIELD_PERMISSION_KEYS,
+} from "./permissionConstants.js";
+import { getBuiltinRoleTemplate, BUILTIN_ROLE_SET } from "./roleTemplates.js";
+import { getRoleCatalogTemplateIfAny } from "../services/roleCatalogStore.js";
 
-export const DASHBOARD_PERMISSION_KEYS = [
-  "canViewDashboard",
-  "canViewKpi",
-  "canViewStoreRanking",
-  "canViewSalespersonRanking",
-  "canViewProductRanking",
-  "canViewMemberAnalysis",
-  "canViewSleepingMembers",
-  "canViewTrendCharts",
-  "canViewRepurchaseAnalysis",
-  "canUseFilters",
-  "canExportData",
-  "canDownloadExcel",
-  "canViewRawRows",
-  "canViewDataQuality",
-];
+export {
+  DASHBOARD_PERMISSION_KEYS,
+  ADMIN_PERMISSION_KEYS,
+  AGENT_PERMISSION_KEYS,
+  REMINDER_PERMISSION_KEYS,
+  MEMBER_FIELD_PERMISSION_KEYS,
+  ALL_PERMISSION_KEYS,
+} from "./permissionConstants.js";
 
-export const ADMIN_PERMISSION_KEYS = [
-  "canAccessAdmin",
-  "canManageUsers",
-  "canCreateUsers",
-  "canDisableUsers",
-  "canResetPasswords",
-  "canAssignRoles",
-  "canAssignDataScopes",
-  "canImportExcel",
-  "canDeleteImportedData",
-  "canViewImportHistory",
-  "canViewAuditLogs",
-  "canManageSystemSettings",
-  "canManageAgentSettings",
-  "canManageDingTalkSettings",
-  "canManageBackups",
-];
+export { BUILTIN_ROLE_IDS, BUILTIN_ROLE_SET, cloneRoleTemplate, getBuiltinRoleTemplate } from "./roleTemplates.js";
 
-export const AGENT_PERMISSION_KEYS = [
-  "canUseAgentChat",
-  "canAskCompanyWideQuestions",
-  "canAskStoreQuestions",
-  "canAskSalespersonQuestions",
-  "canAskMemberQuestions",
-  "canAskSensitiveMemberQuestions",
-  "canAskForExport",
-  "canAskForRecommendations",
-];
+/** 与 role-catalog.json 中 kind=custom 的 id 同步；由服务端在目录加载/变更后写入。 */
+let customRoleValidity = new Set();
 
-export const REMINDER_PERMISSION_KEYS = [
-  "canReceiveDingTalkReminders",
-  "canReceiveMemberMaintenanceReminders",
-  "canReceiveStoreManagementReminders",
-  "canReceiveSalespersonPerformanceReminders",
-  "canReceiveSleepingMemberReminders",
-  "canManageReminderRules",
-  "canManageReminderRecipients",
-];
-
-export const MEMBER_FIELD_PERMISSION_KEYS = [
-  "canViewMemberName",
-  "canViewPhone",
-  "canViewMemberId",
-  "canViewBirthday",
-  "canViewAddress",
-];
-
-export const ALL_PERMISSION_KEYS = [
-  ...DASHBOARD_PERMISSION_KEYS,
-  ...ADMIN_PERMISSION_KEYS,
-  ...AGENT_PERMISSION_KEYS,
-  ...REMINDER_PERMISSION_KEYS,
-];
+export function syncCustomRolesFromCatalog(customIds = []) {
+  customRoleValidity = new Set((Array.isArray(customIds) ? customIds : []).map((x) => String(x || "").trim()).filter(Boolean));
+}
 
 function toBool(value, fallback = false) {
   return value == null ? Boolean(fallback) : Boolean(value);
@@ -77,7 +33,10 @@ function toBool(value, fallback = false) {
 
 export function normalizeRole(rawRole) {
   const role = String(rawRole || "").trim();
-  return ROLE_SET.has(role) ? role : "viewer";
+  if (!role) return "viewer";
+  if (BUILTIN_ROLE_SET.has(role)) return role;
+  if (customRoleValidity.has(role)) return role;
+  return "viewer";
 }
 
 export function normalizeArray(values) {
@@ -85,177 +44,24 @@ export function normalizeArray(values) {
   return values.map((x) => String(x || "").trim()).filter(Boolean);
 }
 
-function buildBooleanMap(keys, seed = false) {
-  const out = {};
-  keys.forEach((key) => {
-    out[key] = Boolean(seed);
-  });
-  return out;
+export function cloneTemplate(template) {
+  return JSON.parse(JSON.stringify(template));
 }
 
-function adminTemplate() {
-  return {
-    enabled: true,
-    allowAllStores: true,
-    allowAllSalespeople: true,
-    allowAllProducts: true,
-    permissions: buildBooleanMap(ALL_PERMISSION_KEYS, true),
-    allowedMemberFields: buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, true),
-  };
-}
-
-function managerTemplate() {
-  const permissions = buildBooleanMap(ALL_PERMISSION_KEYS, false);
-  [
-    "canViewDashboard",
-    "canViewKpi",
-    "canViewStoreRanking",
-    "canViewSalespersonRanking",
-    "canViewProductRanking",
-    "canViewMemberAnalysis",
-    "canViewSleepingMembers",
-    "canViewTrendCharts",
-    "canViewRepurchaseAnalysis",
-    "canUseFilters",
-    "canViewDataQuality",
-    "canUseAgentChat",
-    "canAskStoreQuestions",
-    "canAskSalespersonQuestions",
-    "canAskMemberQuestions",
-    "canAskForRecommendations",
-    "canReceiveStoreManagementReminders",
-    "canReceiveSalespersonPerformanceReminders",
-    "canReceiveSleepingMemberReminders",
-  ].forEach((key) => {
-    permissions[key] = true;
-  });
-  const memberFields = buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, false);
-  memberFields.canViewMemberName = true;
-  memberFields.canViewMemberId = true;
-  return {
-    enabled: true,
-    allowAllStores: false,
-    allowAllSalespeople: false,
-    allowAllProducts: true,
-    permissions,
-    allowedMemberFields: memberFields,
-  };
-}
-
-function storeUserTemplate() {
-  const permissions = buildBooleanMap(ALL_PERMISSION_KEYS, false);
-  [
-    "canViewDashboard",
-    "canViewKpi",
-    "canViewStoreRanking",
-    "canViewSalespersonRanking",
-    "canViewProductRanking",
-    "canViewMemberAnalysis",
-    "canViewSleepingMembers",
-    "canViewTrendCharts",
-    "canViewRepurchaseAnalysis",
-    "canUseFilters",
-    "canUseAgentChat",
-    "canAskStoreQuestions",
-    "canAskSalespersonQuestions",
-    "canAskMemberQuestions",
-    "canAskForRecommendations",
-    "canReceiveStoreManagementReminders",
-    "canReceiveSleepingMemberReminders",
-  ].forEach((key) => {
-    permissions[key] = true;
-  });
-  const memberFields = buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, false);
-  memberFields.canViewMemberName = true;
-  return {
-    enabled: true,
-    allowAllStores: false,
-    allowAllSalespeople: false,
-    allowAllProducts: true,
-    permissions,
-    allowedMemberFields: memberFields,
-  };
-}
-
-function salespersonTemplate() {
-  const permissions = buildBooleanMap(ALL_PERMISSION_KEYS, false);
-  [
-    "canViewDashboard",
-    "canViewKpi",
-    "canViewSalespersonRanking",
-    "canViewProductRanking",
-    "canViewMemberAnalysis",
-    "canViewSleepingMembers",
-    "canViewTrendCharts",
-    "canUseFilters",
-    "canUseAgentChat",
-    "canAskSalespersonQuestions",
-    "canAskMemberQuestions",
-    "canAskForRecommendations",
-    "canReceiveSalespersonPerformanceReminders",
-    "canReceiveMemberMaintenanceReminders",
-    "canReceiveSleepingMemberReminders",
-  ].forEach((key) => {
-    permissions[key] = true;
-  });
-  const memberFields = buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, false);
-  memberFields.canViewMemberName = true;
-  return {
-    enabled: true,
-    allowAllStores: false,
-    allowAllSalespeople: false,
-    allowAllProducts: true,
-    permissions,
-    allowedMemberFields: memberFields,
-  };
-}
-
-function viewerTemplate() {
-  const permissions = buildBooleanMap(ALL_PERMISSION_KEYS, false);
-  [
-    "canViewDashboard",
-    "canViewKpi",
-    "canViewStoreRanking",
-    "canViewSalespersonRanking",
-    "canViewProductRanking",
-    "canViewTrendCharts",
-    "canUseFilters",
-    "canUseAgentChat",
-    "canAskStoreQuestions",
-    "canAskSalespersonQuestions",
-  ].forEach((key) => {
-    permissions[key] = true;
-  });
-  const memberFields = buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, false);
-  return {
-    enabled: true,
-    allowAllStores: false,
-    allowAllSalespeople: false,
-    allowAllProducts: false,
-    permissions,
-    allowedMemberFields: memberFields,
-  };
-}
-
-function disabledTemplate() {
-  return {
-    enabled: false,
-    allowAllStores: false,
-    allowAllSalespeople: false,
-    allowAllProducts: false,
-    permissions: buildBooleanMap(ALL_PERMISSION_KEYS, false),
-    allowedMemberFields: buildBooleanMap(MEMBER_FIELD_PERMISSION_KEYS, false),
-  };
+/** 在未做 normalizeRole 误判前，解析已定义的岗位 id（用于管理端展示）。 */
+export function getRolePermissionTemplateByDefinedId(roleIdRaw) {
+  const id = String(roleIdRaw || "").trim();
+  if (!id) return getBuiltinRoleTemplate("viewer");
+  const stored = getRoleCatalogTemplateIfAny(id);
+  if (stored) return cloneTemplate(stored);
+  return getBuiltinRoleTemplate(id);
 }
 
 export function getRolePermissionTemplate(roleInput) {
   const role = normalizeRole(roleInput);
-  if (role === "admin") return adminTemplate();
-  if (role === "manager") return managerTemplate();
-  if (role === "store_user") return storeUserTemplate();
-  if (role === "salesperson") return salespersonTemplate();
-  if (role === "disabled") return disabledTemplate();
-  return viewerTemplate();
+  const stored = getRoleCatalogTemplateIfAny(role);
+  if (stored) return cloneTemplate(stored);
+  return getBuiltinRoleTemplate(role);
 }
 
 export function mergePermissions(role, userPermissions = {}, fallback = {}) {
@@ -300,7 +106,7 @@ export function sanitizeUserWithPermissions(user = {}) {
     createdAt,
     updatedAt: String(user.updatedAt || createdAt),
     lastLoginAt: String(user.lastLoginAt || ""),
-    dingtalkUserId: String(user.dingtalkUserId || ""),
+    dingtalkUserId: String(user.dingtalkUserId || user.dingTalkUserId || user.dingUserId || "").trim(),
     dingtalkBoundAt: String(user.dingtalkBoundAt || ""),
   };
 }

@@ -66,13 +66,56 @@ function getSelectedValues(setLike) {
   return Array.isArray(setLike) ? setLike : [...setLike];
 }
 
+function normalizeDimensionLabel(s) {
+  try {
+    return String(s ?? "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, " ");
+  } catch (_e) {
+    return String(s ?? "").trim().replace(/\s+/g, " ");
+  }
+}
+
+/**
+ * 「空勾选」或未选 = 不按该维度收窄（与后端空数组语义一致）。
+ * 若已覆盖 canonical 筛选项几乎全部（容许列表与明细表偶有少量漂移），不传 IN，避免巨量 URL/SQL。
+ */
+function dimensionSelectionIsUniversal(selectedSetLike, canonicalCatalog) {
+  const sRaw = getSelectedValues(selectedSetLike)
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+  const cCanon = (Array.isArray(canonicalCatalog) ? canonicalCatalog : [])
+    .map(normalizeDimensionLabel)
+    .filter(Boolean);
+  if (!sRaw.length) return true;
+  if (!cCanon.length) return false;
+  const picked = new Set(sRaw.map(normalizeDimensionLabel));
+  const missing = cCanon.filter((x) => !picked.has(x));
+  if (missing.length === 0) return true;
+  const tiny = Math.max(2, Math.ceil(cCanon.length * 0.012));
+  return missing.length <= tiny;
+}
+
+function omitIfCoversFullCatalog(selectedSetLike, canonicalCatalog) {
+  const sRaw = getSelectedValues(selectedSetLike)
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+  const cCanon = (Array.isArray(canonicalCatalog) ? canonicalCatalog : [])
+    .map(normalizeDimensionLabel)
+    .filter(Boolean);
+  if (!cCanon.length) return sRaw;
+  if (dimensionSelectionIsUniversal(selectedSetLike, canonicalCatalog)) return [];
+  return sRaw;
+}
+
 function getV2Filters() {
   const appState = window.appState || {};
   return {
     ...getDateFilters(),
-    stores: getSelectedValues(appState.selectedStores),
-    salespeople: getSelectedValues(appState.selectedSalespeople),
-    products: getSelectedValues(appState.selectedProducts),
+    stores: omitIfCoversFullCatalog(appState.selectedStores, mergedStoreValues()),
+    salespeople: omitIfCoversFullCatalog(appState.selectedSalespeople, mergedSalespersonValues()),
+    products: omitIfCoversFullCatalog(appState.selectedProducts, mergedProductValues()),
   };
 }
 
@@ -215,10 +258,10 @@ function mergeV2IntoLegacyResults(payload) {
       ...(prev.kpis || {}),
       ...(payload.kpis || {}),
       filesLoaded: Number(payload.kpis?.filesLoaded ?? payload.fileCheck?.length ?? 0),
-      sleepingMembers: getSummaryMetricValue(payload.sleepSummary, "Sleeping Members", payload.sleepList?.length || 0),
+      sleepingMembers: getSummaryMetricValue(payload.sleepSummary, "沉睡会员人数", payload.sleepList?.length || 0),
       aClassSleepingMembers: getSummaryMetricValue(
         payload.sleepSummary,
-        "A-Class Members",
+        "A 类会员人数",
         (payload.sleepList || []).filter((x) => x.priority === "A").length || 0
       ),
     },
@@ -288,6 +331,8 @@ function renderFromResults(results, keepDropdownOpen = false) {
 async function fetchV2ResultBundle(datasetId) {
   const filters = getV2Filters();
   const sleepConfig = getSleepingConfig();
+  /** 非权限类接口失败时不要静音成全 0，否则看起来像「筛选把数据筛没了」。 */
+  const bridgeFetchWarnings = [];
   const storeForbiddenTargets = ["topStores", "rankingsStoreMini", "storeRankTable"];
   const salespersonForbiddenTargets = ["topSalespeople", "rankingsSalespersonMini", "salesRankTable"];
   const productForbiddenTargets = ["topProducts", "rankingsProductMini", "productRankTable"];
@@ -296,9 +341,21 @@ async function fetchV2ResultBundle(datasetId) {
   const sleepForbiddenTargets = ["sleepListTable", "sleepByStoreTable", "sleepSummary"];
   const qualityForbiddenTargets = ["fileCheckTable", "mappingTable"];
 
-  const [kpis, storeRank, salespersonRank, productRank, memberRankRaw, repurchaseDistribution, sleepingData, trends, quality] =
+  let kpis;
+  try {
+    kpis = await getDatasetKpis(datasetId, filters);
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      kpis = { totalSales: 0, totalOrders: 0 };
+    } else {
+      bridgeFetchWarnings.push(`核心指标加载失败（接口报错，不是数值真为 0）：${error?.message || error}`);
+      console.warn("[v2-bridge] KPI request failed:", error);
+      kpis = { totalSales: 0, totalOrders: 0 };
+    }
+  }
+
+  const [storeRank, salespersonRank, productRank, memberRankRaw, repurchaseDistribution, sleepingData, trends, quality] =
     await Promise.all([
-      optionalSection(() => getDatasetKpis(datasetId, filters), { totalSales: 0, totalOrders: 0 }),
       optionalSection(
         () => getStoreRankings(datasetId, { filters, ...v2State.pagination.storeRank }),
         [],
@@ -347,7 +404,6 @@ async function fetchV2ResultBundle(datasetId) {
       const name = String(row.salesperson || "").trim();
       return name && name !== "Unknown" && name !== "Unregistered";
     });
-  const salespersonMissing = mappedSalespersonRows.length === 0;
   const memberRank = mapMemberRows(memberRankRaw);
   const normalizedStoreRank = storeRank.map((row) => ({
     store: String(row.store || ""),
@@ -385,9 +441,10 @@ async function fetchV2ResultBundle(datasetId) {
     fileCheck: quality?.fileCheck || [],
     mappingRows: quality?.mappingRows || [],
     readyDatasetImportCount,
-    qualityMessages: salespersonMissing
-      ? normalizeQualityMessages([...(quality?.messages || []), "销售员字段未识别，无法生成销售员排行"])
-      : normalizeQualityMessages(quality?.messages || []),
+    // 仅使用后端的 data-quality 判定；勿在「排行结果为空」时强行追加「销售员字段未识别」（
+    // 空结果也可能来自接口失败、筛选过窄、或有效行均为 Unknown —— 那会误导读解）。
+    qualityMessages: normalizeQualityMessages(quality?.messages || []),
+    bridgeFetchWarnings,
   };
 }
 
@@ -396,6 +453,79 @@ function isDateOutOfBounds(dateValue, minDate, maxDate) {
   if (minDate && dateValue < minDate) return true;
   if (maxDate && dateValue > maxDate) return true;
   return false;
+}
+
+/** Unify full/half-width & compatible forms so Chinese search matches stored names. */
+function normalizeFilterSearchString(s) {
+  return String(s ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase();
+}
+
+function mergeDistinctSorted(baseList, extras) {
+  const set = new Set([...(baseList || []), ...(extras || [])]);
+  return [...set].sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+/** Keep names the user already ticked in the option list even if API lists momentarily omit them. */
+function unionValuesWithSelection(values, selectedSet) {
+  const base = Array.isArray(values) ? values : [];
+  const set = new Set(base);
+  if (selectedSet?.forEach) {
+    selectedSet.forEach((v) => {
+      const t = String(v ?? "").trim();
+      if (t) set.add(t);
+    });
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+function pickNamesFromRankRows(rows, key) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((r) => String(r?.[key] ?? "").trim())
+    .filter((name) => name && name !== "Unknown" && name !== "Unregistered");
+}
+
+/**
+ * Dropdown option lists must stay the **full dataset scope** (from filter options API
+ * or original rows). Do **not** merge `latestResults.*Rank` by default — those rows
+ * respect the current dashboard filters, so after selecting one salesperson the rank
+ * shrinks and search can no longer find others to add.
+ */
+function distinctCleanedField(field) {
+  const rows = window.appState?.results?.originalCleaned;
+  if (!Array.isArray(rows)) return [];
+  const out = new Set();
+  for (const r of rows) {
+    const v = String(r?.[field] ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (v && v !== "Unknown" && v !== "Unregistered") out.add(v);
+  }
+  return [...out].sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+function mergedStoreValues() {
+  const fromApi = v2State.filterOptions?.stores || [];
+  if (fromApi.length) return mergeDistinctSorted(fromApi, []);
+  const fromCleaned = distinctCleanedField("store");
+  if (fromCleaned.length) return fromCleaned;
+  return mergeDistinctSorted([], pickNamesFromRankRows(v2State.latestResults?.storeRank, "store"));
+}
+function mergedSalespersonValues() {
+  const fromApi = v2State.filterOptions?.salespeople || [];
+  if (fromApi.length) return mergeDistinctSorted(fromApi, []);
+  const fromCleaned = distinctCleanedField("salesperson");
+  if (fromCleaned.length) return fromCleaned;
+  return mergeDistinctSorted([], pickNamesFromRankRows(v2State.latestResults?.salespersonRank, "salesperson"));
+}
+function mergedProductValues() {
+  const fromApi = v2State.filterOptions?.products || [];
+  if (fromApi.length) return mergeDistinctSorted(fromApi, []);
+  const fromCleaned = distinctCleanedField("product");
+  if (fromCleaned.length) return fromCleaned;
+  return mergeDistinctSorted([], pickNamesFromRankRows(v2State.latestResults?.productRank, "product"));
 }
 
 /** Duck/API may return timestamps; `<input type="date">` only accepts YYYY-MM-DD. */
@@ -450,8 +580,11 @@ function renderCheckboxOptions({
   onChange,
 }) {
   if (!wrap) return;
-  const search = String(searchValue || "").trim().toLowerCase();
-  const filtered = values.filter((v) => selectedSet.has(v) || !search || v.toLowerCase().includes(search));
+  const q = normalizeFilterSearchString(searchValue);
+  const filtered = values.filter(
+    (v) => selectedSet.has(v) || !q || normalizeFilterSearchString(v).includes(q)
+  );
+  const searchScopeAll = q ? values.filter((v) => normalizeFilterSearchString(v).includes(q)) : values;
   const optionsHtml = filtered
     .map((value) => {
       const checked = selectedSet.has(value);
@@ -467,11 +600,27 @@ function renderCheckboxOptions({
     }`
   );
   const allOpt = document.getElementById(allId);
+  function syncAllCheckbox() {
+    if (!allOpt) return;
+    allOpt.checked = searchScopeAll.length > 0 && searchScopeAll.every((x) => selectedSet.has(x));
+  }
+  function syncRowCheckboxes() {
+    wrap.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      if (cb === allOpt) return;
+      const value = String(cb.value || "");
+      cb.checked = selectedSet.has(value);
+    });
+    syncAllCheckbox();
+  }
   if (allOpt) {
-    allOpt.checked = values.length > 0 && values.every((x) => selectedSet.has(x));
+    syncAllCheckbox();
     allOpt.addEventListener("change", () => {
-      if (allOpt.checked) values.forEach((v) => selectedSet.add(v));
-      else selectedSet.clear();
+      if (allOpt.checked) {
+        searchScopeAll.forEach((v) => selectedSet.add(v));
+      } else {
+        searchScopeAll.forEach((v) => selectedSet.delete(v));
+      }
+      syncRowCheckboxes();
       onChange();
     });
   }
@@ -481,6 +630,7 @@ function renderCheckboxOptions({
       const value = String(cb.value || "");
       if (cb.checked) selectedSet.add(value);
       else selectedSet.delete(value);
+      syncAllCheckbox();
       onChange();
     });
   });
@@ -496,7 +646,7 @@ function wireV2FilterMenus() {
   const redraw = () => {
     renderCheckboxOptions({
       wrap: document.getElementById("dashboardStoreOptions"),
-      values: v2State.filterOptions.stores,
+      values: unionValuesWithSelection(mergedStoreValues(), appState.selectedStores),
       selectedSet: appState.selectedStores,
       allId: "dashboardStoreAllOptionV2",
       allLabel: "全部门店",
@@ -509,7 +659,7 @@ function wireV2FilterMenus() {
     });
     renderCheckboxOptions({
       wrap: document.getElementById("dashboardSalespersonOptions"),
-      values: v2State.filterOptions.salespeople,
+      values: unionValuesWithSelection(mergedSalespersonValues(), appState.selectedSalespeople),
       selectedSet: appState.selectedSalespeople,
       allId: "dashboardSalespeopleAllOptionV2",
       allLabel: "全部销售员",
@@ -522,7 +672,7 @@ function wireV2FilterMenus() {
     });
     renderCheckboxOptions({
       wrap: document.getElementById("dashboardProductOptions"),
-      values: v2State.filterOptions.products,
+      values: unionValuesWithSelection(mergedProductValues(), appState.selectedProducts),
       selectedSet: appState.selectedProducts,
       allId: "dashboardProductAllOptionV2",
       allLabel: "全部商品",
@@ -533,6 +683,16 @@ function wireV2FilterMenus() {
         await refreshV2Results(true);
       },
     });
+    /** canonical* 与省略 IN 列表、触发条「全部*」文案共用同一覆盖判定 */
+    window.__v2CatalogSnapshot = {
+      canonicalStores: mergedStoreValues(),
+      canonicalSalespeople: mergedSalespersonValues(),
+      canonicalProducts: mergedProductValues(),
+    };
+    window.__v2DimensionSelectionIsUniversal = dimensionSelectionIsUniversal;
+    window.updateDashboardStoreSelectedText?.();
+    window.updateDashboardSalespersonSelectedText?.();
+    window.updateDashboardProductSelectedText?.();
   };
 
   const safeRedraw = (event) => {
@@ -545,6 +705,8 @@ function wireV2FilterMenus() {
   storeSearch?.addEventListener("input", safeRedraw, true);
   salespersonSearch?.addEventListener("input", safeRedraw, true);
   productSearch?.addEventListener("input", safeRedraw, true);
+
+  window.__refreshV2FilterMenus = redraw;
 }
 
 async function refreshV2Results(keepDropdownOpen = false, options = {}) {
@@ -565,10 +727,19 @@ async function refreshV2Results(keepDropdownOpen = false, options = {}) {
     const merged = mergeV2IntoLegacyResults(payload);
     setLatestResults(merged);
     renderFromResults(merged, keepDropdownOpen);
+    if (typeof window.__refreshV2FilterMenus === "function") {
+      window.__refreshV2FilterMenus();
+    }
     const messageAddon = (payload.qualityMessages || []).length
       ? `（${payload.qualityMessages.join("；")}）`
       : "";
-    setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。${messageAddon}`);
+    const loadWarn = Array.isArray(payload.bridgeFetchWarnings) ? payload.bridgeFetchWarnings : [];
+    if (loadWarn.length) {
+      window.showToast?.(loadWarn.join(" "), "error");
+      setStatus(`<span class="warn">${loadWarn.join("；")}</span>${messageAddon}`, true);
+    } else {
+      setStatus(`<span class="ok">完成。</span>v2 分析结果已刷新。${messageAddon}`);
+    }
   } catch (error) {
     forbiddenRenderIds.clear();
     console.error("[v2-bridge] refresh failed:", error);
@@ -689,6 +860,16 @@ async function loadLatestDatasetOnBoot() {
 export function initV2Bridge() {
   const currentUser = window.__CURRENT_USER || null;
   if (!currentUser) return;
+  const appState = window.appState;
+  if (appState) {
+    appState.selectedStores?.clear?.();
+    appState.selectedSalespeople?.clear?.();
+    appState.selectedProducts?.clear?.();
+  }
+  window.__v2DimensionSelectionIsUniversal = dimensionSelectionIsUniversal;
+  window.updateDashboardStoreSelectedText?.();
+  window.updateDashboardSalespersonSelectedText?.();
+  window.updateDashboardProductSelectedText?.();
   document.getElementById("resultArea")?.classList.remove("hidden");
   const analyzeBtn = document.getElementById("analyzeBtn");
   wireV2FilterRefreshHooks();

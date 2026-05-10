@@ -1,6 +1,31 @@
 import { setHtml } from "../dom/safe-dom.js";
 
+function ensureMobileLinkForDashboardToolbar() {
+  if (document.getElementById("authMobileDashBtn")) return;
+  const host = document.querySelector(".toolbar-meta-right");
+  if (!host) return;
+  const mobileLink = document.createElement("a");
+  mobileLink.id = "authMobileDashBtn";
+  mobileLink.href = "/mobile";
+  mobileLink.className = "toolbar-action-btn";
+  mobileLink.style.textDecoration = "none";
+  mobileLink.style.display = "none";
+  mobileLink.textContent = "手机看板";
+  host.insertBefore(mobileLink, host.firstChild);
+  function syncMobileEntryVisibility() {
+    const narrow = window.matchMedia("(max-width: 768px)").matches;
+    const ua = /Mobile|Android|iPhone|iPad|DingTalk/i.test(navigator.userAgent || "");
+    mobileLink.style.display = narrow || ua ? "inline-flex" : "none";
+  }
+  syncMobileEntryVisibility();
+  window.addEventListener("resize", syncMobileEntryVisibility);
+}
+
 function ensureAuthActions() {
+  if (document.getElementById("dashboardAdminBtn")) {
+    ensureMobileLinkForDashboardToolbar();
+    return;
+  }
   if (document.getElementById("authLogoutBtn")) return;
   const top = document.querySelector(".wrap h1");
   if (!top) return;
@@ -94,12 +119,25 @@ function applyRoleUi(role, user) {
   const downloadBtn = document.getElementById("downloadSleepXlsxBtn");
   const analyzeWrap = analyzeBtn?.closest(".analyze-wrap");
   const controlButtons = document.querySelector(".button-group");
-  const adminBtn = document.getElementById("authAdminBtn");
+  const adminBtn = document.getElementById("authAdminBtn") || document.getElementById("dashboardAdminBtn");
   const userLabel = document.getElementById("authUserLabel");
+  const dashUserVal = document.getElementById("dashboardCurrentUserVal");
   if (userLabel) {
     userLabel.textContent = `${user.displayName || user.username}（${roleMap[role] || role}）`;
   }
-  if (adminBtn) adminBtn.style.display = canAccessAdmin ? "inline-flex" : "none";
+  if (dashUserVal) {
+    while (dashUserVal.firstChild) dashUserVal.removeChild(dashUserVal.firstChild);
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "toolbar-user-value";
+    nameSpan.textContent = user.displayName || user.username || "--";
+    dashUserVal.appendChild(nameSpan);
+    const roleSpan = document.createElement("span");
+    roleSpan.className = "toolbar-sub-cn";
+    roleSpan.textContent = `（${roleMap[role] || role}）`;
+    dashUserVal.appendChild(roleSpan);
+  }
+  /* 显示/隐藏交给 CSS（.toolbar-action-btn），避免仅「管理后台」被设成 inline-flex 与「退出登录」不齐 */
+  if (adminBtn) adminBtn.style.display = canAccessAdmin ? "" : "none";
 
   // Import/analyze/download must always follow backend permissions, not role name only.
   if (uploadBox) uploadBox.style.display = canImportExcel ? "" : "none";

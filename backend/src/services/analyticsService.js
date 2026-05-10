@@ -788,13 +788,13 @@ export class AnalyticsService {
     );
     const summary = summaryRows[0] || {};
     const sleepSummary = [
-      { metric: "Analysis Cutoff Date", value: resolvedAnalysisDate },
-      { metric: "Sleeping Members", value: Number(summary.sleeping_members || 0) },
-      { metric: "Sleeping Members Historical Spend", value: Number(summary.sleeping_historical_spend || 0) },
-      { metric: "A-Class Members", value: Number(summary.a_class_members || 0) },
-      { metric: "A-Class Historical Spend", value: Number(summary.a_class_historical_spend || 0) },
-      { metric: "B-Class Members", value: Number(summary.b_class_members || 0) },
-      { metric: "C-Class Members", value: Number(summary.c_class_members || 0) },
+      { metric: "分析截止日期", value: resolvedAnalysisDate },
+      { metric: "沉睡会员人数", value: Number(summary.sleeping_members || 0) },
+      { metric: "沉睡会员历史消费额", value: Number(summary.sleeping_historical_spend || 0) },
+      { metric: "A 类会员人数", value: Number(summary.a_class_members || 0) },
+      { metric: "A 类历史消费额", value: Number(summary.a_class_historical_spend || 0) },
+      { metric: "B 类会员人数", value: Number(summary.b_class_members || 0) },
+      { metric: "C 类会员人数", value: Number(summary.c_class_members || 0) },
     ];
 
     return {

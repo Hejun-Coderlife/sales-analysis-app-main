@@ -214,7 +214,7 @@
     @media (prefers-reduced-motion: reduce){
       .galaxy, .orbit, .nebula-1, .nebula-2, .nebula-3, .shooting-star{animation:none !important;}
     }
-    .wrap{max-width:1400px;margin:24px auto;padding:0 16px}
+    .wrap{max-width:1400px;margin:24px auto;padding:0 16px;position:relative;z-index:10}
     .app-footer{max-width:1400px;margin:32px auto 0;padding:0 16px 28px;border-top:1px solid rgba(255,255,255,.14);background:transparent}
     .app-footer-inner{display:flex;justify-content:flex-end;align-items:center;min-height:48px;padding-top:14px}
     .app-footer-meta{font-size:13px;color:#94a3b8;font-weight:400}
@@ -239,37 +239,62 @@
     .notif-time{color:rgba(148,163,184,.9);font-size:11px;margin-top:6px}
     .dashboard-lower-left{display:contents}
     .card.control-panel{
-      padding:8px 0 10px;
+      padding:4px 0 8px;
       overflow:visible;
+      width:100%;
+      max-width:100%;
+      box-sizing:border-box;
       background:transparent !important;
       border:none !important;
       box-shadow:none !important;
       border-radius:0;
       backdrop-filter:none;
     }
-.control-top{display:grid;gap:10px;align-items:start;overflow:visible}
+.control-top{display:grid;gap:6px;align-items:start;overflow:visible;width:100%;max-width:100%}
 .toolbar-meta{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .toolbar-meta-left h1{margin:0;font-size:24px}
-.toolbar-subline{margin-top:4px;color:#667085;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.toolbar-user{display:inline-flex;align-items:center;font-weight:600;color:#111827}
-.toolbar-meta-right{display:flex;align-items:center;gap:8px}
-.toolbar-action-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12)}
+.toolbar-subline{margin-top:4px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 中文标签与地球主标题同色；英文/数字用略亮一层保证深色星空上的可读性 */
+.toolbar-user{display:inline-flex;align-items:center;gap:0;font-weight:600}
+.toolbar-sub-cn{color:rgba(221, 214, 254, 0.78)}
+.toolbar-user-value{color:rgba(237, 233, 254, 0.92)}
+.toolbar-meta-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 与全局 button 样式解耦：统一 inline-flex + 对称 padding，避免「管理后台」仅被设为 inline-flex 时与「退出登录」错行 */
+.toolbar-action-btn{
+  box-sizing:border-box;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:38px;
+  padding:8px 14px;
+  border-radius:10px;
+  border:1px solid #7690f3;
+  background:#fff;
+  color:#334155;
+  font-weight:600;
+  font-size:14px;
+  line-height:1.2;
+  box-shadow:0 0 12px rgba(105,105,159,.12);
+}
 .toolbar-filters{
   display:grid;
-  grid-template-columns:minmax(170px,.8fr) repeat(3,minmax(180px,1fr)) minmax(96px,auto);
+  grid-template-columns:minmax(220px,1fr) repeat(3,minmax(160px,1fr)) minmax(96px,auto);
   gap:10px;
   align-items:end;
   overflow:visible;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
   background:rgba(255,255,255,.92);
   border:1px solid rgba(118,144,243,.22);
   box-shadow:0 8px 24px rgba(2,6,23,.14), 0 0 0 1px rgba(255,255,255,.42) inset;
   border-radius:12px;
-  backdrop-filter: blur(3px);
+  /* 不可用 backdrop-filter：会让子级 position:fixed 的浮层改相对本容器定位，而 placeDropdownMenu 用的是视口坐标，四个筛选下拉会整体错位 */
   padding:10px 10px 8px;
 }
 .toolbar-filter-col{display:flex;flex-direction:column;gap:6px;min-width:0}
 .toolbar-filter-col label{font-size:12px;color:#334155;margin:0}
-.toolbar-download-btn{min-height:36px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#111827;box-shadow:0 0 12px rgba(105,105,159,.12);font-weight:600}
+.toolbar-download-btn{min-height:38px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#334155;box-shadow:0 0 12px rgba(105,105,159,.12);font-weight:600}
 .dashboard-lower #topSalespeopleCard,
 .dashboard-lower #topProductsCard{
   display:block !important;
@@ -338,7 +363,7 @@ input[type="date"], select.control-select{
 .filter-dropdown{position:relative}
 .filter-trigger{
   width:100%;
-  min-height:36px;
+  min-height:38px;
   border:1px solid #7690f3;
   border-radius:10px;
   padding:7px 10px;
@@ -367,12 +392,48 @@ input[type="date"], select.control-select{
   box-shadow:0 10px 22px rgba(17,24,39,.14), 0 0 0 1px rgba(254,112,246,.12);
   backdrop-filter:none;
 }
-.range-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.range-apply{display:flex;justify-content:flex-end;margin-top:10px}
+.range-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end}
+.range-grid > div{min-width:0}
+.range-grid input[type="date"]{width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:0}
+#dashboardDateMenu.filter-menu{
+  box-sizing:border-box;
+  padding:10px 12px 10px;
+  border:1px solid rgba(118,144,243,.35);
+  box-shadow:0 8px 20px rgba(17,24,39,.12);
+}
+.range-apply{display:flex;justify-content:stretch;margin-top:10px;width:100%}
+/* 与筛选条「下载」等按钮同源：白底 + 蓝紫描边，避免沿用全局绿色/深色渐变按钮 */
+#applyDateRangeBtn{
+  width:100%;
+  min-height:38px;
+  padding:8px 14px;
+  border-radius:10px;
+  border:1px solid #7690f3;
+  background:#ffffff;
+  color:#334155;
+  font-weight:600;
+  font-size:14px;
+  cursor:pointer;
+  box-shadow:0 0 12px rgba(105,105,159,.12);
+}
+#applyDateRangeBtn:hover{
+  filter:brightness(1.02);
+  box-shadow:0 4px 16px rgba(118,144,243,.22);
+}
+#applyDateRangeBtn:focus-visible{
+  outline:2px solid #7690f3;
+  outline-offset:2px;
+}
+#applyDateRangeBtn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  filter:none;
+}
 .range-trigger-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-label{font-size:12px;color:#55627a;margin-bottom:4px}
 .overlay-light{
-  position:fixed;inset:0;background:rgba(255,255,255,.04);backdrop-filter:none;z-index:70;
+  position:fixed;inset:0;background:rgba(255,255,255,.04);backdrop-filter:none;z-index:1;
+  pointer-events:none;
 }
 
 .store-options{
@@ -419,13 +480,13 @@ input[type="date"], select.control-select{
     #memberRankTable table{min-width:1600px}
     .card{background:white;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0, 0, 0, 0.2), 0 0 40px rgba(120, 80, 255, 0.15)}
     .kpi{padding:14px 16px}
-    .kpi .label{font-size:13px;color:#111827}
+    .kpi .label{font-size:13px;color:#64748b;font-weight:600;letter-spacing:0.02em}
     .card label{color:#111827}
     input::placeholder{color:#6b7280;opacity:.95}
     #status{color:#111827}
     #status .ok{color:#111827}
 
-    .kpi .value{font-size:28px;font-weight:700;margin-top:6px}
+    .kpi .value{font-size:27px;font-weight:700;margin-top:8px;color:#111827;letter-spacing:-0.02em;line-height:1.2}
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
     .col{display:flex;flex-direction:column;gap:6px}
     label{font-size:13px;color:#111827}
@@ -440,6 +501,21 @@ input[type="date"], select.control-select{
     }
     input[type="file"]{padding:8px 0}
     button{border:1px solid #007a31;background:linear-gradient(180deg, #00963d, #007a31);color:#fff;padding:11px 16px;border-radius:12px;cursor:pointer;font-weight:600;box-shadow:0 0 18px rgba(105,105,159,.34)}
+    /* 看板顶栏白按钮：必须压过上一段 button 规则（同权重时靠后生效） */
+    button.toolbar-action-btn{
+      border:1px solid #7690f3;
+      background:#fff;
+      color:#334155;
+      padding:8px 14px;
+      border-radius:10px;
+      font-weight:600;
+      box-shadow:0 0 12px rgba(105,105,159,.12);
+    }
+    button.toolbar-action-btn:hover{
+      transform:translateY(-1px);
+      filter:brightness(1.02);
+      box-shadow:0 4px 14px rgba(118,144,243,.2);
+    }
     button,.filter-trigger{transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
     button:hover,.filter-trigger:hover{transform:translateY(-1px);filter:brightness(1.08);box-shadow:0 6px 18px rgba(0,0,0,.18),0 0 18px rgba(105,105,159,.35)}
     button:active,.filter-trigger:active{transform:translateY(0);filter:brightness(.96)}
@@ -647,8 +723,12 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
         <div class="toolbar-meta-left">
           <h1>赫眉经营助手</h1>
           <div class="toolbar-subline">
-            <span id="dashboardCurrentUser" class="toolbar-user">当前用户：--</span>
-            <span>经营数据由系统自动导入并展示</span>
+            <span class="toolbar-user">
+              <span class="toolbar-sub-cn">当前用户：</span><span id="dashboardCurrentUserVal"><span class="toolbar-user-value">--</span></span>
+            </span>
+            <span class="toolbar-user">
+              <span class="toolbar-sub-cn">数据更新截止日期：</span><span id="dashboardDataCutoffDate" class="toolbar-user-value">—</span>
+            </span>
           </div>
         </div>
         <div class="toolbar-meta-right">
@@ -677,7 +757,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
                 </div>
               </div>
               <div class="range-apply">
-                <button type="button" class="light btn" id="applyDateRangeBtn" style="min-height:36px;padding:7px 12px">应用</button>
+                <button type="button" id="applyDateRangeBtn">应用</button>
               </div>
             </div>
           </div>
@@ -766,7 +846,6 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
         </div>
       </div>
     </div>
-  </div>
 
   <div id="resultArea" class="hidden">
     <div class="grid grid-4" style="margin-top:16px">
@@ -929,8 +1008,8 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
     <div id="earth-canvas"></div>
   </div>
   <div class="earth-caption">
-    全球业务网络
-    <span class="earth-hint">拖动旋转 · 滚轮缩放</span>
+    GLOBAL BUSINESS NETWORK
+    <span class="earth-hint">DRAG TO ROTATE · SCROLL TO ZOOM</span>
   </div>
 </section>
 
@@ -1272,6 +1351,14 @@ function colLetterToIndex(col){
   return value - 1;
 }
 function normalizeText(v){ return v == null ? '' : String(v).trim(); }
+/** Match filter search to labels across full/half-width Unicode (e.g. 人名检索). */
+function normalizeFilterSearchKey(s){
+  try {
+    return String(s == null ? '' : s).normalize('NFKC').trim().toLowerCase();
+  } catch (_e) {
+    return String(s || '').trim().toLowerCase();
+  }
+}
 function toNumber(v){
   if (v == null || v === '') return NaN;
   if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
@@ -1537,51 +1624,85 @@ function analyze(cleaned, cfg){
     ]
   };
 }
+/** 表头中文：页面表格与「下载 Excel」表头共用，避免中英文混排。 */
+const COLUMN_HEADER_LABELS = {
+  store: '门店',
+  salesperson: '销售员',
+  product: '商品',
+  performance: '业绩',
+  sales_amount: '销售额',
+  sales_qty: '销量',
+  sales_orders: '订单数',
+  total_sales: '销售额',
+  order_count: '订单数',
+  avg_ticket: '客单价',
+  member_key: '会员标识',
+  member_name: '会员姓名',
+  total_spend: '累计消费',
+  repurchase_times: '复购次数',
+  last_purchase_date: '最近消费日期',
+  latest_store: '最近门店',
+  latest_salesperson: '最近销售员',
+  phone: '手机号',
+  sleep_days: '沉睡天数',
+  priority: '优先级',
+  risk_level: '风险等级',
+  last_store: '门店',
+  last_salesperson: '最近销售员',
+  recent_product: '最近购买商品',
+  favorite_product: '偏好商品',
+  contact_channel: '触达渠道',
+  suggested_script: '建议话术',
+  sleeping_members: '沉睡会员数',
+  historical_spend: '历史消费额',
+  metric: '指标',
+  value: '数值',
+  source_file: '来源文件',
+  included_rows: '纳入行数',
+  q_sum: '金额合计',
+  negative_rows: '负值行数',
+  negative_sum: '负值金额',
+  day: '日期',
+  year_month: '年月',
+  store_count: '门店数',
+  order_bucket: '订单段',
+  member_count: '会员人数',
+  weekStart: '周起始日',
+  target_field: '目标字段',
+  source_field: '来源列',
+};
+
+const EXCEL_ORDER_BUCKET_LABELS = {
+  '6+ orders': '6 单及以上',
+  '4-5 orders': '4～5 单',
+  '3 orders': '3 单',
+  '2 orders': '2 单',
+  '1 order': '1 单',
+};
+
+const EXCEL_RISK_LEVEL_LABELS = {
+  'Deep Sleep': '深度沉睡',
+  'High Risk': '高风险',
+  Warning: '提醒',
+};
+
+function translateExcelCellValue(columnKey, value) {
+  if (value instanceof Date) return ymd(value);
+  if (value == null || value === '') return value;
+  if (columnKey === 'order_bucket') return EXCEL_ORDER_BUCKET_LABELS[value] || value;
+  if (columnKey === 'risk_level') return EXCEL_RISK_LEVEL_LABELS[value] || value;
+  if (value === 'Unknown') return '未知';
+  if (value === 'Unregistered') return '未登记';
+  return value;
+}
+
 function renderTable(containerId, rows, formatters = {}, addIndex = false){
   const el = document.getElementById(containerId);
   if (!el) return;
   if (!rows || !rows.length){ setHtml(el, '<p class="small" style="padding:12px">暂无数据。</p>'); return; }
   const cols = Object.keys(rows[0]);
-  const headerLabelMap = {
-    store: '门店',
-    salesperson: '销售员',
-    product: '商品',
-    performance: '业绩',
-    sales_amount: '销售额',
-    sales_qty: '销量',
-    sales_orders: '订单数',
-    total_sales: '销售额',
-    order_count: '订单数',
-    avg_ticket: '客单价',
-    member_key: '会员标识',
-    member_name: '会员姓名',
-    total_spend: '累计消费',
-    repurchase_times: '复购次数',
-    last_purchase_date: '最近消费日期',
-    latest_store: '最近门店',
-    latest_salesperson: '最近销售员',
-    phone: '手机号',
-    sleep_days: '沉睡天数',
-    priority: '优先级',
-    risk_level: '风险等级',
-    last_store: '最近门店',
-    last_salesperson: '最近销售员',
-    recent_product: '最近购买商品',
-    favorite_product: '偏好商品',
-    contact_channel: '触达渠道',
-    suggested_script: '建议话术',
-    sleeping_members: '沉睡会员数',
-    historical_spend: '历史消费额',
-    metric: '指标',
-    value: '数值',
-    source_file: '来源文件',
-    included_rows: '纳入行数',
-    q_sum: '金额合计',
-    negative_rows: '负值行数',
-    negative_sum: '负值金额',
-  };
   let headerCells = addIndex ? '<th style="width:70px">序号</th>' : '';
-  headerCells += cols.map(c => '<th>' + (headerLabelMap[c] || c) + '</th>').join('');
+  headerCells += cols.map(c => '<th>' + (COLUMN_HEADER_LABELS[c] || c) + '</th>').join('');
   let html = '<table><thead><tr>' + headerCells + '</tr></thead><tbody>';
   rows.forEach((row, idx) => {
     let rowHtml = addIndex ? '<td>' + (idx + 1) + '</td>' : '';
@@ -1726,6 +1847,11 @@ const debouncedPopulateDashboardStoreOptions = debounce(populateDashboardStoreOp
 const debouncedPopulateDashboardSalespersonOptions = debounce(populateDashboardSalespersonOptions, 280);
 const debouncedPopulateDashboardProductOptions = debounce(populateDashboardProductOptions, 280);
 
+/** 后端 V2 数据集已接管时，筛选项由 v2-bridge 的 renderCheckboxOptions 渲染；勿再跑 legacy populate，否则会拿「当前筛选下的排行」当候选并覆盖 DOM，导致已选一人后搜不出第二人。 */
+function isV2DashboardActive(){
+  return !!window.__v2DatasetId;
+}
+
 function selectedDashboardSalespeople(){
   return [...appState.selectedSalespeople];
 }
@@ -1762,12 +1888,25 @@ function populateSleepingSalespersonOptions(){
   updateSleepingSalespersonSelectedText();
 }
 
+/** V2：与 v2-bridge 中 dimensionSelectionIsUniversal 一致（含 NFKC + 少量缺项容差） */
+function v2SelectionShowsAsUniversal(selectedArr, canonicalKey){
+  if (!window.__v2DatasetId) return false;
+  const canon = window.__v2CatalogSnapshot?.[canonicalKey];
+  if (typeof window.__v2DimensionSelectionIsUniversal === "function") {
+    return window.__v2DimensionSelectionIsUniversal(selectedArr, canon);
+  }
+  return false;
+}
 function updateDashboardSalespersonSelectedText(){
   const el = document.getElementById('dashboardSalespersonTriggerText');
   if (!el) return;
   const selected = selectedDashboardSalespeople();
   if (!selected.length) { el.textContent = '全部销售员'; return; }
-  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' salespeople';
+  if (v2SelectionShowsAsUniversal(selected, 'canonicalSalespeople')) {
+    el.textContent = '全部销售员';
+    return;
+  }
+  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 位销售员';
 }
 function selectedDashboardProducts(){
   return [...appState.selectedProducts];
@@ -1777,12 +1916,18 @@ function updateDashboardProductSelectedText(){
   if (!el) return;
   const selected = selectedDashboardProducts();
   if (!selected.length) { el.textContent = '全部商品'; return; }
-  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' products';
+  if (v2SelectionShowsAsUniversal(selected, 'canonicalProducts')) {
+    el.textContent = '全部商品';
+    return;
+  }
+  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 项商品';
 }
 function populateDashboardProductOptions(){
+  if (isV2DashboardActive()) return;
   const wrap = document.getElementById('dashboardProductOptions');
   if (!wrap || !appState.results?.originalCleaned) return;
-  const search = (document.getElementById('dashboardProductSearch')?.value || '').trim().toLowerCase();
+  const searchRaw = (document.getElementById('dashboardProductSearch')?.value || '').trim();
+  const q = normalizeFilterSearchKey(searchRaw);
   const prev = new Set(appState.selectedProducts);
   const selectedStores = selectedDashboardStores();
   const selectedSalespeople = selectedDashboardSalespeople();
@@ -1790,13 +1935,15 @@ function populateDashboardProductOptions(){
     (!selectedStores.length || selectedStores.includes(normalizeText(r.store))) &&
     (!selectedSalespeople.length || selectedSalespeople.includes(normalizeText(r.salesperson)))
   );
-  const products = [...new Set(sourceRows.map(r => normalizeText(r.product)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const fromRows = [...new Set(sourceRows.map(r => normalizeText(r.product)).filter(Boolean))];
+  const fromRank = (appState.results?.results?.productRank || []).map(r => normalizeText(r.product)).filter(Boolean);
+  const products = [...new Set([...fromRows, ...fromRank])].sort((a,b)=>a.localeCompare(b,'zh-CN'));
   const allowed = new Set(products);
   appState.selectedProducts = new Set([...prev].filter(p => allowed.has(p)));
-  const filtered = products.filter(p => appState.selectedProducts.has(p) || !search || p.toLowerCase().includes(search));
+  const filtered = products.filter(p => appState.selectedProducts.has(p) || !q || normalizeFilterSearchKey(p).includes(q));
   // With search text, "All products" selects/deselects only rows matching that search.
-  const searchScopeAll = search
-    ? products.filter(p => p.toLowerCase().includes(search))
+  const searchScopeAll = q
+    ? products.filter(p => normalizeFilterSearchKey(p).includes(q))
     : products;
   const optionsHtml = filtered.map(prod => {
     const checked = appState.selectedProducts.has(prod);
@@ -1853,16 +2000,26 @@ function populateDashboardProductOptions(){
   updateDashboardProductSelectedText();
 }
 function populateDashboardSalespersonOptions(){
+  if (isV2DashboardActive()) return;
   const wrap = document.getElementById('dashboardSalespersonOptions');
   if (!wrap || !appState.results?.originalCleaned) return;
-  const search = (document.getElementById('dashboardSalespersonSearch')?.value || '').trim().toLowerCase();
+  const searchRaw = (document.getElementById('dashboardSalespersonSearch')?.value || '').trim();
+  const q = normalizeFilterSearchKey(searchRaw);
   const prev = new Set(appState.selectedSalespeople);
   const selectedStores = selectedDashboardStores();
   const sourceRows = (appState.results.originalCleaned || []).filter(r => !selectedStores.length || selectedStores.includes(normalizeText(r.store)));
-  const names = [...new Set(sourceRows.map(r => normalizeText(r.salesperson)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const fromRows = [...new Set(sourceRows.map(r => normalizeText(r.salesperson)).filter(Boolean))];
+  const fromRank = (appState.results?.results?.salespersonRank || []).map(r => normalizeText(r.salesperson)).filter(Boolean);
+  let names = [...new Set(fromRows)].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+  if (!names.length) {
+    names = [...new Set(fromRank)].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+  }
   const allowed = new Set(names);
   appState.selectedSalespeople = new Set([...prev].filter(name => allowed.has(name)));
-  const filtered = names.filter(s => appState.selectedSalespeople.has(s) || !search || s.toLowerCase().includes(search));
+  const filtered = names.filter(s => appState.selectedSalespeople.has(s) || !q || normalizeFilterSearchKey(s).includes(q));
+  const searchScopeAll = q
+    ? names.filter(s => normalizeFilterSearchKey(s).includes(q))
+    : names;
   const optionsHtml = filtered.map(name => {
     const checked = appState.selectedSalespeople.has(name);
     return '<label class="store-option"><input type="checkbox" value="' + name.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + name + '</span></label>';
@@ -1870,17 +2027,27 @@ function populateDashboardSalespersonOptions(){
   const salespersonEmptyMessage = names.length ? '暂无匹配销售员' : '当前账号暂无可选销售员';
   setHtml(wrap, '<label class="store-option"><input type="checkbox" id="dashboardSalespeopleAllOption"> <span>全部销售员</span></label>' + (optionsHtml || ('<div class="small">' + salespersonEmptyMessage + '</div>')));
   const allOpt = document.getElementById('dashboardSalespeopleAllOption');
+  function syncSalespersonAllCheckbox(){
+    if (!allOpt) return;
+    allOpt.checked = searchScopeAll.length > 0 && searchScopeAll.every(s => appState.selectedSalespeople.has(s));
+  }
+  function syncSalespersonRowCheckboxes(){
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(x => {
+      if (x === allOpt) return;
+      const value = normalizeText(x.value);
+      x.checked = appState.selectedSalespeople.has(value);
+    });
+    syncSalespersonAllCheckbox();
+  }
   if (allOpt) {
-    allOpt.checked = appState.selectedSalespeople.size === names.length && names.length > 0;
+    syncSalespersonAllCheckbox();
     allOpt.addEventListener('change', () => {
       if (allOpt.checked) {
-        appState.selectedSalespeople = new Set(names);
-        wrap.querySelectorAll('input[type="checkbox"]').forEach(x => { if (x !== allOpt) x.checked = true; });
+        searchScopeAll.forEach(s => appState.selectedSalespeople.add(s));
       } else {
-        appState.selectedSalespeople.clear();
-        wrap.querySelectorAll('input[type="checkbox"]').forEach(x => { if (x !== allOpt) x.checked = false; });
-        updateDashboardSalespersonSelectedText();
+        searchScopeAll.forEach(s => appState.selectedSalespeople.delete(s));
       }
+      syncSalespersonRowCheckboxes();
       updateDashboardSalespersonSelectedText();
       onGlobalFiltersChanged(true);
     });
@@ -1891,7 +2058,7 @@ function populateDashboardSalespersonOptions(){
       const value = normalizeText(cb.value);
       if (cb.checked) appState.selectedSalespeople.add(value);
       else appState.selectedSalespeople.delete(value);
-      if (allOpt) allOpt.checked = appState.selectedSalespeople.size === names.length && names.length > 0;
+      syncSalespersonAllCheckbox();
       updateDashboardSalespersonSelectedText();
       onGlobalFiltersChanged(true);
     });
@@ -1908,16 +2075,24 @@ function updateDashboardStoreSelectedText(){
   if (!el) return;
   const selected = selectedDashboardStores();
   if (!selected.length) { el.textContent = '全部门店'; return; }
-  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' stores';
+  if (v2SelectionShowsAsUniversal(selected, 'canonicalStores')) {
+    el.textContent = '全部门店';
+    return;
+  }
+  el.textContent = selected.length <= 2 ? selected.join(', ') : selected.length + ' 家门店';
 }
 function populateDashboardStoreOptions(){
+  if (isV2DashboardActive()) return;
   const wrap = document.getElementById('dashboardStoreOptions');
   if (!wrap || !appState.results?.originalCleaned) return;
-  const search = (document.getElementById('dashboardStoreSearch')?.value || '').trim().toLowerCase();
+  const searchRaw = (document.getElementById('dashboardStoreSearch')?.value || '').trim();
+  const q = normalizeFilterSearchKey(searchRaw);
   const prev = new Set(appState.selectedStores);
-  const stores = [...new Set((appState.results.originalCleaned || []).map(r => normalizeText(r.store)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const fromRows = [...new Set((appState.results.originalCleaned || []).map(r => normalizeText(r.store)).filter(Boolean))];
+  const fromRank = (appState.results?.results?.storeRank || []).map(r => normalizeText(r.store)).filter(Boolean);
+  const stores = [...new Set([...fromRows, ...fromRank])].sort((a,b)=>a.localeCompare(b,'zh-CN'));
   appState.selectedStores = new Set([...prev].filter(store => stores.includes(store)));
-  const filtered = stores.filter(s => appState.selectedStores.has(s) || !search || s.toLowerCase().includes(search));
+  const filtered = stores.filter(s => appState.selectedStores.has(s) || !q || normalizeFilterSearchKey(s).includes(q));
   const optionsHtml = filtered.map(store => {
     const checked = appState.selectedStores.has(store);
     return '<label class="store-option"><input type="checkbox" value="' + store.replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '> <span>' + store + '</span></label>';
@@ -1968,6 +2143,8 @@ function updateDateRangeTriggerText(){
   else if (s) el.textContent = `${s} ~`;
   else if (e) el.textContent = `~ ${e}`;
   else el.textContent = '选择日期范围';
+  const cutoffEl = document.getElementById('dashboardDataCutoffDate');
+  if (cutoffEl) cutoffEl.textContent = (e && String(e).trim()) || '—';
 }
 function showOverlayLight(show){
   let ov = document.getElementById('overlayLight');
@@ -1978,8 +2155,7 @@ function showOverlayLight(show){
       ov.className = 'overlay-light';
       document.body.appendChild(ov);
       ov.addEventListener('click', () => {
-        document.querySelectorAll('.filter-menu').forEach(m => m.classList.add('hidden'));
-        showOverlayLight(false);
+        closeAllFilterMenus();
       });
     }
   } else if (ov){
@@ -2019,11 +2195,52 @@ function toggleChartNoData(canvasId, message, show) {
   }
 }
 
+const FILTER_MENU_ANCHOR_IDS = {
+  dashboardDateMenu: 'dashboardDateDropdown',
+  dashboardStoreMenu: 'dashboardStoreDropdown',
+  dashboardSalespersonMenu: 'dashboardSalespersonDropdown',
+  dashboardProductMenu: 'dashboardProductDropdown',
+  sleepSalespersonMenu: 'sleepSalespersonDropdown',
+};
+function resolveFilterDropdown(menu){
+  if (!menu) return null;
+  let d = menu.closest('.filter-dropdown');
+  if (!d && menu.id) {
+    const aid = FILTER_MENU_ANCHOR_IDS[menu.id];
+    if (aid) d = document.getElementById(aid);
+  }
+  return d;
+}
+/** 浮层用 fixed+视口坐标；若祖先有 backdrop-filter/transform，fixed 会相对错误容器。挂到 body 可彻底对齐触发条。 */
+function mountFilterMenuOnBody(menu, dropdown){
+  if (!menu || !dropdown) return;
+  if (menu.parentElement !== document.body){
+    menu.dataset.filterMenuAnchor = dropdown.id;
+    document.body.appendChild(menu);
+  }
+}
+function restoreFilterMenuToAnchor(menu){
+  if (!menu) return;
+  const id = menu.dataset.filterMenuAnchor;
+  if (!id) return;
+  const host = document.getElementById(id);
+  if (host && menu.parentElement !== host) host.appendChild(menu);
+}
+function closeAllFilterMenus(){
+  document.querySelectorAll('.filter-menu').forEach((m) => {
+    m.classList.add('hidden');
+    restoreFilterMenuToAnchor(m);
+  });
+  showOverlayLight(false);
+}
 function toggleDropdown(menuId, forceOpen){
-  const menu = document.getElementById(menuId);
+  const menu = typeof menuId === 'string' ? document.getElementById(menuId) : menuId;
   if (!menu) return;
   const willOpen = forceOpen == null ? menu.classList.contains('hidden') : forceOpen;
-  document.querySelectorAll('.filter-menu').forEach(m => m.classList.add('hidden'));
+  document.querySelectorAll('.filter-menu').forEach((m) => {
+    m.classList.add('hidden');
+    restoreFilterMenuToAnchor(m);
+  });
   if (willOpen) {
     menu.classList.remove('hidden');
     placeDropdownMenu(menu);
@@ -2034,22 +2251,58 @@ function toggleDropdown(menuId, forceOpen){
 }
 function placeDropdownMenu(menu){
   if (!menu) return;
-  menu.style.left = '0';
-  menu.style.right = 'auto';
-  menu.style.transform = 'none';
+  const dropdown = resolveFilterDropdown(menu);
+  const trigger = dropdown?.querySelector('.filter-trigger');
+  if (!trigger) return;
+
+  mountFilterMenuOnBody(menu, dropdown);
+
   const edge = 12;
-  let rect = menu.getBoundingClientRect();
-  if (rect.right > window.innerWidth - edge) {
-    menu.style.left = 'auto';
-    menu.style.right = '0';
-    rect = menu.getBoundingClientRect();
-  }
-  if (rect.left < edge) {
-    menu.style.left = edge + 'px';
-    menu.style.right = 'auto';
-    menu.style.transform = 'none';
-  }
+  const r = trigger.getBoundingClientRect();
+  const isDateMenu = menu.id === "dashboardDateMenu";
+  const gap = isDateMenu ? 4 : 8;
+  const rawW = isDateMenu
+    ? Math.max(280, Math.min(420, Math.round(r.width)))
+    : Math.max(300, Math.min(420, r.width + 24));
+  const tw = Math.min(rawW, window.innerWidth - edge * 2);
+
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '5000';
+  menu.style.width = `${Math.round(tw)}px`;
+  menu.style.maxWidth = `min(420px, calc(100vw - ${edge * 2}px))`;
+  menu.style.boxSizing = 'border-box';
+  menu.style.left = '0';
+  menu.style.top = '0';
+  menu.style.right = 'auto';
+  menu.style.bottom = 'auto';
+  menu.style.transform = 'none';
+
+  let left = r.left;
+  let top = r.bottom + gap;
+  if (left + tw > window.innerWidth - edge) left = Math.max(edge, window.innerWidth - edge - tw);
+  if (left < edge) left = edge;
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+
+  requestAnimationFrame(() => {
+    const mh = menu.getBoundingClientRect().height;
+    if (top + mh > window.innerHeight - edge) {
+      const above = r.top - mh - gap;
+      if (above >= edge) menu.style.top = `${Math.round(above)}px`;
+    }
+  });
 }
+let __dropdownRepositionScheduled = false;
+function scheduleOpenDropdownReposition(){
+  if (__dropdownRepositionScheduled) return;
+  __dropdownRepositionScheduled = true;
+  requestAnimationFrame(() => {
+    __dropdownRepositionScheduled = false;
+    document.querySelectorAll('.filter-menu:not(.hidden)').forEach((m) => placeDropdownMenu(m));
+  });
+}
+window.addEventListener('scroll', scheduleOpenDropdownReposition, true);
+window.addEventListener('resize', scheduleOpenDropdownReposition);
 function clearActiveGlows(){
   document.querySelectorAll('.active-glow').forEach(el => el.classList.remove('active-glow'));
 }
@@ -2245,7 +2498,7 @@ function renderRankingTabCharts(mode){
   let title2 = '排行对比';
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('store_ranking.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店排行.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
     setActiveGlow('#rankingsStoreCard');
     rows = results.storeRank.slice(0, 10);
     miniRows = results.storeRank || [];
@@ -2254,7 +2507,7 @@ function renderRankingTabCharts(mode){
     title1 = '门店业绩趋势';
     title2 = '门店业绩对比';
   } else if (mode === 'salesperson'){
-    setDownloadTarget('salesperson_ranking.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('销售员排行.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#rankingsSalespersonCard');
     rows = results.salespersonRank.slice(0, 10);
     miniRows = results.salespersonRank || [];
@@ -2263,7 +2516,7 @@ function renderRankingTabCharts(mode){
     title1 = '销售员业绩趋势';
     title2 = '销售员业绩对比';
   } else if (mode === 'product'){
-    setDownloadTarget('product_ranking.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
+    setDownloadTarget('商品排行.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#rankingsProductCard');
     rows = results.productRank.slice(0, 10);
     miniRows = results.productRank || [];
@@ -2272,7 +2525,7 @@ function renderRankingTabCharts(mode){
     title1 = '商品销售趋势';
     title2 = '商品销售对比';
   } else if (mode === 'ticket'){
-    setDownloadTarget('average_ticket_ranking.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
+    setDownloadTarget('客单价排行.xlsx', [{ name:'客单价排行', rows: results.ticketRank || [] }]);
     setActiveGlow('#rankingsTicketCard');
     rows = results.ticketRank.slice(0, 10);
     miniRows = results.ticketRank || [];
@@ -2477,7 +2730,7 @@ function renderMembersTabCharts(mode){
   const ticketVals = chartRowsForHover.map(x => x.avg_ticket);
   const repurchaseVals = chartRowsForHover.map(x => x.repurchase_times);
 
-  setDownloadTarget('member_spend_ranking.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
+  setDownloadTarget('会员消费排行.xlsx', [{ name:'会员消费排行', rows: results.memberRank || [] }]);
   setActiveGlow('#memberRankingCard');
   let leftTitle = '会员消费趋势';
   let rightTitle = '会员消费排行';
@@ -2688,7 +2941,7 @@ function renderSleepingTabCharts(mode){
   let chartRowsForHover = [];
 
   if (!mode || mode === 'store'){
-    setDownloadTarget('sleeping_members_by_store.xlsx', [{ name:'按门店沉睡会员', rows: results.sleepByStore || [] }]);
+    setDownloadTarget('按门店沉睡会员.xlsx', [{ name:'按门店沉睡会员', rows: results.sleepByStore || [] }]);
     setActiveGlow('#sleepByStoreCard');
     storeFullForTable = results.sleepByStore || [];
     chartRowsForHover = storeFullForTable.slice(0,10);
@@ -2700,7 +2953,7 @@ function renderSleepingTabCharts(mode){
     leftTitle = '按门店沉睡会员';
     rightTitle = '沉睡会员历史消费额';
   } else if (mode === 'list'){
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: getFilteredSleepList() || results.sleepList || [] }]);
+    setDownloadTarget('沉睡会员唤醒名单.xlsx', [{ name:'沉睡会员唤醒名单', rows: getFilteredSleepList() || results.sleepList || [] }]);
     setActiveGlow('#sleepWakeListCard');
     listFullForTable = getFilteredSleepList(results) || [];
     chartRowsForHover = listFullForTable.slice(0,10);
@@ -3261,7 +3514,7 @@ function updateDashboardCharts(mode){
     const repurchaseSheetRows = REPURCHASE_BUCKET_ORDER.map(k => ({ order_bucket: k, member_count: Number(repurchaseByBucket[k]) || 0 }));
     const repPalette = getChartPalette(repurchaseLabels.length);
 
-    setDownloadTarget('dashboard_results.xlsx', [{ name: useDaily ? '日销售趋势' : '月销售趋势', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
+    setDownloadTarget('数据看板导出.xlsx', [{ name: useDaily ? '日销售趋势' : '月销售趋势', rows: trendRows }, { name:'复购结构', rows: repurchaseSheetRows }]);
     clearActiveGlows();
     appState.charts.repurchase = new Chart(repurchaseCanvas, {
       type:'doughnut',
@@ -3344,7 +3597,7 @@ function updateDashboardCharts(mode){
     rows = results.storeRank.slice(0, 10);
     labelKey = 'store';
     valueKey = 'performance';
-    setDownloadTarget('top_stores.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
+    setDownloadTarget('门店业绩对比.xlsx', [{ name:'门店排行', rows: results.storeRank || [] }]);
     setActiveGlow('#topStoresCard');
   } else if (mode === 'salespeople'){
     leftBaseTitle = '销售员业绩前十';
@@ -3354,7 +3607,7 @@ function updateDashboardCharts(mode){
     rows = results.salespersonRank.slice(0, 10);
     labelKey = 'salesperson';
     valueKey = 'performance';
-    setDownloadTarget('top_salespeople.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
+    setDownloadTarget('销售员业绩对比.xlsx', [{ name:'销售员排行', rows: results.salespersonRank || [] }]);
     setActiveGlow('#topSalespeopleCard');
   } else if (mode === 'products'){
     leftBaseTitle = '商品销售前十';
@@ -3364,7 +3617,7 @@ function updateDashboardCharts(mode){
     rows = results.productRank.slice(0, 10);
     labelKey = 'product';
     valueKey = 'sales_amount';
-    setDownloadTarget('top_products.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
+    setDownloadTarget('商品业绩对比.xlsx', [{ name:'商品排行', rows: results.productRank || [] }]);
     setActiveGlow('#topProductsCard');
   }
   if (appState.dashboardShareSelection.mode !== mode) appState.dashboardShareSelection = { mode, index: null };
@@ -3473,7 +3726,7 @@ function refreshSleepingTable(sourceResults){
   const filtered = getFilteredSleepList(sourceResults);
   renderTable('sleepListTable', filtered, {total_spend:fmtCurrency, order_count:fmtInt, avg_ticket:fmtCurrency, repurchase_times:fmtInt, sleep_days:fmtInt}, true);
   if (document.querySelector('.tab.active')?.dataset.tab === 'sleeping') {
-    setDownloadTarget('sleeping_member_wake_up_list.xlsx', [{ name:'沉睡会员唤醒名单', rows: filtered || [] }]);
+    setDownloadTarget('沉睡会员唤醒名单.xlsx', [{ name:'沉睡会员唤醒名单', rows: filtered || [] }]);
   }
 }
 
@@ -3506,7 +3759,7 @@ function renderResults(results, mappings){
   updateControlVisibility(document.querySelector('.tab.active')?.dataset.tab || 'dashboard');
 
   const exportTrend = getDashboardTrendPresentation(getActiveResults());
-  setDownloadTarget('dashboard_results.xlsx', [
+  setDownloadTarget('数据看板导出.xlsx', [
     { name: exportTrend.useDaily ? '日销售趋势' : '月销售趋势', rows: exportTrend.rows.length ? exportTrend.rows : (getActiveResults()?.monthly || results.monthly || []) },
     { name:'复购结构', rows: getActiveResults()?.repurchaseDistribution || results.repurchaseDistribution || [] }
   ]);
@@ -3516,7 +3769,7 @@ function renderResults(results, mappings){
 
 async function downloadWorkbook(filename, sheets){
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Sales Analysis App';
+  wb.creator = '赫眉经营助手';
   wb.created = new Date();
 
   function columnLetter(n){
@@ -3531,7 +3784,8 @@ async function downloadWorkbook(filename, sheets){
 
   sheets.forEach(sheet => {
     const rows = sheet.rows || [];
-    const ws = wb.addWorksheet(sheet.name, {
+    const wsName = String(sheet.name || 'Sheet').slice(0, 31).replace(/[:\\/?*[\]]/g, ' ');
+    const ws = wb.addWorksheet(wsName, {
       views: [{ state: 'frozen', ySplit: 1 }]
     });
 
@@ -3540,8 +3794,9 @@ async function downloadWorkbook(filename, sheets){
       return;
     }
 
-    const headers = Object.keys(rows[0]);
-    ws.addRow(headers);
+    const keys = Object.keys(rows[0]);
+    const headerLabels = keys.map(k => COLUMN_HEADER_LABELS[k] || k);
+    ws.addRow(headerLabels);
 
     const headerRow = ws.getRow(1);
     headerRow.eachCell((cell) => {
@@ -3561,22 +3816,20 @@ async function downloadWorkbook(filename, sheets){
     });
 
     rows.forEach(row => {
-      ws.addRow(headers.map(h => {
-        const v = row[h];
-        return v instanceof Date ? ymd(v) : v;
-      }));
+      ws.addRow(keys.map(h => translateExcelCellValue(h, row[h])));
     });
 
     ws.autoFilter = {
       from: 'A1',
-      to: columnLetter(headers.length) + '1'
+      to: columnLetter(keys.length) + '1'
     };
 
-    ws.columns = headers.map(h => {
-      const values = [h, ...rows.map(r => {
-        const v = r[h];
-        return v instanceof Date ? ymd(v) : String(v ?? '');
-      })];
+    ws.columns = keys.map((k, idx) => {
+      const labels = headerLabels[idx];
+      const values = [
+        labels,
+        ...rows.map(r => String(translateExcelCellValue(k, r[k]) ?? '')),
+      ];
       const maxLen = Math.min(30, Math.max(12, ...values.map(v => String(v).length)));
       return { width: maxLen + 2 };
     });
@@ -3626,8 +3879,7 @@ function updateControlVisibility(activeTab){
     el.style.display = shouldShow ? '' : 'none';
   });
 
-  document.querySelectorAll('.filter-menu').forEach(menu => menu.classList.add('hidden'));
-  showOverlayLight(false);
+  closeAllFilterMenus();
 }
 
 window.addEventListener('load', syncResultAreaToControlPanel);
@@ -3636,8 +3888,7 @@ window.addEventListener('resize', syncResultAreaToControlPanel);
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     showPageLoading('正在切换视图...');
-    document.querySelectorAll('.filter-menu').forEach(menu => menu.classList.add('hidden'));
-    showOverlayLight(false);
+    closeAllFilterMenus();
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
     tab.classList.add('active');
@@ -3758,7 +4009,10 @@ document.getElementById('ticketRankingTitle')?.addEventListener('click', () => {
   scrollContainerToTop('ticketRankTable');
   renderRankingTabCharts('ticket');
 });
-document.getElementById('sleepSalespersonTrigger')?.addEventListener('click', () => toggleDropdown('sleepSalespersonMenu'));
+document.getElementById('sleepSalespersonTrigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleDropdown('sleepSalespersonMenu');
+});
 document.getElementById('clearSleepSalespersonBtn')?.addEventListener('click', () => {
   toggleDropdown('sleepSalespersonMenu', false);
 });
@@ -3766,7 +4020,10 @@ document.getElementById('sleepDays')?.addEventListener('change', onGlobalFilters
 document.getElementById('sleepMinOrders')?.addEventListener('change', onGlobalFiltersChanged);
 document.getElementById('aclassMinAmount')?.addEventListener('change', onGlobalFiltersChanged);
 
-document.getElementById('dashboardDateTrigger')?.addEventListener('click', () => toggleDropdown('dashboardDateMenu'));
+document.getElementById('dashboardDateTrigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleDropdown('dashboardDateMenu');
+});
 
 document.getElementById('clearStoreBtn')?.addEventListener('click', () => {
   toggleDropdown('dashboardStoreMenu', false);
@@ -3777,10 +4034,20 @@ document.getElementById('clearSalespeopleBtn')?.addEventListener('click', () => 
 document.getElementById('clearProductBtn')?.addEventListener('click', () => {
   toggleDropdown('dashboardProductMenu', false);
 });
-document.getElementById('dashboardStoreTrigger')?.addEventListener('click', () => toggleDropdown('dashboardStoreMenu'));
-document.getElementById('dashboardSalespersonTrigger')?.addEventListener('click', () => toggleDropdown('dashboardSalespersonMenu'));
-document.getElementById('dashboardProductTrigger')?.addEventListener('click', () => toggleDropdown('dashboardProductMenu'));
-document.getElementById('applyDateRangeBtn')?.addEventListener('click', () => {
+document.getElementById('dashboardStoreTrigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleDropdown('dashboardStoreMenu');
+});
+document.getElementById('dashboardSalespersonTrigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleDropdown('dashboardSalespersonMenu');
+});
+document.getElementById('dashboardProductTrigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleDropdown('dashboardProductMenu');
+});
+document.getElementById('applyDateRangeBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
   const btn = document.getElementById('applyDateRangeBtn');
   if (btn?.disabled) return;
   setButtonLoading(btn, true, '加载中...');
@@ -3795,9 +4062,9 @@ document.getElementById('applyDateRangeBtn')?.addEventListener('click', () => {
 });
 document.addEventListener('click', (e) => {
   const inDropdown = e.target.closest('.filter-dropdown');
-  if (!inDropdown) {
-    document.querySelectorAll('.filter-menu').forEach(m => m.classList.add('hidden'));
-    showOverlayLight(false);
+  const inFilterMenu = e.target.closest('.filter-menu');
+  if (!inDropdown && !inFilterMenu) {
+    closeAllFilterMenus();
   }
 });
 
@@ -4883,7 +5150,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
 
 <script>
 (function () {
-  var userEl = document.getElementById("dashboardCurrentUser");
+  var userValEl = document.getElementById("dashboardCurrentUserVal");
   var adminBtn = document.getElementById("dashboardAdminBtn");
   var logoutBtn = document.getElementById("dashboardLogoutBtn");
   if (adminBtn) {
@@ -4907,14 +5174,22 @@ window.setAnalyzeLoading = setAnalyzeLoading;
   fetch("/api/auth/me", { credentials: "same-origin" })
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
-      if (!userEl) return;
+      if (!userValEl) return;
       var user = data && data.user ? data.user : null;
       if (!user) {
-        userEl.textContent = "当前用户：--";
+        while (userValEl.firstChild) userValEl.removeChild(userValEl.firstChild);
+        var dash = document.createElement("span");
+        dash.className = "toolbar-user-value";
+        dash.textContent = "--";
+        userValEl.appendChild(dash);
         return;
       }
       var display = String(user.displayName || user.username || "--");
-      userEl.textContent = "当前用户：" + display;
+      while (userValEl.firstChild) userValEl.removeChild(userValEl.firstChild);
+      var nameOnly = document.createElement("span");
+      nameOnly.className = "toolbar-user-value";
+      nameOnly.textContent = display;
+      userValEl.appendChild(nameOnly);
       var perms = user.permissions || {};
       if (!perms.canUseAgentChat) {
         var launch = document.getElementById("aiTestLauncher");
@@ -4927,7 +5202,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
 })();
 </script>
 
-<script type="module" src="/frontend/src/bootstrap.js?v=20260509-9"></script>
+<script type="module" src="/frontend/src/bootstrap.js?v=20260509-10"></script>
 
 </body>
 </html>

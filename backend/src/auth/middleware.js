@@ -13,6 +13,17 @@ export function safeLoginNextPath(raw) {
   return LOGIN_REDIRECT_ALLOWLIST.has(pathOnly) ? pathOnly : "";
 }
 
+/** 钉钉免登等：仅允许同源相对路径，禁止开放重定向 */
+export function safeInternalRedirectPath(raw, fallback = "/mobile") {
+  const pathOnly = String(raw || "").trim().split("?")[0].split("#")[0];
+  if (!pathOnly.startsWith("/") || pathOnly.startsWith("//")) return fallback;
+  if (pathOnly.includes("..")) return fallback;
+  if (pathOnly.includes("\\")) return fallback;
+  if (/[\s\r\n]/.test(pathOnly)) return fallback;
+  if (pathOnly.length > 512) return fallback;
+  return pathOnly;
+}
+
 export function createAuthMiddleware(authService) {
   const getCurrentUser = async (req) => {
     const sessionUser = req.session?.user;
@@ -38,6 +49,8 @@ export function createAuthMiddleware(authService) {
       createdAt: latest.createdAt,
       updatedAt: latest.updatedAt,
       lastLoginAt: latest.lastLoginAt,
+      dingtalkUserId: latest.dingtalkUserId || "",
+      dingtalkBoundAt: latest.dingtalkBoundAt || "",
     };
     req.session.user = publicUser;
     return publicUser;

@@ -71,6 +71,23 @@ export class AuthService {
     return this.users.find((x) => x.id === key) || null;
   }
 
+  /** 按钉钉 userid 查找已绑定用户（钉钉开放平台 userid，与用户表 dingtalkUserId 一致） */
+  async findByDingTalkUserId(dingUserId) {
+    await this.init();
+    const key = String(dingUserId || "").trim();
+    if (!key) return null;
+    return (
+      this.users.find((u) => {
+        const ids = [
+          String(u.dingtalkUserId || "").trim(),
+          String(u.dingTalkUserId || "").trim(),
+          String(u.dingUserId || "").trim(),
+        ];
+        return ids.includes(key);
+      }) || null
+    );
+  }
+
   async hashPassword(password) {
     return bcrypt.hash(String(password || ""), BCRYPT_ROUNDS);
   }

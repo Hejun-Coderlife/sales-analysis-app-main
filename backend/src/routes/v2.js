@@ -194,20 +194,61 @@ function clamp(value, fallback, min = 1, max = 1000) {
 }
 
 function parseFilters(query = {}, scope = null) {
-  const pickCsv = (value) =>
-    String(value || "")
+  /** 支持同一键多次出现 stores=a&stores=b；老客户端仍可能用逗号拼接单参数。 */
+  const pickList = (raw) => {
+    if (Array.isArray(raw)) {
+      return raw.map((x) => String(x ?? "").trim()).filter(Boolean);
+    }
+    return String(raw || "")
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
+  };
 
   const parsed = {
     startDate: String(query.startDate || ""),
     endDate: String(query.endDate || ""),
-    stores: pickCsv(query.stores),
-    salespeople: pickCsv(query.salespeople),
-    products: pickCsv(query.products),
+    stores: pickList(query.stores),
+    salespeople: pickList(query.salespeople),
+    products: pickList(query.products),
   };
   return applyPermissionScopeToFilters(parsed, scope);
+}
+
+const filteredPostJsonParser = express.json({ limit: "4mb" });
+
+/**
+ * POST body: `{ filters: { startDate, endDate, stores?, salespeople?, products? } }`
+ * （数组或逗号分隔字符串，与 query 语义一致，避免数百个 `products=` 撑爆 URL。）
+ */
+function parseFiltersFromPostBody(body, scope) {
+  const f = body?.filters;
+  if (!f || typeof f !== "object") return null;
+  const list = (raw) => {
+    if (Array.isArray(raw)) {
+      return raw.map((x) => String(x ?? "").trim()).filter(Boolean);
+    }
+    return String(raw || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  };
+  const parsed = {
+    startDate: String(f.startDate || ""),
+    endDate: String(f.endDate || ""),
+    stores: list(f.stores),
+    salespeople: list(f.salespeople),
+    products: list(f.products),
+  };
+  return applyPermissionScopeToFilters(parsed, scope);
+}
+
+function filtersFromRequest(req) {
+  if ((req.method === "POST" || req.method === "PUT") && req.body) {
+    const fromBody = parseFiltersFromPostBody(req.body, req.accessScope);
+    if (fromBody) return fromBody;
+  }
+  return parseFilters(req.query, req.accessScope);
 }
 
 function forbidByPermission(res) {
@@ -524,9 +565,9 @@ export function createV2Router({
     }
   }
 
-  router.get("/datasets/:datasetId/kpis", async (req, res) => {
+  async function handleDatasetKpis(req, res) {
     if (!ensurePermission(req, res, "canViewKpi")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     return executeProtectedQuery(
       req,
       res,
@@ -541,11 +582,13 @@ export function createV2Router({
         return { ok: true, kpis };
       }
     );
-  });
+  }
+  router.get("/datasets/:datasetId/kpis", handleDatasetKpis);
+  router.post("/datasets/:datasetId/kpis", filteredPostJsonParser, handleDatasetKpis);
 
   router.get("/datasets/:datasetId/rankings/stores", async (req, res) => {
     if (!ensurePermission(req, res, "canViewStoreRanking")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     const limit = clamp(req.query.limit, 20, 1, 500);
     const offset = clamp(req.query.offset, 0, 0, 1_000_000);
     return executeProtectedQuery(
@@ -568,10 +611,39 @@ export function createV2Router({
       }
     );
   });
+  router.post(
+    "/datasets/:datasetId/rankings/stores",
+    filteredPostJsonParser,
+    async (req, res) => {
+      if (!ensurePermission(req, res, "canViewStoreRanking")) return;
+      const filters = filtersFromRequest(req);
+      const limit = clamp(req.query.limit, 20, 1, 500);
+      const offset = clamp(req.query.offset, 0, 0, 1_000_000);
+      return executeProtectedQuery(
+        req,
+        res,
+        {
+          endpointName: "rankings_stores",
+          routeDatasetId: req.params.datasetId,
+          filters,
+          cacheExtras: { limit, offset },
+          cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        },
+        async (datasetIds) => {
+          const rows = await analyticsService.getTopStores(datasetIds, {
+            filters,
+            limit,
+            offset,
+          });
+          return { ok: true, rows };
+        }
+      );
+    }
+  );
 
   router.get("/datasets/:datasetId/rankings/salespeople", async (req, res) => {
     if (!ensurePermission(req, res, "canViewSalespersonRanking")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     const limit = clamp(req.query.limit, 20, 1, 500);
     const offset = clamp(req.query.offset, 0, 0, 1_000_000);
     return executeProtectedQuery(
@@ -594,10 +666,39 @@ export function createV2Router({
       }
     );
   });
+  router.post(
+    "/datasets/:datasetId/rankings/salespeople",
+    filteredPostJsonParser,
+    async (req, res) => {
+      if (!ensurePermission(req, res, "canViewSalespersonRanking")) return;
+      const filters = filtersFromRequest(req);
+      const limit = clamp(req.query.limit, 20, 1, 500);
+      const offset = clamp(req.query.offset, 0, 0, 1_000_000);
+      return executeProtectedQuery(
+        req,
+        res,
+        {
+          endpointName: "rankings_salespeople",
+          routeDatasetId: req.params.datasetId,
+          filters,
+          cacheExtras: { limit, offset },
+          cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        },
+        async (datasetIds) => {
+          const rows = await analyticsService.getTopSalespeople(datasetIds, {
+            filters,
+            limit,
+            offset,
+          });
+          return { ok: true, rows };
+        }
+      );
+    }
+  );
 
   router.get("/datasets/:datasetId/rankings/products", async (req, res) => {
     if (!ensurePermission(req, res, "canViewProductRanking")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     const limit = clamp(req.query.limit, 20, 1, 500);
     const offset = clamp(req.query.offset, 0, 0, 1_000_000);
     return executeProtectedQuery(
@@ -620,36 +721,75 @@ export function createV2Router({
       }
     );
   });
+  router.post(
+    "/datasets/:datasetId/rankings/products",
+    filteredPostJsonParser,
+    async (req, res) => {
+      if (!ensurePermission(req, res, "canViewProductRanking")) return;
+      const filters = filtersFromRequest(req);
+      const limit = clamp(req.query.limit, 20, 1, 500);
+      const offset = clamp(req.query.offset, 0, 0, 1_000_000);
+      return executeProtectedQuery(
+        req,
+        res,
+        {
+          endpointName: "rankings_products",
+          routeDatasetId: req.params.datasetId,
+          filters,
+          cacheExtras: { limit, offset },
+          cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        },
+        async (datasetIds) => {
+          const rows = await analyticsService.getTopProducts(datasetIds, {
+            filters,
+            limit,
+            offset,
+          });
+          return { ok: true, rows };
+        }
+      );
+    }
+  );
 
-  router.get("/datasets/:datasetId/members/top", async (req, res) => {
+  async function handleMembersTop(req, res) {
     if (!ensurePermission(req, res, "canViewMemberAnalysis")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const q = req.query || {};
+    const b = req.body || {};
     const rows = await analyticsService.getTopMembers(ready.datasetIds, {
-      filters: parseFilters(req.query, req.accessScope),
-      limit: clamp(req.query.limit, 20, 1, 500),
-      offset: clamp(req.query.offset, 0, 0, 1_000_000),
-      keyword: String(req.query.keyword || ""),
+      filters: filtersFromRequest(req),
+      limit: clamp(q.limit ?? b.limit, 20, 1, 500),
+      offset: clamp(q.offset ?? b.offset, 0, 0, 1_000_000),
+      keyword: String(q.keyword ?? b.keyword ?? ""),
     });
     return res.json({
       ok: true,
       rows: maskSensitiveMemberRows(rows, req.currentUser?.allowedMemberFields || {}),
     });
-  });
+  }
+  router.get("/datasets/:datasetId/members/top", handleMembersTop);
+  router.post("/datasets/:datasetId/members/top", filteredPostJsonParser, handleMembersTop);
 
-  router.get("/datasets/:datasetId/members/repurchase-distribution", async (req, res) => {
+  async function handleRepurchaseDistribution(req, res) {
     if (!ensurePermission(req, res, "canViewMemberAnalysis")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
     const rows = await analyticsService.getRepurchaseDistribution(ready.datasetIds, {
-      filters: parseFilters(req.query, req.accessScope),
+      filters: filtersFromRequest(req),
     });
     return res.json({ ok: true, rows });
-  });
+  }
+  router.get("/datasets/:datasetId/members/repurchase-distribution", handleRepurchaseDistribution);
+  router.post(
+    "/datasets/:datasetId/members/repurchase-distribution",
+    filteredPostJsonParser,
+    handleRepurchaseDistribution
+  );
 
-  router.get("/datasets/:datasetId/filters/options", async (req, res) => {
+  async function handleFilterOptions(req, res) {
     if (!ensurePermission(req, res, "canUseFilters")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     return executeProtectedQuery(
       req,
       res,
@@ -666,11 +806,13 @@ export function createV2Router({
         return { ok: true, options };
       }
     );
-  });
+  }
+  router.get("/datasets/:datasetId/filters/options", handleFilterOptions);
+  router.post("/datasets/:datasetId/filters/options", filteredPostJsonParser, handleFilterOptions);
 
-  router.get("/datasets/:datasetId/trends", async (req, res) => {
+  async function handleTrends(req, res) {
     if (!ensurePermission(req, res, "canViewTrendCharts")) return;
-    const filters = parseFilters(req.query, req.accessScope);
+    const filters = filtersFromRequest(req);
     return executeProtectedQuery(
       req,
       res,
@@ -687,29 +829,35 @@ export function createV2Router({
         return { ok: true, ...trends };
       }
     );
-  });
+  }
+  router.get("/datasets/:datasetId/trends", handleTrends);
+  router.post("/datasets/:datasetId/trends", filteredPostJsonParser, handleTrends);
 
-  router.get("/datasets/:datasetId/data-quality", async (req, res) => {
+  async function handleDataQuality(req, res) {
     if (!ensurePermission(req, res, "canViewDataQuality")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
     const report = await analyticsService.getDataQualityReport(ready.datasetIds, {
-      filters: parseFilters(req.query, req.accessScope),
+      filters: filtersFromRequest(req),
     });
     return res.json({ ok: true, ...report });
-  });
+  }
+  router.get("/datasets/:datasetId/data-quality", handleDataQuality);
+  router.post("/datasets/:datasetId/data-quality", filteredPostJsonParser, handleDataQuality);
 
-  router.get("/datasets/:datasetId/members/sleeping", async (req, res) => {
+  async function handleSleeping(req, res) {
     if (!ensurePermission(req, res, "canViewSleepingMembers")) return;
-    const filters = parseFilters(req.query, req.accessScope);
-    const sleepDays = Number(req.query.sleepDays || 90);
-    const sleepMinOrders = Number(req.query.sleepMinOrders || 2);
-    const sleepMinAmount = Number(req.query.sleepMinAmount || 1000);
-    const aclassMinAmount = Number(req.query.aclassMinAmount || 3000);
-    const aclassMinOrders = Number(req.query.aclassMinOrders || 5);
-    const analysisDate = String(req.query.analysisDate || "");
-    const limit = clamp(req.query.limit, 200, 1, 2000);
-    const offset = clamp(req.query.offset, 0, 0, 1_000_000);
+    const q = req.query || {};
+    const b = req.body || {};
+    const filters = filtersFromRequest(req);
+    const sleepDays = Number(b.sleepDays ?? q.sleepDays ?? 90);
+    const sleepMinOrders = Number(b.sleepMinOrders ?? q.sleepMinOrders ?? 2);
+    const sleepMinAmount = Number(b.sleepMinAmount ?? q.sleepMinAmount ?? 1000);
+    const aclassMinAmount = Number(b.aclassMinAmount ?? q.aclassMinAmount ?? 3000);
+    const aclassMinOrders = Number(b.aclassMinOrders ?? q.aclassMinOrders ?? 5);
+    const analysisDate = String(b.analysisDate ?? q.analysisDate ?? "");
+    const limit = clamp(b.limit ?? q.limit, 200, 1, 2000);
+    const offset = clamp(b.offset ?? q.offset, 0, 0, 1_000_000);
     return executeProtectedQuery(
       req,
       res,
@@ -748,42 +896,54 @@ export function createV2Router({
         };
       }
     );
-  });
+  }
+  router.get("/datasets/:datasetId/members/sleeping", handleSleeping);
+  router.post("/datasets/:datasetId/members/sleeping", filteredPostJsonParser, handleSleeping);
 
-  router.get("/datasets/:datasetId/orders/highest", async (req, res) => {
+  async function handleOrdersHighest(req, res) {
     if (!ensurePermission(req, res, "canViewRawRows")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
     const row = await analyticsService.getHighestOrder(ready.datasetIds, {
-      filters: parseFilters(req.query, req.accessScope),
+      filters: filtersFromRequest(req),
     });
     return res.json({ ok: true, row });
-  });
+  }
+  router.get("/datasets/:datasetId/orders/highest", handleOrdersHighest);
+  router.post("/datasets/:datasetId/orders/highest", filteredPostJsonParser, handleOrdersHighest);
 
-  router.get("/datasets/:datasetId/orders/top", async (req, res) => {
+  async function handleOrdersTop(req, res) {
     if (!ensurePermission(req, res, "canViewRawRows")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
+    const q = req.query || {};
+    const b = req.body || {};
     const rows = await analyticsService.getOrders(ready.datasetIds, {
-      filters: parseFilters(req.query, req.accessScope),
-      limit: clamp(req.query.limit, 20, 1, 500),
-      offset: clamp(req.query.offset, 0, 0, 1_000_000),
+      filters: filtersFromRequest(req),
+      limit: clamp(q.limit ?? b.limit, 20, 1, 500),
+      offset: clamp(q.offset ?? b.offset, 0, 0, 1_000_000),
     });
     return res.json({ ok: true, rows });
-  });
+  }
+  router.get("/datasets/:datasetId/orders/top", handleOrdersTop);
+  router.post("/datasets/:datasetId/orders/top", filteredPostJsonParser, handleOrdersTop);
 
-  router.get("/datasets/:datasetId/leaders", async (req, res) => {
+  async function handleLeaders(req, res) {
     if (!ensurePermission(req, res, "canViewTrendCharts")) return;
     const ready = await ensureRouteDatasetsReady(req.params.datasetId);
     if (!ready.ok) return res.status(ready.code).json({ error: ready.message });
-    const granularity = String(req.query.granularity || "month");
+    const q = req.query || {};
+    const b = req.body || {};
+    const granularity = String(q.granularity ?? b.granularity ?? "month");
     const rows = await analyticsService.getLeadersByGranularity(ready.datasetIds, {
       granularity,
-      filters: parseFilters(req.query, req.accessScope),
-      limit: clamp(req.query.limit, 20, 1, 500),
+      filters: filtersFromRequest(req),
+      limit: clamp(q.limit ?? b.limit, 20, 1, 500),
     });
     return res.json({ ok: true, granularity, rows });
-  });
+  }
+  router.get("/datasets/:datasetId/leaders", handleLeaders);
+  router.post("/datasets/:datasetId/leaders", filteredPostJsonParser, handleLeaders);
 
   router.get("/datasets/:datasetId/table/:tableName", async (req, res) => {
     if (!ensurePermission(req, res, "canViewRawRows")) return;

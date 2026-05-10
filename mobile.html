@@ -502,16 +502,6 @@
   const NO_IMPORT = "暂无数据，请管理员先在后台导入 Excel。";
   const MOD_FORBIDDEN = "暂无权限查看此模块";
 
-  const sleepLabels = {
-    "Analysis Cutoff Date": "评估截止日",
-    "Sleeping Members": "沉睡会员人数",
-    "Sleeping Members Historical Spend": "沉睡会员历史消费额",
-    "A-Class Members": "A 类会员人数",
-    "A-Class Historical Spend": "A 类历史消费额",
-    "B-Class Members": "B 类会员人数",
-    "C-Class Members": "C 类会员人数",
-  };
-
   let user = null;
   let datasetId = null;
   let dateBounds = { min: "", max: "" };
@@ -1532,14 +1522,12 @@
       setSectionVisible("sleepCard", true);
       const lines = (sleeping.sleepSummary || [])
         .map(function (row) {
-          const lab = sleepLabels[row.metric] || row.metric;
+          const lab = row.metric;
           const val = row.value;
-          const disp =
-            typeof val === "number" && String(row.metric).indexOf("Spend") >= 0
-              ? fmtMoney(val)
-              : typeof val === "number"
-                ? fmtInt(val)
-                : escapeHtml(String(val));
+          const isCurrency =
+            typeof val === "number" &&
+            (String(row.metric).indexOf("消费额") >= 0 || String(row.metric).indexOf("Spend") >= 0);
+          const disp = isCurrency ? fmtMoney(val) : typeof val === "number" ? fmtInt(val) : escapeHtml(String(val));
           return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e5e7eb;font-size:13px\"><span>" +
             lab +
             "</span><span>" +
@@ -1590,8 +1578,8 @@
     let sleepN = 0;
     let sleepA = 0;
     ((sleeping && sleeping.sleepSummary) || []).forEach(function (r) {
-      if (r.metric === "Sleeping Members") sleepN = Number(r.value || 0);
-      if (r.metric === "A-Class Members") sleepA = Number(r.value || 0);
+      if (r.metric === "沉睡会员人数" || r.metric === "Sleeping Members") sleepN = Number(r.value || 0);
+      if (r.metric === "A 类会员人数" || r.metric === "A-Class Members") sleepA = Number(r.value || 0);
     });
     return {
       datasetId: datasetId,

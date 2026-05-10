@@ -243,6 +243,15 @@
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 2200);
     }
+    (function showDingTalkRedirectError() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const err = params.get('dingtalk_error');
+        if (!err) return;
+        msg.textContent = err;
+        showToast(err, 'error');
+      } catch (_e) {}
+    })();
     function setButtonLoading(isLoading){
       btn.disabled = !!isLoading;
       btn.textContent = isLoading ? '登录中...' : btnText;

@@ -7,16 +7,28 @@ import FileStoreFactory from "session-file-store";
 import { getV2Router, getV2Services, initV2AnalyticsModule } from "./backend/src/app.js";
 import { env } from "./backend/src/config/env.js";
 import { AuthService } from "./backend/src/auth/authService.js";
-import { createAuthMiddleware, safeLoginNextPath } from "./backend/src/auth/middleware.js";
+import { createAuthMiddleware, safeInternalRedirectPath, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
 import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
 import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
 import { NotificationStore } from "./backend/src/services/notificationStore.js";
 import {
   applyPermissionScopeToFilters,
+  getRolePermissionTemplateByDefinedId,
   hasPermission,
   maskSensitiveMemberRows,
+  syncCustomRolesFromCatalog,
+  toPublicUser,
 } from "./backend/src/auth/permissionModel.js";
+import {
+  createCustomRole,
+  deleteCustomRole,
+  getRoleCatalogForApi,
+  initRoleCatalog,
+  isRoleDefinitionKnown,
+  listCustomRoleIdsLoaded,
+  patchRoleCatalogEntry,
+} from "./backend/src/services/roleCatalogStore.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -27,6 +39,13 @@ const __dirname = path.dirname(__filename);
 const MAX_HISTORY_MESSAGES = 24;
 const sessions = new Map();
 const salesContexts = new Map();
+/** LRU-ish activity time per conversation id (sessions + salesContexts share ids). */
+const chatConversationActivity = new Map();
+const CHAT_STATE_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.CHAT_STATE_TTL_MS || 4 * 60 * 60 * 1000)
+);
+const CHAT_MAX_CONVERSATIONS = Math.max(50, Math.min(5000, Number(process.env.CHAT_MAX_CONVERSATIONS || 500)));
 /** Model rounds that may each include one or more tool calls; long questions need more than 3–4. */
 const MAX_TOOL_CALL_STEPS = 8;
 const OUT_OF_SCOPE_MESSAGE = "你没有权限查看该范围的数据。";
@@ -40,6 +59,16 @@ const notificationStore = new NotificationStore({ notificationsPath: env.notific
 const loginAttempts = new Map();
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_MAX_ATTEMPTS = 10;
+
+const CHAT_API_RATE_WINDOW_MS = Math.max(
+  10_000,
+  Number(process.env.CHAT_API_RATE_WINDOW_MS || 60_000)
+);
+const CHAT_API_MAX_PER_WINDOW = Math.max(
+  1,
+  Math.min(200, Number(process.env.CHAT_API_MAX_PER_WINDOW || 20))
+);
+const chatApiBuckets = new Map();
 
 process.on("unhandledRejection", (reason) => {
   console.error("[process] unhandledRejection:", reason);
@@ -107,10 +136,85 @@ async function getDingTalkUserIdByCode({ accessToken, code }) {
   return String(data.result.userid);
 }
 
+const DINGTALK_SSO_NO_CODE_HTML = `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>请在钉钉内打开</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:520px;margin:40px auto;">
+<h2 style="margin:0 0 12px;">请从钉钉工作台打开应用</h2>
+<p style="color:#4b5563;line-height:1.6;margin:0;">本入口需要在钉钉客户端内使用（需携带免登 code）。请在 <strong>钉钉工作台</strong> 中打开「赫眉经营助手」或联系管理员获取正确入口。</p>
+</body></html>`;
+
+const DINGTALK_SSO_ADMIN_FORBIDDEN_HTML = `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>无访问权限</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:520px;margin:40px auto;">
+<h2 style="margin:0 0 12px;">无管理后台访问权限</h2>
+<p style="color:#4b5563;line-height:1.6;margin:0;">当前登录账号无权进入管理后台。请确认已从钉钉工作台进入「管理员」应用入口，或使用有后台权限的账号；也可在浏览器使用账号密码登录。</p>
+</body></html>`;
+
+/**
+ * 钉钉端内免登：换 code → userid → 绑定用户 → session（不记录 access_token）
+ * @param {{ requireAdminAccess?: boolean, defaultNext?: string }} opts
+ */
+async function handleDingTalkSso(req, res, opts = {}) {
+  const requireAdminAccess = Boolean(opts.requireAdminAccess);
+  const defaultNext = String(opts.defaultNext || "/mobile");
+  const code = String(req.query.code || "").trim();
+  const nextPath = safeInternalRedirectPath(String(req.query.next || "").trim() || defaultNext, defaultNext);
+
+  if (!code) {
+    return res.status(200).type("html").send(DINGTALK_SSO_NO_CODE_HTML);
+  }
+
+  try {
+    if (!env.dingtalkAppKey || !env.dingtalkAppSecret) {
+      return res.redirect(
+        `/login?dingtalk_error=${encodeURIComponent("服务端未配置钉钉凭证，请联系管理员配置 DINGTALK_APP_KEY / DINGTALK_APP_SECRET")}`
+      );
+    }
+
+    const accessToken = await getDingTalkAccessToken({
+      appKey: env.dingtalkAppKey,
+      appSecret: env.dingtalkAppSecret,
+    });
+    const dingUid = await getDingTalkUserIdByCode({ accessToken, code });
+    const record = await authService.findByDingTalkUserId(dingUid);
+    if (!record) {
+      return res.redirect(
+        `/login?dingtalk_error=${encodeURIComponent("当前钉钉账号尚未绑定系统账号，请联系管理员绑定钉钉 UserID 或使用账号密码登录")}`
+      );
+    }
+    if (!record.enabled || String(record.role || "") === "disabled") {
+      return res.redirect(`/login?dingtalk_error=${encodeURIComponent("该账号已停用，无法登录")}`);
+    }
+
+    const publicUser = toPublicUser(record);
+    if (requireAdminAccess && !hasPermission(publicUser, "canAccessAdmin")) {
+      return res.status(403).type("html").send(DINGTALK_SSO_ADMIN_FORBIDDEN_HTML);
+    }
+
+    req.session.user = publicUser;
+    await authService.touchLastLogin(record.id);
+    return res.redirect(nextPath);
+  } catch (err) {
+    const safeMsg = String(err?.message || "").trim() || "钉钉免登失败，请稍后重试或改用账号密码登录";
+    console.warn("[dingtalk-sso] exchange failed:", safeMsg.split(/\s+/).slice(0, 8).join(" "));
+    return res.redirect(`/login?dingtalk_error=${encodeURIComponent(safeMsg)}`);
+  }
+}
+
 function ensurePermissionOrDeny(res, user, permissionName) {
   if (hasPermission(user, permissionName)) return true;
   res.status(403).json({ error: "无权限访问" });
   return false;
+}
+
+/** 编辑岗位目录需「管理员」身份 + 人事管理权限，避免大范围岗位被低信任账号改写。 */
+function requireRoleCatalogAdmin(req, res) {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return false;
+  if (String(req.currentUser?.role || "") !== "admin") {
+    res.status(403).json({ error: "维护岗位目录需使用管理员账号登录" });
+    return false;
+  }
+  return true;
 }
 
 function setSecurityHeaders(req, res, next) {
@@ -198,6 +302,67 @@ function getConversationId(rawValue) {
   return value.slice(0, 64);
 }
 
+function deleteChatConversation(conversationId) {
+  const id = String(conversationId || "").trim();
+  if (!id) return;
+  chatConversationActivity.delete(id);
+  sessions.delete(id);
+  salesContexts.delete(id);
+}
+
+function touchChatConversation(conversationId) {
+  const id = String(conversationId || "").trim();
+  if (!id) return;
+  chatConversationActivity.set(id, Date.now());
+  pruneChatStateMaps();
+}
+
+function pruneChatStateMaps() {
+  const now = Date.now();
+  const staleIds = [];
+  for (const [id, lastAt] of chatConversationActivity.entries()) {
+    if (now - Number(lastAt || 0) > CHAT_STATE_TTL_MS) {
+      staleIds.push(id);
+    }
+  }
+  for (const id of staleIds) {
+    deleteChatConversation(id);
+  }
+  if (chatConversationActivity.size <= CHAT_MAX_CONVERSATIONS) return;
+  const ordered = [...chatConversationActivity.entries()].sort((a, b) => Number(a[1]) - Number(b[1]));
+  while (ordered.length && chatConversationActivity.size > CHAT_MAX_CONVERSATIONS) {
+    const [id] = ordered.shift();
+    deleteChatConversation(id);
+  }
+}
+
+function cleanupStaleChatBuckets(nowMs, store, windowMs) {
+  for (const [key, item] of store.entries()) {
+    if (!item || nowMs - Number(item.windowStart || 0) > windowMs) {
+      store.delete(key);
+    }
+  }
+}
+
+function chatApiRateLimit(req, res, next) {
+  const now = Date.now();
+  cleanupStaleChatBuckets(now, chatApiBuckets, CHAT_API_RATE_WINDOW_MS);
+  const userPart = String(req.currentUser?.id || req.session?.user?.id || "").trim();
+  const ip = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const key = userPart ? `u:${userPart}` : `ip:${ip}`;
+
+  const prev = chatApiBuckets.get(key);
+  if (!prev || now - prev.windowStart > CHAT_API_RATE_WINDOW_MS) {
+    chatApiBuckets.set(key, { count: 1, windowStart: now });
+    return next();
+  }
+  if (prev.count >= CHAT_API_MAX_PER_WINDOW) {
+    return res.status(429).json({ error: "对话请求过于频繁，请稍后重试" });
+  }
+  chatApiBuckets.set(key, { count: prev.count + 1, windowStart: prev.windowStart });
+  return next();
+}
+
 /** Aligns model tool calls with the last `/api/chat/context` payload so /mobile and /dashboard stay consistent. */
 function buildDashboardFilterHintFromSyncedContext(context) {
   if (!context || typeof context !== "object") return "";
@@ -226,12 +391,21 @@ function buildDashboardFilterHintFromSyncedContext(context) {
 
 function getSessionMessages(conversationId) {
   if (!conversationId) return [];
+  pruneChatStateMaps();
+  const id = String(conversationId);
+  const lastAt = chatConversationActivity.get(id);
+  if (lastAt != null && Date.now() - Number(lastAt) > CHAT_STATE_TTL_MS) {
+    deleteChatConversation(id);
+    return [];
+  }
+  touchChatConversation(id);
   return sessions.get(conversationId) || [];
 }
 
 function setSessionMessages(conversationId, messages) {
   if (!conversationId || !Array.isArray(messages)) return;
   sessions.set(conversationId, messages.slice(-MAX_HISTORY_MESSAGES));
+  touchChatConversation(conversationId);
 }
 
 let cachedEarthEdgesData = "";
@@ -249,8 +423,16 @@ function getEarthEdgesData() {
 }
 
 function stripThinkingBlocks(text) {
-  const raw = String(text || "");
-  return raw.replace(/<think>[\s\S]*?<\/think>\s*/gi, "").trim();
+  let out = String(text || "");
+  const blockPatterns = [
+    new RegExp("<think" + "ing>[\\s\\S]*?<" + "/think" + "ing>", "gi"),
+    new RegExp("<think" + "ing>[\\s\\S]*?<" + "/think" + ">", "gi"),
+    new RegExp("<redacted_reason" + "ing>[\\s\\S]*?<" + "/redacted_reason" + "ing>", "gi"),
+  ];
+  for (const re of blockPatterns) {
+    out = out.replace(re, "");
+  }
+  return out.trim();
 }
 
 function normalizeAssistantReply(text) {
@@ -1459,6 +1641,30 @@ app.get("/api/auth/me", async (req, res) => {
   return res.json({ ok: true, user });
 });
 
+/** 钉钉端内免登 → 默认进入移动端 */
+app.get("/dingtalk/login", async (req, res) => {
+  await handleDingTalkSso(req, res, { defaultNext: "/mobile", requireAdminAccess: false });
+});
+
+/** 钉钉端内免登 → 需具备 canAccessAdmin，默认进入后台 */
+app.get("/dingtalk/admin-login", async (req, res) => {
+  await handleDingTalkSso(req, res, { defaultNext: "/admin", requireAdminAccess: true });
+});
+
+/**
+ * 钉钉开发者后台「重定向/回调」完整 URL 时使用：携带 code 回到统一免登入口
+ * 示例：https://app.hemei.asia/dingtalk/callback?next=/mobile
+ */
+app.get("/dingtalk/callback", (req, res) => {
+  const code = String(req.query.code || "").trim();
+  const next = safeInternalRedirectPath(String(req.query.next || "").trim() || "/mobile", "/mobile");
+  if (!code) {
+    return res.status(200).type("html").send(DINGTALK_SSO_NO_CODE_HTML);
+  }
+  const q = new URLSearchParams({ code, next });
+  return res.redirect(`/dingtalk/login?${q.toString()}`);
+});
+
 app.get("/api/dingtalk/config", requireAuthApi, (_req, res) => {
   return res.json({
     ok: true,
@@ -1536,6 +1742,100 @@ app.get("/api/admin/users", requireAdminApi, async (_req, res) => {
   if (!ensurePermissionOrDeny(res, _req.currentUser, "canManageUsers")) return;
   const users = await authService.listUsers();
   return res.json({ ok: true, users });
+});
+
+app.get("/api/admin/roles/catalog", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return;
+  return res.json({ ok: true, ...getRoleCatalogForApi() });
+});
+
+app.get("/api/admin/roles/:roleId/template", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return;
+  const roleId = String(req.params.roleId || "").trim();
+  if (!isRoleDefinitionKnown(roleId)) {
+    return res.status(404).json({ error: "岗位不存在" });
+  }
+  return res.json({ ok: true, roleId, template: getRolePermissionTemplateByDefinedId(roleId) });
+});
+
+app.patch("/api/admin/roles/:roleId", requireAdminApi, async (req, res) => {
+  if (!requireRoleCatalogAdmin(req, res)) return;
+  try {
+    const roleId = String(req.params.roleId || "").trim();
+    if (!isRoleDefinitionKnown(roleId)) {
+      return res.status(404).json({ error: "岗位不存在" });
+    }
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const partial = {};
+    if ("label" in body) partial.label = body.label;
+    if ("description" in body) partial.description = body.description;
+    if ("scopePresetLabel" in body) partial.scopePresetLabel = body.scopePresetLabel;
+    if ("template" in body) partial.template = body.template;
+    await patchRoleCatalogEntry(roleId, partial);
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "update_role_catalog",
+      targetType: "role",
+      targetId: roleId,
+      summary: `更新岗位目录：${roleId}`,
+      meta: {
+        label: body.label,
+        touchedTemplate: "template" in body && body.template != null,
+      },
+    });
+    return res.json({ ok: true, ...getRoleCatalogForApi() });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "更新岗位失败" });
+  }
+});
+
+app.post("/api/admin/roles", requireAdminApi, async (req, res) => {
+  if (!requireRoleCatalogAdmin(req, res)) return;
+  try {
+    const cloneFrom = String(req.body?.cloneFromRoleId || "").trim();
+    if (!cloneFrom || !isRoleDefinitionKnown(cloneFrom)) {
+      return res.status(400).json({ error: "请选择有效的参考岗位" });
+    }
+    const templateSeed = structuredClone(getRolePermissionTemplateByDefinedId(cloneFrom));
+    const row = await createCustomRole({
+      id: req.body?.id ? String(req.body.id).trim().toLowerCase() : "",
+      label: req.body?.label,
+      description: req.body?.description,
+      cloneFromRoleId: cloneFrom,
+      template: templateSeed,
+    });
+    syncCustomRolesFromCatalog(listCustomRoleIdsLoaded());
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "create_custom_role",
+      targetType: "role",
+      targetId: row.id,
+      summary: `新增自定义岗位：${row.label}（${row.id}）`,
+    });
+    const { template: _t, ...safe } = row;
+    return res.status(201).json({ ok: true, role: safe, catalog: getRoleCatalogForApi() });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "创建岗位失败" });
+  }
+});
+
+app.delete("/api/admin/roles/:roleId", requireAdminApi, async (req, res) => {
+  if (!requireRoleCatalogAdmin(req, res)) return;
+  try {
+    const roleId = String(req.params.roleId || "").trim();
+    await deleteCustomRole(roleId, { authService });
+    syncCustomRolesFromCatalog(listCustomRoleIdsLoaded());
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "delete_custom_role",
+      targetType: "role",
+      targetId: roleId,
+      summary: `删除自定义岗位：${roleId}`,
+    });
+    return res.json({ ok: true, ...getRoleCatalogForApi() });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "删除岗位失败" });
+  }
 });
 
 app.post("/api/admin/users", requireAdminApi, async (req, res) => {
@@ -1863,10 +2163,11 @@ app.post("/api/chat/context", requireAuthApi, (req, res) => {
     userId: String(req.currentUser?.id || ""),
     context: salesContext,
   });
+  touchChatConversation(conversationId);
   return res.json({ ok: true, conversationId });
 });
 
-app.post("/api/chat", requireAuthApi, async (req, res) => {
+app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
   if (!hasPermission(req.currentUser, "canUseAgentChat")) {
     return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
   }
@@ -2039,8 +2340,7 @@ app.post("/api/chat/reset", requireAuthApi, (req, res) => {
   if (!conversationId) {
     return res.status(400).json({ error: "缺少 conversationId" });
   }
-  sessions.delete(conversationId);
-  salesContexts.delete(conversationId);
+  deleteChatConversation(conversationId);
   return res.json({ ok: true, conversationId });
 });
 
@@ -2106,7 +2406,14 @@ app.use(
 );
 
 async function bootstrap() {
-  await Promise.all([initV2AnalyticsModule(), authService.init(), auditLogStore.init(), notificationStore.init()]);
+  await initRoleCatalog(env.dataDir);
+  syncCustomRolesFromCatalog(listCustomRoleIdsLoaded());
+  await Promise.all([
+    initV2AnalyticsModule(),
+    authService.init(),
+    auditLogStore.init(),
+    notificationStore.init(),
+  ]);
   app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
     console.log(
