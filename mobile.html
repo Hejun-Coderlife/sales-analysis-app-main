@@ -1563,6 +1563,15 @@
     cacheForChat.sleeping = sleeping;
   }
 
+  function kpiNum(obj, keys) {
+    if (!obj) return 0;
+    for (var i = 0; i < keys.length; i += 1) {
+      var k = keys[i];
+      if (obj[k] != null && obj[k] !== "") return Number(obj[k]);
+    }
+    return 0;
+  }
+
   function buildSalesContext(coreKpis, stores, sales, products, members, sleeping) {
     const ts = coreKpis
       ? Number(
@@ -1598,12 +1607,23 @@
       kpis: {
         totalSales: ts,
         totalOrders: to,
-        memberRegistrationRate: 0,
-        repurchaseRate: 0,
-        averageRepurchaseTimes: 0,
+        memberRegistrationRate: kpiNum(coreKpis, [
+          "memberRegistrationRate",
+          "memberregistrationrate",
+          "member_registration_rate",
+        ]),
+        repurchaseRate: kpiNum(coreKpis, ["repurchaseRate", "repurchaserate", "repurchase_rate"]),
+        averageRepurchaseTimes: kpiNum(coreKpis, [
+          "averageRepurchaseTimes",
+          "averagerepurchasetimes",
+          "average_repurchase_times",
+        ]),
         sleepingMembers: sleepN,
         aClassSleepingMembers: sleepA,
-        filesLoaded: 1,
+        filesLoaded: Math.max(
+          1,
+          kpiNum(coreKpis, ["filesLoaded", "filesloaded", "files_loaded"]) || 1
+        ),
       },
       topStores: (stores || []).map(function (r) {
         return { store: r.store, performance: Number(r.performance || 0) };

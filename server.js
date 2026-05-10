@@ -197,6 +197,32 @@ function getConversationId(rawValue) {
   return value.slice(0, 64);
 }
 
+/** Aligns model tool calls with the last `/api/chat/context` payload so /mobile and /dashboard stay consistent. */
+function buildDashboardFilterHintFromSyncedContext(context) {
+  if (!context || typeof context !== "object") return "";
+  const f = context.filters;
+  if (!f || typeof f !== "object") return "";
+  const start = String(f.startDate || "").trim();
+  const end = String(f.endDate || "").trim();
+  const stores = Array.isArray(f.stores) ? f.stores.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const salespeople = Array.isArray(f.salespeople)
+    ? f.salespeople.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
+  const products = Array.isArray(f.products) ? f.products.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const parts = [];
+  if (start && end) parts.push(`日期 ${start}～${end}`);
+  else if (start || end) parts.push(`日期 ${start || "?"}～${end || "?"}`);
+  if (stores.length) parts.push(`门店：${stores.join("、")}`);
+  else parts.push("门店：未限定单店（按权限内全部可见门店）");
+  if (salespeople.length) parts.push(`销售员：${salespeople.join("、")}`);
+  if (products.length) parts.push(`商品：${products.join("、")}`);
+  return (
+    "【本回合已与页面同步的筛选】" +
+    parts.join("；") +
+    "。用户若未另行指定其它日期或门店，调用 getKpiFromDataset、排行类、沉睡会员类、趋势类等工具时，必须在 filters 中传入相同的 startDate/endDate，并在需要时传入相同的 stores/salespeople/products，以保证与当前打开的 /dashboard 或 /mobile 看板数字一致。"
+  );
+}
+
 function getSessionMessages(conversationId) {
   if (!conversationId) return [];
   return sessions.get(conversationId) || [];
@@ -1868,19 +1894,22 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
   }
 
   try {
+    const ctxEntry = conversationId ? salesContexts.get(conversationId) : null;
+    const filterHint = buildDashboardFilterHintFromSyncedContext(ctxEntry?.context || null);
+    const baseSystem =
+      "You are an operations advisor for retail business users. " +
+      "Always answer in Chinese and in this order: 先给结论，再给数据依据，最后给可执行建议。 " +
+      "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
+      "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
+      "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
+      "若工具返回 ok:true 且金额为 0，优先解释为所选日期范围内无订单或数据未导入；除非工具结果含 code OUT_OF_SCOPE，否则不要说成因是权限或管辖范围不足。 " +
+      "When data is not enough, explicitly say: 当前数据不足以判断。 " +
+      "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
+      "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +
+      "Never invent numbers.";
     const systemMessage = {
       role: "system",
-      content:
-        "You are an operations advisor for retail business users. " +
-        "Always answer in Chinese and in this order: 先给结论，再给数据依据，最后给可执行建议。 " +
-        "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
-        "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
-        "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
-        "若工具返回 ok:true 且金额为 0，优先解释为所选日期范围内无订单或数据未导入；除非工具结果含 code OUT_OF_SCOPE，否则不要说成因是权限或管辖范围不足。 " +
-        "When data is not enough, explicitly say: 当前数据不足以判断。 " +
-        "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
-        "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +
-        "Never invent numbers.",
+      content: filterHint ? `${baseSystem}\n\n${filterHint}` : baseSystem,
     };
     const workingMessages = [systemMessage, ...getSessionMessages(conversationId), { role: "user", content: userMessage }];
     const tools = getToolDefinitions();
