@@ -151,7 +151,7 @@ const DINGTALK_SSO_NO_CODE_HTML = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>请在钉钉内打开</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:520px;margin:40px auto;">
 <h2 style="margin:0 0 12px;">请从钉钉工作台打开应用</h2>
-<p style="color:#4b5563;line-height:1.6;margin:0;">本入口需要在钉钉客户端内使用（需携带免登 code）。请在 <strong>钉钉工作台</strong> 中打开「赫眉经营助手」或联系管理员获取正确入口。</p>
+<p style="color:#4b5563;line-height:1.6;margin:0;">本入口需要在钉钉客户端内使用（需携带免登码，参数名为 <strong>code</strong> / <strong>authCode</strong> / <strong>auth_code</strong> 均可）。请在 <strong>钉钉工作台</strong> 中打开「赫眉经营助手」或联系管理员获取正确入口。</p>
 </body></html>`;
 
 const DINGTALK_SSO_ADMIN_FORBIDDEN_HTML = `<!DOCTYPE html>

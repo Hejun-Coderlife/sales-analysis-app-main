@@ -1928,7 +1928,8 @@
           corpId: corpId,
           onSuccess: async function (authRes) {
             try {
-              var code = String(authRes && authRes.code ? authRes.code : "").trim();
+              var ar = authRes || {};
+              var code = String(ar.code || ar.authCode || ar.auth_code || "").trim();
               if (!code) return;
               const bindRes = await fetchJson("/api/dingtalk/bind", {
                 method: "POST",
