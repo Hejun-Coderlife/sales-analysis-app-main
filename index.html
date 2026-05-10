@@ -4236,6 +4236,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
   document.head.appendChild(style);
 
   const root = document.createElement('section');
+  root.id = 'aiAssistantPanel';
   root.className = 'ai-test-widget';
   root.innerHTML = `
     <div class="ai-test-widget-header">
@@ -4274,7 +4275,19 @@ window.setAnalyzeLoading = setAnalyzeLoading;
   const hideBtn = document.getElementById('aiTestHideBtn');
   const sessionLabel = document.getElementById('aiTestSessionLabel');
   const headerEl = root.querySelector('.ai-test-widget-header');
-  const conversationId = `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const AGENT_CHAT_SESSION_KEY = 'salesAgentConversationId';
+  function getOrCreateAgentConversationId() {
+    try {
+      var existing = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (existing && String(existing).length <= 64) return String(existing);
+    } catch (_e) {}
+    var nid = 'agent-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    try {
+      sessionStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
+    } catch (_e2) {}
+    return nid;
+  }
+  const conversationId = getOrCreateAgentConversationId();
   sessionLabel.textContent = `Session: ${conversationId}`;
 
   let isDraggingWidget = false;
@@ -4703,6 +4716,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
       const response = await fetch('/api/chat/context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ conversationId, salesContext: contextPayload }),
       });
       return response;
@@ -4762,6 +4776,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ message, conversationId }),
       });
       const data = await response.json();
@@ -4840,6 +4855,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
       await fetch('/api/chat/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ conversationId }),
       });
       chatMessages.length = 0;
@@ -4890,6 +4906,13 @@ window.setAnalyzeLoading = setAnalyzeLoading;
       }
       var display = String(user.displayName || user.username || "--");
       userEl.textContent = "当前用户：" + display;
+      var perms = user.permissions || {};
+      if (!perms.canUseAgentChat) {
+        var launch = document.getElementById("aiTestLauncher");
+        var panel = document.getElementById("aiAssistantPanel");
+        if (launch && launch.parentNode) launch.parentNode.removeChild(launch);
+        if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+      }
     })
     .catch(function () {});
 })();

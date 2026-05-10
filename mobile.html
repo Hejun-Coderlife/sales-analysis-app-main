@@ -473,7 +473,10 @@
   <div id="chatPanel">
     <div class="chat-head">
       <span>AI助手</span>
-      <button type="button" class="btn btn-light" id="chatClose" style="min-height:32px;padding:0 10px">关闭</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button type="button" class="btn btn-light" id="chatReset" style="min-height:32px;padding:0 10px">重置对话</button>
+        <button type="button" class="btn btn-light" id="chatClose" style="min-height:32px;padding:0 10px">关闭</button>
+      </div>
     </div>
     <div class="chat-body" id="chatMessages"></div>
     <div class="chat-foot">
@@ -521,7 +524,19 @@
   let toastTimer = null;
   let dingtalkBindTried = false;
 
-  const conversationId = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const AGENT_CHAT_SESSION_KEY = "salesAgentConversationId";
+  function getOrCreateAgentConversationId() {
+    try {
+      var existing = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (existing && String(existing).length <= 64) return String(existing);
+    } catch (_e) {}
+    var nid = "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    try {
+      sessionStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
+    } catch (_e2) {}
+    return nid;
+  }
+  const conversationId = getOrCreateAgentConversationId();
   const chatMessages = [];
 
   const rankCharts = { stores: null, sales: null, products: null };
@@ -1645,6 +1660,21 @@
     sleeping: null,
   };
 
+  function compactSalesContextForChat(ctx) {
+    if (!ctx || typeof ctx !== "object") return ctx;
+    return {
+      ...ctx,
+      topStores: (ctx.topStores || []).slice(0, 300),
+      topSalespeople: (ctx.topSalespeople || []).slice(0, 300),
+      topProducts: (ctx.topProducts || []).slice(0, 300),
+      memberRank: (ctx.memberRank || []).slice(0, 2000),
+      sleepList: (ctx.sleepList || []).slice(0, 2000),
+      dailyTrend: (ctx.dailyTrend || []).slice(0, 1500),
+      monthlyTrend: (ctx.monthlyTrend || []).slice(0, 1500),
+      weeklyTrend: (ctx.weeklyTrend || []).slice(0, 1500),
+    };
+  }
+
   async function syncChatContext() {
     if (!datasetId || !hasPerm("canUseAgentChat")) return { ok: false, error: "未开放数据助手" };
     const ctx = buildSalesContext(
@@ -1655,12 +1685,20 @@
       cacheForChat.members,
       cacheForChat.sleeping
     );
-    const res = await fetch("/api/chat/context", {
+    var res = await fetch("/api/chat/context", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({ conversationId: conversationId, salesContext: ctx }),
     });
+    if (res.status === 413) {
+      res = await fetch("/api/chat/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ conversationId: conversationId, salesContext: compactSalesContextForChat(ctx) }),
+      });
+    }
     const data = await res.json().catch(function () { return {}; });
     if (!res.ok) return { ok: false, error: data.error || "上下文同步失败" };
     return { ok: true };
@@ -2034,8 +2072,11 @@
     const fab = document.getElementById("chatFab");
     const panel = document.getElementById("chatPanel");
     const close = document.getElementById("chatClose");
+    const resetBtn = document.getElementById("chatReset");
     const send = document.getElementById("chatSend");
     const input = document.getElementById("chatInput");
+    if (!fab || fab.dataset.chatWired) return;
+    fab.dataset.chatWired = "1";
     fab.addEventListener("click", function (e) {
       if (Date.now() < fabIgnoreClickUntil) {
         e.preventDefault();
@@ -2046,6 +2087,24 @@
     close.addEventListener("click", function () {
       panel.classList.remove("open");
     });
+    if (resetBtn) {
+      resetBtn.addEventListener("click", async function () {
+        try {
+          await fetch("/api/chat/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ conversationId: conversationId }),
+          });
+          chatMessages.length = 0;
+          chatMessages.push({ role: "agent", text: "对话已重置，已与您当前看板筛选范围对齐。" });
+          renderChat();
+          showToast("对话已重置", "success");
+        } catch (_e) {
+          showToast("重置失败", "error");
+        }
+      });
+    }
     send.addEventListener("click", sendChat);
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") sendChat();

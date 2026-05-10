@@ -1876,6 +1876,7 @@ app.post("/api/chat", requireAuthApi, async (req, res) => {
         "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
         "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
         "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
+        "若工具返回 ok:true 且金额为 0，优先解释为所选日期范围内无订单或数据未导入；除非工具结果含 code OUT_OF_SCOPE，否则不要说成因是权限或管辖范围不足。 " +
         "When data is not enough, explicitly say: 当前数据不足以判断。 " +
         "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
         "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +
