@@ -136,6 +136,17 @@ async function getDingTalkUserIdByCode({ accessToken, code }) {
   return String(data.result.userid);
 }
 
+/** 钉钉端内可能带 code、authCode 或 auth_code，统一读出供换 userid */
+function readDingTalkAuthCodeFromQuery(req) {
+  const q = req.query || {};
+  return String(q.code || q.authCode || q.auth_code || "").trim();
+}
+
+function readDingTalkAuthCodeFromBody(body) {
+  const b = body && typeof body === "object" ? body : {};
+  return String(b.code || b.authCode || b.auth_code || "").trim();
+}
+
 const DINGTALK_SSO_NO_CODE_HTML = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>请在钉钉内打开</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:520px;margin:40px auto;">
@@ -157,7 +168,7 @@ const DINGTALK_SSO_ADMIN_FORBIDDEN_HTML = `<!DOCTYPE html>
 async function handleDingTalkSso(req, res, opts = {}) {
   const requireAdminAccess = Boolean(opts.requireAdminAccess);
   const defaultNext = String(opts.defaultNext || "/mobile");
-  const code = String(req.query.code || "").trim();
+  const code = readDingTalkAuthCodeFromQuery(req);
   const nextPath = safeInternalRedirectPath(String(req.query.next || "").trim() || defaultNext, defaultNext);
 
   if (!code) {
@@ -1656,7 +1667,7 @@ app.get("/dingtalk/admin-login", async (req, res) => {
  * 示例：https://app.hemei.asia/dingtalk/callback?next=/mobile
  */
 app.get("/dingtalk/callback", (req, res) => {
-  const code = String(req.query.code || "").trim();
+  const code = readDingTalkAuthCodeFromQuery(req);
   const next = safeInternalRedirectPath(String(req.query.next || "").trim() || "/mobile", "/mobile");
   if (!code) {
     return res.status(200).type("html").send(DINGTALK_SSO_NO_CODE_HTML);
@@ -1673,8 +1684,8 @@ app.get("/api/dingtalk/config", requireAuthApi, (_req, res) => {
 });
 
 app.post("/api/dingtalk/bind", requireAuthApi, async (req, res) => {
-  const code = String(req.body?.code || "").trim();
-  if (!code) return res.status(400).json({ error: "code 不能为空" });
+  const code = readDingTalkAuthCodeFromBody(req.body);
+  if (!code) return res.status(400).json({ error: "免登码不能为空（请传 code、authCode 或 auth_code）" });
   if (!env.dingtalkAppKey || !env.dingtalkAppSecret || !env.dingtalkCorpId) {
     return res.status(400).json({ error: "服务端未配置钉钉免登参数" });
   }
