@@ -9,6 +9,13 @@ const projectRoot = path.resolve(backendRoot, "..");
 
 dotenv.config({ path: path.join(projectRoot, ".env") });
 
+/** 与钉钉「网页应用 / 端内免登」对外展示一致；未配置 PUBLIC_BASE_URL 时默认 https://app.hemei.asia */
+const DEFAULT_PUBLIC_SITE_ORIGIN = "https://app.hemei.asia";
+function resolvePublicSiteOrigin() {
+  const raw = String(process.env.PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
+  return raw || DEFAULT_PUBLIC_SITE_ORIGIN;
+}
+
 function resolveSessionStore() {
   const raw = String(process.env.SESSION_STORE || "").trim().toLowerCase();
   if (raw === "memory") return "memory";
@@ -39,6 +46,8 @@ function resolveSessionSecret() {
   return "change-this-session-secret";
 }
 
+const publicSiteOrigin = resolvePublicSiteOrigin();
+
 export const env = {
   backendRoot,
   dataDir: path.resolve(backendRoot, "data"),
@@ -60,6 +69,12 @@ export const env = {
 
   /** Public site URL for links in outbound notifications (no trailing slash required). */
   publicBaseUrl: String(process.env.PUBLIC_BASE_URL || "").trim(),
+  /** Canonical origin actually used when PUBLIC_BASE_URL 为空（默认 app.hemei.asia）。 */
+  publicSiteOrigin,
+  /** 钉钉工作台建议配置的移动端首页与端内免登地址（完整 URL）。 */
+  publishedMobileUrl: `${publicSiteOrigin}/mobile`,
+  /** OAuth 可选回调示例 URL（钉钉「重定向 URL」仍可填此项）。 */
+  publishedDingtalkCallbackUrl: `${publicSiteOrigin}/dingtalk/callback`,
   /** DingTalk internal app credentials (server-only; never send to frontend). */
   dingtalkCorpId: String(process.env.DINGTALK_CORP_ID || "").trim(),
   dingtalkAppKey: String(process.env.DINGTALK_APP_KEY || "").trim(),

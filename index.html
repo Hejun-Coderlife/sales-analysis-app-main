@@ -227,6 +227,14 @@
     .grid-2{grid-template-columns:1.2fr .8fr}
     .grid-3{grid-template-columns:repeat(3,1fr)}
     .grid-4{grid-template-columns:repeat(4,1fr)}
+    /* KPI 两行间距 = row-gap。筛选白条到首行 KPI 之间还有 .control-top 的 gap(6px) 落到 status-row 段，补足 margin-top 使总距 = row-gap */
+    #resultArea > .grid.grid-4.dashboard-kpi-grid{
+      --dashboard-kpi-row-gap:12px;
+      row-gap:var(--dashboard-kpi-row-gap);
+      column-gap:var(--dashboard-kpi-row-gap);
+      margin-top:calc(var(--dashboard-kpi-row-gap) - 6px);
+    }
+    #dashboardKpiStrip.dashboard-kpi-strip--hidden{display:none !important}
     .dashboard-lower{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
     .notif-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(15,23,42,.28);color:#fff;cursor:pointer}
     .notif-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#ef4444;color:#fff;font-size:12px;font-weight:800;display:none;align-items:center;justify-content:center;line-height:18px}
@@ -239,7 +247,7 @@
     .notif-time{color:rgba(148,163,184,.9);font-size:11px;margin-top:6px}
     .dashboard-lower-left{display:contents}
     .card.control-panel{
-      padding:4px 0 8px;
+      padding:4px 0 0;
       overflow:visible;
       width:100%;
       max-width:100%;
@@ -295,6 +303,68 @@
 .toolbar-filter-col{display:flex;flex-direction:column;gap:6px;min-width:0}
 .toolbar-filter-col label{font-size:12px;color:#334155;margin:0}
 .toolbar-download-btn{min-height:38px;border-radius:10px;padding:0 12px;border:1px solid #7690f3;background:#fff;color:#334155;box-shadow:0 0 12px rgba(105,105,159,.12);font-weight:600}
+/* 沉睡会员条件：与同页「评估时间/门店」筛选条同一视觉语言（浅底+risk 标签可读） */
+.sleep-rules-panel{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(118,144,243,.22);
+  box-shadow:0 8px 24px rgba(2,6,23,.14), 0 0 0 1px rgba(255,255,255,.42) inset;
+  border-radius:12px;
+  padding:12px 12px 10px;
+}
+.sleep-rules-panel--hidden{display:none !important;}
+.sleep-rules-panel-head{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:8px 14px;
+  padding-bottom:8px;
+  margin:0 -2px;
+  border-bottom:1px solid rgba(118,144,243,.14);
+}
+.sleep-rules-panel-title{
+  font-size:14px;
+  font-weight:700;
+  color:#1e293b;
+  letter-spacing:0.02em;
+}
+.sleep-rules-panel-sub{
+  font-size:12px;
+  color:#64748b;
+  font-weight:500;
+}
+.sleep-rules-panel .field-grid{
+  grid-template-columns:repeat(auto-fit, minmax(168px, 1fr));
+  gap:10px 12px;
+  align-items:end;
+}
+.sleep-rules-panel .col label{
+  font-size:12px;
+  color:#334155;
+  margin:0;
+  font-weight:600;
+}
+.sleep-rules-panel .col input[type="number"]{
+  width:100%;
+  min-height:38px;
+  box-sizing:border-box;
+  border-radius:10px;
+  padding:8px 10px;
+}
+.sleep-rules-panel .filter-trigger{
+  border-radius:10px;
+}
+@media (max-width:1180px){
+  .sleep-rules-panel .field-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}
+}
+@media (max-width:520px){
+  .sleep-rules-panel .field-grid{grid-template-columns:1fr;}
+}
 .dashboard-lower #topSalespeopleCard,
 .dashboard-lower #topProductsCard{
   display:block !important;
@@ -325,7 +395,7 @@
 .control-field.hidden-control,.field-grid > .control-field.hidden-control,.multi-grid.control-field.hidden-control{display:none !important}
 .button-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .btn{min-height:38px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
-.status-row{display:flex;align-items:center;justify-content:flex-start;min-height:20px}
+.status-row{display:flex;align-items:center;justify-content:flex-start;min-height:0}
 #status{display:none}
 input[type="date"], select.control-select{
   border:1px solid #7690f3;border-radius:12px;padding:8px 10px;background:#ffffff;color:var(--text);min-width:120px;box-shadow:0 0 12px rgba(105,105,159,.18);height:38px
@@ -811,26 +881,31 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
       </div>
       <div class="status-row"><span id="status"></span></div>
 
-<div class="field-grid">
+      <div class="sleep-rules-panel sleep-rules-panel--hidden">
+        <div class="sleep-rules-panel-head">
+          <span class="sleep-rules-panel-title">沉睡会员条件</span>
+          <span class="sleep-rules-panel-sub">阈值与所选评估时间、门店等筛选一并生效。</span>
+        </div>
+        <div class="field-grid">
 
           <div class="col control-field" data-control="sleepDays">
-            <label for="sleepDays">沉睡天数</label>
+            <label for="sleepDays">沉睡天数（天）</label>
             <input id="sleepDays" type="number" value="90" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinOrders">
-            <label for="sleepMinOrders">最低会员订单数</label>
+            <label for="sleepMinOrders">最低历史订单数</label>
             <input id="sleepMinOrders" type="number" value="2" min="1" />
           </div>
           <div class="col control-field" data-control="sleepMinAmount">
-            <label for="sleepMinAmount">最低会员消费额</label>
+            <label for="sleepMinAmount">最低累计消费额</label>
             <input id="sleepMinAmount" type="number" value="1000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="aclassMinAmount">
-            <label for="aclassMinAmount">A 类最低消费额</label>
+            <label for="aclassMinAmount">A 类累计消费下限</label>
             <input id="aclassMinAmount" type="number" value="3000" min="0" step="100" />
           </div>
           <div class="col control-field" data-control="filterSalesperson">
-            <label>按销售员筛选</label>
+            <label>按销售员限定</label>
             <div class="filter-dropdown" id="sleepSalespersonDropdown">
               <button type="button" class="filter-trigger" id="sleepSalespersonTrigger">
                 <span id="sleepSalespersonTriggerText">全部销售员</span>
@@ -845,10 +920,11 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
           </div>
         </div>
       </div>
+      </div>
     </div>
 
   <div id="resultArea" class="hidden">
-    <div class="grid grid-4" style="margin-top:16px">
+    <div id="dashboardKpiStrip" class="grid grid-4 dashboard-kpi-grid">
       <div class="card kpi"><div class="label">销售额</div><div class="value" id="kpiSales">-</div></div>
       <div class="card kpi"><div class="label">订单数</div><div class="value" id="kpiOrders">-</div></div>
       <div class="card kpi"><div class="label">会员注册率</div><div class="value" id="kpiReg">-</div></div>
@@ -3870,7 +3946,15 @@ function updateControlVisibility(activeTab){
     dashboard: ['dashboardDateRange','dashboardMultiFilters'],
     rankings: ['dashboardDateRange','dashboardMultiFilters'],
     members: ['dashboardDateRange','dashboardMultiFilters'],
-    sleeping: ['dashboardDateRange','dashboardMultiFilters','sleepDays','sleepMinOrders','aclassMinAmount','filterSalesperson']
+    sleeping: [
+      'dashboardDateRange',
+      'dashboardMultiFilters',
+      'sleepDays',
+      'sleepMinOrders',
+      'sleepMinAmount',
+      'aclassMinAmount',
+      'filterSalesperson',
+    ],
   };
   const visible = new Set(visibleMap[activeTab] || []);
   document.querySelectorAll('.control-field').forEach(el => {
@@ -3878,6 +3962,17 @@ function updateControlVisibility(activeTab){
     el.classList.toggle('hidden-control', !shouldShow);
     el.style.display = shouldShow ? '' : 'none';
   });
+
+  const sleepPanel = document.querySelector('.sleep-rules-panel');
+  if (sleepPanel) {
+    const visSleep = sleepPanel.querySelector('.control-field:not(.hidden-control)');
+    sleepPanel.classList.toggle('sleep-rules-panel--hidden', !visSleep);
+  }
+
+  const kpiStrip = document.getElementById('dashboardKpiStrip');
+  if (kpiStrip) {
+    kpiStrip.classList.toggle('dashboard-kpi-strip--hidden', activeTab === 'sleeping');
+  }
 
   closeAllFilterMenus();
 }
@@ -4543,19 +4638,37 @@ window.setAnalyzeLoading = setAnalyzeLoading;
   const sessionLabel = document.getElementById('aiTestSessionLabel');
   const headerEl = root.querySelector('.ai-test-widget-header');
   const AGENT_CHAT_SESSION_KEY = 'salesAgentConversationId';
-  function getOrCreateAgentConversationId() {
+  function persistAgentConversationId(nid) {
     try {
-      var existing = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
-      if (existing && String(existing).length <= 64) return String(existing);
+      localStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
     } catch (_e) {}
-    var nid = 'agent-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     try {
       sessionStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
     } catch (_e2) {}
+  }
+  function getOrCreateAgentConversationId() {
+    try {
+      var fromLs = localStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (fromLs && String(fromLs).length <= 64) return String(fromLs);
+    } catch (_e) {}
+    try {
+      var fromSs = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (fromSs && String(fromSs).length <= 64) {
+        persistAgentConversationId(fromSs);
+        return String(fromSs);
+      }
+    } catch (_e3) {}
+    var nid = 'agent-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    persistAgentConversationId(nid);
     return nid;
   }
-  const conversationId = getOrCreateAgentConversationId();
-  sessionLabel.textContent = `Session: ${conversationId}`;
+  function mintAgentConversationId() {
+    var nid = 'agent-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    persistAgentConversationId(nid);
+    return nid;
+  }
+  let agentConversationId = getOrCreateAgentConversationId();
+  sessionLabel.textContent = `Session: ${agentConversationId}`;
 
   let isDraggingWidget = false;
   let dragOffsetX = 0;
@@ -4993,7 +5106,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ conversationId, salesContext: contextPayload }),
+        body: JSON.stringify({ conversationId: agentConversationId, salesContext: contextPayload }),
       });
       return response;
     };
@@ -5053,7 +5166,7 @@ window.setAnalyzeLoading = setAnalyzeLoading;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ message, conversationId }),
+        body: JSON.stringify({ message, conversationId: agentConversationId }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -5127,24 +5240,66 @@ window.setAnalyzeLoading = setAnalyzeLoading;
     }
   });
   resetBtn.addEventListener('click', async () => {
+    const prevId = agentConversationId;
     try {
       await fetch('/api/chat/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ conversationId: prevId }),
       });
-      chatMessages.length = 0;
-      appendLine('System', '对话上下文已重置。');
     } catch (_error) {
       appendLine('Error', '重置对话上下文失败');
+      return;
     }
+    agentConversationId = mintAgentConversationId();
+    sessionLabel.textContent = `Session: ${agentConversationId}`;
+    chatMessages.length = 0;
+    appendLine('System', '对话上下文已重置，已开启新的会话。');
   });
   inputEl.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') sendMessage();
   });
   applyChatFontScale(1);
-  appendLine('System', '数据助手已就绪，支持多轮对话。');
+
+  async function hydrateChatHistory() {
+    try {
+      const response = await fetch(
+        `/api/chat/history?conversationId=${encodeURIComponent(agentConversationId)}`,
+        { credentials: 'same-origin' }
+      );
+      if (response.status === 401 || response.status === 403) {
+        appendLine('System', '数据助手已就绪，支持多轮对话。');
+        return;
+      }
+      if (!response.ok) {
+        appendLine('System', '数据助手已就绪，支持多轮对话。');
+        return;
+      }
+      const payload = await response.json().catch(() => ({}));
+      const rows = Array.isArray(payload.messages) ? payload.messages : [];
+      chatMessages.length = 0;
+      if (!rows.length) {
+        appendLine('System', '数据助手已就绪，支持多轮对话。');
+        return;
+      }
+      chatMessages.push({
+        role: 'system',
+        text: '已从服务器恢复本设备的最近对话（在会话保留时间内有效）；关闭页签或过期后会清空，也可点「重置对话」开新会话。',
+      });
+      rows.forEach((m) => {
+        if (!m || typeof m !== 'object') return;
+        if (m.role === 'user') chatMessages.push({ role: 'user', text: String(m.content || '') });
+        else if (m.role === 'assistant') chatMessages.push({ role: 'agent', text: String(m.content || '') });
+      });
+      renderMessages();
+    } catch (_e) {
+      chatMessages.length = 0;
+      appendLine('System', '数据助手已就绪，支持多轮对话。');
+    }
+  }
+
+  void hydrateChatHistory();
 })();
 </script>
 

@@ -3,15 +3,16 @@
  * Does not expose appSecret or access_token outside this module.
  */
 
+import { env } from "../config/env.js";
+
 const GET_TOKEN_URL = "https://oapi.dingtalk.com/gettoken";
 const ASYNC_SEND_V2_URL = "https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2";
 const GET_SEND_RESULT_URL = "https://oapi.dingtalk.com/topapi/message/corpconversation/getsendresult";
 
 let tokenCache = { accessToken: null, expiresAt: 0 };
 
-function buildTestMessage(publicBaseUrl) {
-  const base = String(publicBaseUrl || "").replace(/\/+$/, "");
-  const mobileUrl = base ? `${base}/mobile` : "/mobile";
+function buildTestMessage() {
+  const mobileUrl = env.publishedMobileUrl;
   return [
     "【赫眉经营助手测试通知】",
     "这是一条来自赫眉经营助手的测试通知。",
@@ -97,7 +98,6 @@ async function querySendResult(accessToken, payload) {
  * @param {string} config.appSecret
  * @param {string|number} config.agentId
  * @param {string} config.testUserId - DingTalk userid
- * @param {string} config.publicBaseUrl
  * @returns {Promise<{ ok: boolean, error?: string, dingtalk?: object }>}
  */
 export async function sendDingTalkTestWorkNotification(config) {
@@ -105,7 +105,6 @@ export async function sendDingTalkTestWorkNotification(config) {
   const appSecret = String(config?.appSecret || "").trim();
   const agentId = config?.agentId;
   const testUserId = String(config?.testUserId || "").trim();
-  const publicBaseUrl = String(config?.publicBaseUrl || "").trim();
   const shouldCheckSendResult = config?.checkSendResult !== false;
 
   if (!appKey || !appSecret) {
@@ -123,7 +122,7 @@ export async function sendDingTalkTestWorkNotification(config) {
     return { ok: false, error: tokenResult.error || "获取钉钉 access_token 失败" };
   }
 
-  const content = buildTestMessage(publicBaseUrl);
+  const content = buildTestMessage();
   const msg = { msgtype: "text", text: { content } };
 
   const sendResult = await postAsyncSendV2(tokenResult.accessToken, {

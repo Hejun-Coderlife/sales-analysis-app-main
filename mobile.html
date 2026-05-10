@@ -515,18 +515,36 @@
   let dingtalkBindTried = false;
 
   const AGENT_CHAT_SESSION_KEY = "salesAgentConversationId";
-  function getOrCreateAgentConversationId() {
+  function persistAgentConversationId(nid) {
     try {
-      var existing = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
-      if (existing && String(existing).length <= 64) return String(existing);
+      localStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
     } catch (_e) {}
-    var nid = "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
     try {
       sessionStorage.setItem(AGENT_CHAT_SESSION_KEY, nid);
     } catch (_e2) {}
+  }
+  function getOrCreateAgentConversationId() {
+    try {
+      var fromLs = localStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (fromLs && String(fromLs).length <= 64) return String(fromLs);
+    } catch (_e) {}
+    try {
+      var fromSs = sessionStorage.getItem(AGENT_CHAT_SESSION_KEY);
+      if (fromSs && String(fromSs).length <= 64) {
+        persistAgentConversationId(fromSs);
+        return String(fromSs);
+      }
+    } catch (_e3) {}
+    var nid = "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    persistAgentConversationId(nid);
     return nid;
   }
-  const conversationId = getOrCreateAgentConversationId();
+  function mintAgentConversationId() {
+    var nid = "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    persistAgentConversationId(nid);
+    return nid;
+  }
+  let agentConversationId = getOrCreateAgentConversationId();
   const chatMessages = [];
 
   const rankCharts = { stores: null, sales: null, products: null };
@@ -1697,14 +1715,14 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ conversationId: conversationId, salesContext: ctx }),
+      body: JSON.stringify({ conversationId: agentConversationId, salesContext: ctx }),
     });
     if (res.status === 413) {
       res = await fetch("/api/chat/context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ conversationId: conversationId, salesContext: compactSalesContextForChat(ctx) }),
+        body: JSON.stringify({ conversationId: agentConversationId, salesContext: compactSalesContextForChat(ctx) }),
       });
     }
     const data = await res.json().catch(function () { return {}; });
@@ -1864,7 +1882,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ message: t, conversationId: conversationId }),
+        body: JSON.stringify({ message: t, conversationId: agentConversationId }),
       });
       const data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
@@ -2086,6 +2104,31 @@
     const input = document.getElementById("chatInput");
     if (!fab || fab.dataset.chatWired) return;
     fab.dataset.chatWired = "1";
+    if (hasPerm("canUseAgentChat")) {
+      void (async function hydrateMobileChatHistory() {
+        try {
+          var res = await fetch(
+            "/api/chat/history?conversationId=" + encodeURIComponent(agentConversationId),
+            { credentials: "same-origin" }
+          );
+          if (!res.ok) return;
+          var payload = await res.json().catch(function () { return {}; });
+          var list = Array.isArray(payload.messages) ? payload.messages : [];
+          if (!list.length) return;
+          chatMessages.length = 0;
+          chatMessages.push({
+            role: "agent",
+            text: "已从服务器恢复本设备的最近对话（在会话保留时间内有效）；也可点「重置对话」开启新会话。",
+          });
+          list.forEach(function (m) {
+            if (!m || typeof m !== "object") return;
+            if (m.role === "user") chatMessages.push({ role: "user", text: String(m.content || "") });
+            else if (m.role === "assistant") chatMessages.push({ role: "agent", text: String(m.content || "") });
+          });
+          renderChat();
+        } catch (_err) {}
+      })();
+    }
     fab.addEventListener("click", function (e) {
       if (Date.now() < fabIgnoreClickUntil) {
         e.preventDefault();
@@ -2098,20 +2141,23 @@
     });
     if (resetBtn) {
       resetBtn.addEventListener("click", async function () {
+        var prevId = agentConversationId;
         try {
           await fetch("/api/chat/reset", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
-            body: JSON.stringify({ conversationId: conversationId }),
+            body: JSON.stringify({ conversationId: prevId }),
           });
-          chatMessages.length = 0;
-          chatMessages.push({ role: "agent", text: "对话已重置，已与您当前看板筛选范围对齐。" });
-          renderChat();
-          showToast("对话已重置", "success");
         } catch (_e) {
           showToast("重置失败", "error");
+          return;
         }
+        agentConversationId = mintAgentConversationId();
+        chatMessages.length = 0;
+        chatMessages.push({ role: "agent", text: "对话已重置，已开启新会话并与当前筛选范围对齐。" });
+        renderChat();
+        showToast("对话已重置", "success");
       });
     }
     send.addEventListener("click", sendChat);

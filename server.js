@@ -41,6 +41,8 @@ const sessions = new Map();
 const salesContexts = new Map();
 /** LRU-ish activity time per conversation id (sessions + salesContexts share ids). */
 const chatConversationActivity = new Map();
+/** conversationId -> userId — used for `/api/chat/history` ACL when会话仅有消息条目。 */
+const chatConversationOwners = new Map();
 const CHAT_STATE_TTL_MS = Math.max(
   60_000,
   Number(process.env.CHAT_STATE_TTL_MS || 4 * 60 * 60 * 1000)
@@ -147,12 +149,15 @@ function readDingTalkAuthCodeFromBody(body) {
   return String(b.code || b.authCode || b.auth_code || "").trim();
 }
 
-const DINGTALK_SSO_NO_CODE_HTML = `<!DOCTYPE html>
+function buildDingTalkSsoNoCodeHtml() {
+  const mobileUrl = env.publishedMobileUrl;
+  return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>请在钉钉内打开</title></head><body style="font-family:system-ui,sans-serif;padding:24px;max-width:520px;margin:40px auto;">
 <h2 style="margin:0 0 12px;">请从钉钉工作台打开应用</h2>
-<p style="color:#4b5563;line-height:1.6;margin:0;">本入口需要在钉钉客户端内使用（需携带免登码，参数名为 <strong>code</strong> / <strong>authCode</strong> / <strong>auth_code</strong> 均可）。请在 <strong>钉钉工作台</strong> 中打开「赫眉经营助手」或联系管理员获取正确入口。</p>
+<p style="color:#4b5563;line-height:1.6;margin:0;">本入口需要在钉钉客户端内使用（需携带免登码，参数名为 <strong>code</strong> / <strong>authCode</strong> / <strong>auth_code</strong> 均可）。请在 <strong>钉钉工作台</strong> 中将应用首页与端内免登地址配置为 <strong>${mobileUrl}</strong>（与服务器约定一致），或联系管理员获取正确入口。</p>
 </body></html>`;
+}
 
 const DINGTALK_SSO_ADMIN_FORBIDDEN_HTML = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -172,7 +177,7 @@ async function handleDingTalkSso(req, res, opts = {}) {
   const nextPath = safeInternalRedirectPath(String(req.query.next || "").trim() || defaultNext, defaultNext);
 
   if (!code) {
-    return res.status(200).type("html").send(DINGTALK_SSO_NO_CODE_HTML);
+    return res.status(200).type("html").send(buildDingTalkSsoNoCodeHtml());
   }
 
   try {
@@ -317,8 +322,52 @@ function deleteChatConversation(conversationId) {
   const id = String(conversationId || "").trim();
   if (!id) return;
   chatConversationActivity.delete(id);
+  chatConversationOwners.delete(id);
   sessions.delete(id);
   salesContexts.delete(id);
+}
+
+function rememberChatConversationOwner(conversationId, userId) {
+  const id = String(conversationId || "").trim();
+  const uid = String(userId || "").trim();
+  if (!id || !uid) return;
+  chatConversationOwners.set(id, uid);
+}
+
+/** Build client-safe bubbles: drop system/tool and assistant rows that only carried tool_calls. */
+function sanitizeChatMessagesForHistoryClient(messages) {
+  const out = [];
+  if (!Array.isArray(messages)) return out;
+  for (const m of messages) {
+    if (!m || typeof m !== "object") continue;
+    const role = String(m.role || "");
+    if (role === "tool" || role === "system") continue;
+    if (role === "user") {
+      const c = String(m.content || "").trim();
+      if (c) out.push({ role: "user", content: c });
+      continue;
+    }
+    if (role === "assistant") {
+      const hasTools = Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
+      const c = String(m.content || "").trim();
+      if (!c || hasTools) continue;
+      out.push({ role: "assistant", content: c });
+    }
+  }
+  return out;
+}
+
+function userOwnsConversation(conversationId, userId) {
+  const id = String(conversationId || "").trim();
+  const uid = String(userId || "").trim();
+  if (!id || !uid) return false;
+  const recorded = chatConversationOwners.get(id);
+  const ctxUid = salesContexts.get(id)?.userId;
+  const hasStake =
+    recorded != null || (ctxUid != null && String(ctxUid || "").trim().length > 0);
+  if (!hasStake) return true;
+  if (recorded === uid) return true;
+  return ctxUid != null && String(ctxUid) === uid;
 }
 
 function touchChatConversation(conversationId) {
@@ -1652,9 +1701,13 @@ app.get("/api/auth/me", async (req, res) => {
   return res.json({ ok: true, user });
 });
 
-/** 钉钉端内免登 → 默认进入移动端 */
-app.get("/dingtalk/login", async (req, res) => {
-  await handleDingTalkSso(req, res, { defaultNext: "/mobile", requireAdminAccess: false });
+/**
+ * 兼容旧入口：统一到移动端首页免登（与钉钉后台填写的 https://…/mobile 一致）。
+ * 查询串（含 code、next 等）原样带到 /mobile。
+ */
+app.get("/dingtalk/login", (req, res) => {
+  const q = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+  res.redirect(302, `/mobile${q}`);
 });
 
 /** 钉钉端内免登 → 需具备 canAccessAdmin，默认进入后台 */
@@ -1663,17 +1716,24 @@ app.get("/dingtalk/admin-login", async (req, res) => {
 });
 
 /**
- * 钉钉开发者后台「重定向/回调」完整 URL 时使用：携带 code 回到统一免登入口
- * 示例：https://app.hemei.asia/dingtalk/callback?next=/mobile
+ * 钉钉开发者后台「重定向 URL」指向此处时：将 code（及 next）转到移动端首页完成免登。
+ * 亦可直接把「重定向 URL」设为 env.publishedMobileUrl（同一逻辑见 GET /mobile）。
  */
 app.get("/dingtalk/callback", (req, res) => {
   const code = readDingTalkAuthCodeFromQuery(req);
   const next = safeInternalRedirectPath(String(req.query.next || "").trim() || "/mobile", "/mobile");
   if (!code) {
-    return res.status(200).type("html").send(DINGTALK_SSO_NO_CODE_HTML);
+    return res.status(200).type("html").send(buildDingTalkSsoNoCodeHtml());
   }
-  const q = new URLSearchParams({ code, next });
-  return res.redirect(`/dingtalk/login?${q.toString()}`);
+  const qp = new URLSearchParams();
+  if (req.query.code != null && String(req.query.code).trim()) qp.set("code", String(req.query.code).trim());
+  else if (req.query.authCode != null && String(req.query.authCode).trim())
+    qp.set("authCode", String(req.query.authCode).trim());
+  else if (req.query.auth_code != null && String(req.query.auth_code).trim())
+    qp.set("auth_code", String(req.query.auth_code).trim());
+  else qp.set("code", code);
+  if (next !== "/mobile") qp.set("next", next);
+  return res.redirect(302, `/mobile?${qp.toString()}`);
 });
 
 app.get("/api/dingtalk/config", requireAuthApi, (_req, res) => {
@@ -2125,7 +2185,6 @@ app.post("/api/admin/dingtalk/test-notification", requireAdminApi, async (req, r
       appSecret: env.dingtalkAppSecret,
       agentId: env.dingtalkAgentId,
       testUserId: env.dingtalkTestUserId,
-      publicBaseUrl: env.publicBaseUrl,
     });
     if (!result.ok) {
       return res.status(502).json({ ok: false, error: result.error || "发送失败" });
@@ -2174,8 +2233,26 @@ app.post("/api/chat/context", requireAuthApi, (req, res) => {
     userId: String(req.currentUser?.id || ""),
     context: salesContext,
   });
+  rememberChatConversationOwner(conversationId, String(req.currentUser?.id || ""));
   touchChatConversation(conversationId);
   return res.json({ ok: true, conversationId });
+});
+
+app.get("/api/chat/history", requireAuthApi, (req, res) => {
+  if (!hasPermission(req.currentUser, "canUseAgentChat")) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+  }
+  const conversationId = getConversationId(req.query?.conversationId);
+  if (!conversationId) {
+    return res.status(400).json({ error: "缺少 conversationId" });
+  }
+  const uid = String(req.currentUser?.id || "");
+  if (!userOwnsConversation(conversationId, uid)) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+  }
+  const raw = getSessionMessages(conversationId);
+  const messages = sanitizeChatMessagesForHistoryClient(raw);
+  return res.json({ ok: true, conversationId, messages });
 });
 
 app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
@@ -2194,6 +2271,12 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     });
   }
 
+  if (!conversationId) {
+    return res.status(400).json({
+      error: "缺少 conversationId",
+    });
+  }
+
   if (!userMessage) {
     return res.status(400).json({
       error: "消息内容不能为空",
@@ -2203,6 +2286,14 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     !hasPermission(req.currentUser, "canAskCompanyWideQuestions") &&
     /(全公司|全部门店|公司整体|company[-\s]?wide|all stores|overall company)/i.test(userMessage)
   ) {
+    return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
+  }
+
+  const uidChat = String(req.currentUser?.id || "");
+  const mappedOwner = chatConversationOwners.get(conversationId);
+  const ctxUserId = salesContexts.get(conversationId)?.userId;
+  const hasConversationStake = !!(mappedOwner || ctxUserId);
+  if (hasConversationStake && !userOwnsConversation(conversationId, uidChat)) {
     return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
   }
 
@@ -2332,6 +2423,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     }
 
     setSessionMessages(conversationId, workingMessages.slice(1));
+    rememberChatConversationOwner(conversationId, String(req.currentUser?.id || ""));
     const uiActions = deriveUiActions(userMessage);
     return res.json({
       reply: finalReply,
@@ -2375,9 +2467,21 @@ app.get("/index.html", requireAuthPage, (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-app.get("/mobile", requireAuthPage, (_req, res) => {
-  res.sendFile(path.join(__dirname, "mobile.html"));
-});
+app.get(
+  "/mobile",
+  async (req, res, next) => {
+    const code = readDingTalkAuthCodeFromQuery(req);
+    if (!code) return next();
+    if (req.session?.user) {
+      return res.redirect(302, "/mobile");
+    }
+    await handleDingTalkSso(req, res, { defaultNext: "/mobile", requireAdminAccess: false });
+  },
+  requireAuthPage,
+  (_req, res) => {
+    res.sendFile(path.join(__dirname, "mobile.html"));
+  }
+);
 app.get("/mobile.html", requireAuthPage, (_req, res) => {
   res.sendFile(path.join(__dirname, "mobile.html"));
 });

@@ -1012,7 +1012,6 @@ export function createV2Router({
       appSecret: env.dingtalkAppSecret,
       agentId: env.dingtalkAgentId,
       testUserId: receiver.userId,
-      publicBaseUrl: env.publicBaseUrl,
       checkSendResult: true,
     });
     if (!result.ok) {
