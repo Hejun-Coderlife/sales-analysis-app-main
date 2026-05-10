@@ -9,6 +9,14 @@ function normalizeDate(value) {
   return `${y}-${m}-${day}`;
 }
 
+/** 模糊匹配前规范化（全角空格、连续空格等），减少「姓名看起来对但搜不到」 */
+function normalizeSearchNeedle(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/\u3000/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 /** Route token: aggregated analytics over every `status=ready` dataset. */
 export const AGGREGATE_ALL_READY_DATASET_ID = "__all_ready__";
 
@@ -332,6 +340,111 @@ export class AnalyticsService {
        ORDER BY performance DESC
        LIMIT $limit OFFSET $offset`,
       { ...params, limit: Number(limit), offset: Number(offset) }
+    );
+  }
+
+  /**
+   * 销售员 × 门店交叉汇总（后台 fact_sales），用于回答「某导购主要在哪家店开单」等。
+   */
+  async getSalespersonStoreBreakdown(datasetIds, { filters = {}, limit = 100, offset = 0, salespersonContains = "" } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
+    const needle = normalizeSearchNeedle(salespersonContains);
+    const spClause = needle
+      ? ` AND LOWER(CAST(salesperson AS VARCHAR)) LIKE $salesperson_needle`
+      : "";
+    const queryParams = { ...params, limit: Number(limit), offset: Number(offset) };
+    if (needle) {
+      queryParams.salesperson_needle = `%${needle.toLowerCase()}%`;
+    }
+    return this.duckdbService.query(
+      `SELECT
+          salesperson,
+          store,
+          SUM(amount) AS performance,
+          COUNT(DISTINCT ${dOrder})::BIGINT AS order_count
+       FROM fact_sales
+       WHERE ${whereSql}${spClause}
+       GROUP BY salesperson, store
+       ORDER BY performance DESC
+       LIMIT $limit OFFSET $offset`,
+      queryParams
+    );
+  }
+
+  /**
+   * 会员 × 销售员汇总（同一会员在不同导购下的消费明细）。
+   */
+  async getMemberSalespersonBreakdown(datasetIds, { filters = {}, limit = 80, offset = 0, memberContains = "" } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
+    const needle = normalizeSearchNeedle(memberContains);
+    const memberClause = needle
+      ? ` AND (
+            LOWER(CAST(member_name AS VARCHAR)) LIKE $member_needle
+            OR LOWER(CAST(COALESCE(member_id, '') AS VARCHAR)) LIKE $member_needle
+          )`
+      : "";
+    const queryParams = { ...params, limit: Number(limit), offset: Number(offset) };
+    if (needle) {
+      queryParams.member_needle = `%${needle.toLowerCase()}%`;
+    }
+    return this.duckdbService.query(
+      `SELECT
+          COALESCE(NULLIF(TRIM(member_id), ''), TRIM(member_name) || '|' || TRIM(COALESCE(phone, ''))) AS member_key,
+          TRIM(member_name) AS member_name,
+          TRIM(salesperson) AS salesperson,
+          SUM(amount) AS performance,
+          COUNT(DISTINCT ${dOrder})::BIGINT AS order_count
+       FROM fact_sales
+       WHERE ${whereSql}
+         AND COALESCE(TRIM(member_name), '') <> ''
+         ${memberClause}
+       GROUP BY 1, 2, 3
+       ORDER BY performance DESC
+       LIMIT $limit OFFSET $offset`,
+      queryParams
+    );
+  }
+
+  /**
+   * 某销售员名下的会员列表（订单行的 salesperson + member），用于「导购手里有哪些顾客」。
+   */
+  async getMembersForSalesperson(datasetIds, { filters = {}, limit = 100, offset = 0, salespersonContains = "" } = {}) {
+    const ids = (Array.isArray(datasetIds) ? datasetIds : [datasetIds])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
+    const { whereSql, params } = buildDatasetWhereClause(ids, filters);
+    const dOrder = distinctOrderSql();
+    const needle = normalizeSearchNeedle(salespersonContains);
+    const spClause = needle
+      ? ` AND LOWER(CAST(salesperson AS VARCHAR)) LIKE $salesperson_needle`
+      : "";
+    const queryParams = { ...params, limit: Number(limit), offset: Number(offset) };
+    if (needle) {
+      queryParams.salesperson_needle = `%${needle.toLowerCase()}%`;
+    }
+    return this.duckdbService.query(
+      `SELECT
+          COALESCE(NULLIF(TRIM(member_id), ''), TRIM(member_name) || '|' || TRIM(COALESCE(phone, ''))) AS member_key,
+          TRIM(member_name) AS member_name,
+          TRIM(COALESCE(phone, '')) AS phone,
+          SUM(amount) AS total_spend,
+          COUNT(DISTINCT ${dOrder})::BIGINT AS order_count
+       FROM fact_sales
+       WHERE ${whereSql}
+         AND COALESCE(TRIM(member_name), '') <> ''
+         ${spClause}
+       GROUP BY 1, 2, 3
+       ORDER BY total_spend DESC
+       LIMIT $limit OFFSET $offset`,
+      queryParams
     );
   }
 

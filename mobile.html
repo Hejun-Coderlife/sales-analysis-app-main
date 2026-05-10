@@ -162,6 +162,81 @@
       padding: 8px 10px;
       box-sizing: border-box;
     }
+    .store-filter-wrap { margin-top: 0; }
+    .store-filter-trigger {
+      width: 100%;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    .store-filter-trigger:active { filter: brightness(0.97); }
+    .store-filter-trigger .chev { flex-shrink: 0; font-size: 10px; color: var(--muted); }
+    .store-filter-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .store-filter-lines .hint { font-size: 11px; font-weight: 500; color: var(--muted); }
+    .store-filter-lines .val { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; word-break: break-all; }
+    .store-filter-panel {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+    }
+    .store-filter-panel .store-search {
+      width: 100%;
+      min-height: 40px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    .store-filter-panel .store-all-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid rgba(229, 231, 235, 0.95);
+      margin-bottom: 6px;
+    }
+    .store-filter-panel .store-all-row input { width: 18px; height: 18px; flex-shrink: 0; }
+    .store-checkbox-list {
+      max-height: min(52vh, 320px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 2px;
+    }
+    .store-cb-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 4px;
+      font-size: 14px;
+      border-bottom: 1px solid rgba(229, 231, 235, 0.7);
+    }
+    .store-cb-row:last-child { border-bottom: none; }
+    .store-cb-row input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; }
+    .store-cb-row label { flex: 1; min-width: 0; line-height: 1.35; cursor: pointer; }
+    .store-filter-empty { padding: 12px 4px; font-size: 13px; color: var(--muted); text-align: center; }
     .rank-empty-msg {
       margin: 4px 0 0;
       padding: 16px 8px;
@@ -403,9 +478,23 @@
         </div>
       </div>
     </div>
-    <div style="margin-top:12px">
-      <label for="storeSelect">门店</label>
-      <select id="storeSelect"></select>
+    <div class="store-filter-wrap" style="margin-top:12px">
+      <label for="storeFilterTrigger">门店</label>
+      <button type="button" class="store-filter-trigger" id="storeFilterTrigger" aria-expanded="false" aria-controls="storeFilterPanel">
+        <span class="store-filter-lines">
+          <span class="hint">当前门店</span>
+          <span class="val" id="storeFilterTriggerLabel">全部门店</span>
+        </span>
+        <span class="chev" aria-hidden="true">▼</span>
+      </button>
+      <div class="store-filter-panel hidden" id="storeFilterPanel" role="region" aria-label="选择门店">
+        <input type="search" class="store-search" id="storeSearchInput" placeholder="搜索门店名称" autocomplete="off" enterkeyhint="search" />
+        <label class="store-all-row">
+          <input type="checkbox" id="storeAllCheckbox" />
+          <span>全部门店（不限制）</span>
+        </label>
+        <div id="storeCheckboxList" class="store-checkbox-list"></div>
+      </div>
     </div>
     <button type="button" class="btn btn-primary" style="margin-top:12px;width:100%" id="applyFiltersBtn">应用筛选</button>
   </section>
@@ -528,8 +617,13 @@
   let state = {
     startDate: "",
     endDate: "",
-    store: "",
+    /** 已应用的门店筛选；空数组表示全部门店 */
+    stores: [],
   };
+  /** 可选门店全集（来自接口） */
+  let storeOptionsAll = [];
+  /** 弹层内编辑中的多选，关闭未应用时会还原为 state.stores */
+  let storeFilterDraft = [];
   let sleepFilterState = {
     sleepDays: 90,
     sleepMinOrders: 2,
@@ -733,11 +827,17 @@
     });
   }
 
-  function renderTrendLine(labels, values) {
+  function renderTrendLine(labels, values, trendOpts) {
     var canvas = document.getElementById("chartTrend");
     var box = canvas && canvas.parentElement;
     var empty = document.getElementById("trendEmptyMsg");
     var detail = document.getElementById("trendDetail");
+    function detachTrendInteraction(el) {
+      if (!el || !el._trendUnwire) return;
+      el._trendUnwire();
+      el._trendUnwire = null;
+    }
+    detachTrendInteraction(canvas);
     if (trendChart) {
       trendChart.destroy();
       trendChart = null;
@@ -757,6 +857,12 @@
       detail.appendChild(trendTooltip);
     }
     box.style.height = "240px";
+    var xTicks = { font: { size: 10 }, maxTicksLimit: 7 };
+    if (trendOpts && trendOpts.useDaily && trendOpts.daySpan != null && trendOpts.daySpan > 7) {
+      xTicks.autoSkip = trendOpts.daySpan > 14;
+      xTicks.maxRotation = 45;
+      xTicks.minRotation = 0;
+    }
     const trendCrosshairPlugin = {
       id: "trendCrosshairPlugin",
       afterDatasetsDraw: function (chart) {
@@ -798,6 +904,7 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        events: ["mousemove", "mouseout", "click", "touchstart", "touchmove"],
         interaction: { mode: "index", intersect: false },
         elements: { point: { hitRadius: 30 } },
         plugins: {
@@ -846,7 +953,7 @@
         },
         scales: {
           x: {
-            ticks: { maxTicksLimit: 7, font: { size: 10 } },
+            ticks: xTicks,
             grid: { display: false },
           },
           y: {
@@ -916,13 +1023,25 @@
       });
       trendChart.update("none");
     };
-    canvas.onpointerleave = hideTip;
-    canvas.onpointerdown = activateByPointerX;
-    canvas.onpointermove = activateByPointerX;
-    canvas.onpointerup = function () { setTimeout(hideTip, 700); };
-    canvas.ontouchstart = activateByPointerX;
-    canvas.ontouchmove = activateByPointerX;
-    canvas.ontouchend = function () { setTimeout(hideTip, 700); };
+    var hideTipLater = function () {
+      setTimeout(hideTip, 700);
+    };
+    canvas.addEventListener("pointerleave", hideTip);
+    canvas.addEventListener("pointerdown", activateByPointerX);
+    canvas.addEventListener("pointermove", activateByPointerX);
+    canvas.addEventListener("pointerup", hideTipLater);
+    canvas.addEventListener("touchstart", activateByPointerX, { passive: true });
+    canvas.addEventListener("touchmove", activateByPointerX, { passive: true });
+    canvas.addEventListener("touchend", hideTipLater, { passive: true });
+    canvas._trendUnwire = function () {
+      canvas.removeEventListener("pointerleave", hideTip);
+      canvas.removeEventListener("pointerdown", activateByPointerX);
+      canvas.removeEventListener("pointermove", activateByPointerX);
+      canvas.removeEventListener("pointerup", hideTipLater);
+      canvas.removeEventListener("touchstart", activateByPointerX);
+      canvas.removeEventListener("touchmove", activateByPointerX);
+      canvas.removeEventListener("touchend", hideTipLater);
+    };
   }
 
   function hasPerm(key) {
@@ -1049,6 +1168,67 @@
     return y + "-" + m + "-" + day;
   }
 
+  /** Inclusive day count between two YYYY-MM-DD strings (matches dashboard `index.html`). */
+  function inclusiveDaySpan(startStr, endStr) {
+    if (!startStr || !endStr) return null;
+    var s = new Date(startStr + "T12:00:00");
+    var e = new Date(endStr + "T12:00:00");
+    if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return null;
+    return Math.floor((e - s) / 86400000) + 1;
+  }
+
+  function expandDailyToRange(dailyRows, startStr, endStr) {
+    var rows = Array.isArray(dailyRows) ? dailyRows : [];
+    var map = new Map(rows.map(function (d) { return [d.day, d]; }));
+    if (!startStr || !endStr) return rows.slice();
+    var cur = new Date(startStr + "T12:00:00");
+    var end = new Date(endStr + "T12:00:00");
+    if (isNaN(cur.getTime()) || isNaN(end.getTime()) || end < cur) return rows.slice();
+    var out = [];
+    while (cur <= end) {
+      var key = ymd(cur);
+      var row = map.get(key);
+      out.push(row || { day: key, sales_amount: 0, store_count: 0 });
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }
+
+  function formatYearMonthZh(ym) {
+    var s = String(ym || "").trim();
+    var m = s.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return s || "—";
+    return m[1] + "年" + String(Number(m[2])) + "月";
+  }
+
+  /** Same rule as desktop: span ≤ 31 days → daily; otherwise monthly. */
+  function buildMobileTrendPresentation(dailyRows, monthlyRows) {
+    var startValue = state.startDate || "";
+    var endValue = state.endDate || "";
+    var daySpan = inclusiveDaySpan(startValue, endValue);
+    var useDaily = daySpan != null && daySpan <= 31;
+    var rawRows = useDaily
+      ? expandDailyToRange(dailyRows, startValue, endValue)
+      : (monthlyRows || []).slice();
+    var rows = rawRows.map(function (r) {
+      if (useDaily) {
+        return {
+          day: String(r.day || ""),
+          sales: Number(r.sales_amount || 0),
+          orderCount: r.order_count == null ? null : Number(r.order_count),
+          storeCount: r.store_count == null ? null : Number(r.store_count),
+        };
+      }
+      return {
+        day: formatYearMonthZh(r.year_month),
+        sales: Number(r.sales_amount || 0),
+        orderCount: null,
+        storeCount: r.store_count == null ? null : Number(r.store_count),
+      };
+    });
+    return { useDaily: useDaily, rows: rows, daySpan: daySpan };
+  }
+
   function formatDateZh(dateString) {
     if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       return "—";
@@ -1142,18 +1322,160 @@
     return fetchJson(url);
   }
 
-  function populateStoreSelect(stores) {
-    const sel = document.getElementById("storeSelect");
-    const cur = state.store;
-    sel.innerHTML = '<option value="">全部门店</option>';
-    (stores || []).forEach(function (s) {
-            const o = document.createElement("option");
-            o.value = s;
-            o.textContent = s;
-            sel.appendChild(o);
+  function storesForQuery() {
+    return Array.isArray(state.stores) && state.stores.length ? state.stores.slice() : [];
+  }
+
+  function storeParamForRequest() {
+    return state.stores.length ? { stores: state.stores.slice() } : {};
+  }
+
+  function formatStoreTriggerSummary() {
+    var sel = state.stores;
+    if (!sel || !sel.length) return "全部门店";
+    if (sel.length === 1) return String(sel[0]);
+    return "已选 " + sel.length + " 家门店";
+  }
+
+  function updateStoreTriggerLabel() {
+    var el = document.getElementById("storeFilterTriggerLabel");
+    if (el) el.textContent = formatStoreTriggerSummary();
+  }
+
+  function syncStoreAllMasterCheckbox() {
+    var el = document.getElementById("storeAllCheckbox");
+    if (el) el.checked = storeFilterDraft.length === 0;
+  }
+
+  function renderStoreCheckboxList() {
+    var container = document.getElementById("storeCheckboxList");
+    var searchEl = document.getElementById("storeSearchInput");
+    if (!container) return;
+    var q = (searchEl && String(searchEl.value || "").trim().toLowerCase()) || "";
+    var all = storeOptionsAll || [];
+    var filtered = !q
+      ? all.slice()
+      : all.filter(function (s) {
+          return String(s || "").toLowerCase().indexOf(q) >= 0;
+        });
+    if (!filtered.length) {
+      container.innerHTML = '<p class="store-filter-empty">无匹配门店，试试其他关键词</p>';
+      return;
+    }
+    container.innerHTML = filtered
+      .map(function (name) {
+        var checked = storeFilterDraft.indexOf(name) >= 0;
+        var id =
+          "storeCb_" +
+          String(name).replace(/[^a-zA-Z0-9_-]/g, function (ch) {
+            return "_" + ch.charCodeAt(0) + "_";
           });
-    if (cur && stores && stores.indexOf(cur) >= 0) sel.value = cur;
-    else sel.value = "";
+        return (
+          '<div class="store-cb-row">' +
+          '<input type="checkbox" class="store-cb" id="' +
+          escapeHtml(id) +
+          '" data-store-name="' +
+          escapeHtml(name) +
+          '" ' +
+          (checked ? "checked " : "") +
+          '/>' +
+          '<label for="' +
+          escapeHtml(id) +
+          '">' +
+          escapeHtml(name) +
+          "</label></div>"
+        );
+      })
+      .join("");
+  }
+
+  function closeStoreFilterPanel() {
+    var panel = document.getElementById("storeFilterPanel");
+    var trigger = document.getElementById("storeFilterTrigger");
+    if (panel) panel.classList.add("hidden");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    storeFilterDraft = state.stores.slice();
+    var search = document.getElementById("storeSearchInput");
+    if (search) search.value = "";
+  }
+
+  function openStoreFilterPanel() {
+    var panel = document.getElementById("storeFilterPanel");
+    var trigger = document.getElementById("storeFilterTrigger");
+    var datePanel = document.getElementById("dateRangePanel");
+    var dateTrigger = document.getElementById("dateRangeTrigger");
+    if (datePanel) datePanel.classList.add("hidden");
+    if (dateTrigger) dateTrigger.setAttribute("aria-expanded", "false");
+    if (!panel || !trigger) return;
+    storeFilterDraft = state.stores.slice();
+    syncStoreAllMasterCheckbox();
+    renderStoreCheckboxList();
+    panel.classList.remove("hidden");
+    trigger.setAttribute("aria-expanded", "true");
+  }
+
+  function toggleStoreFilterPanel() {
+    var panel = document.getElementById("storeFilterPanel");
+    if (!panel) return;
+    if (panel.classList.contains("hidden")) openStoreFilterPanel();
+    else closeStoreFilterPanel();
+  }
+
+  function populateStoreOptions(stores) {
+    storeOptionsAll = (stores || []).slice();
+    updateStoreTriggerLabel();
+    var panel = document.getElementById("storeFilterPanel");
+    if (panel && !panel.classList.contains("hidden")) {
+      storeFilterDraft = state.stores.slice();
+      syncStoreAllMasterCheckbox();
+      renderStoreCheckboxList();
+    }
+  }
+
+  function wireStoreFilterUi() {
+    var trigger = document.getElementById("storeFilterTrigger");
+    var panel = document.getElementById("storeFilterPanel");
+    var searchEl = document.getElementById("storeSearchInput");
+    var allCb = document.getElementById("storeAllCheckbox");
+    var list = document.getElementById("storeCheckboxList");
+    if (!trigger || !panel || trigger.dataset.wired) return;
+    trigger.dataset.wired = "1";
+    trigger.addEventListener("click", function () {
+      toggleStoreFilterPanel();
+    });
+    if (searchEl && !searchEl.dataset.wired) {
+      searchEl.dataset.wired = "1";
+      searchEl.addEventListener("input", function () {
+        renderStoreCheckboxList();
+      });
+    }
+    if (allCb && !allCb.dataset.wired) {
+      allCb.dataset.wired = "1";
+      allCb.addEventListener("change", function () {
+        if (allCb.checked) {
+          storeFilterDraft = [];
+          renderStoreCheckboxList();
+        }
+      });
+    }
+    if (list && !list.dataset.wired) {
+      list.dataset.wired = "1";
+      list.addEventListener("change", function (e) {
+        var t = e.target;
+        if (!t || !t.classList || !t.classList.contains("store-cb")) return;
+        var name = t.getAttribute("data-store-name");
+        if (!name) return;
+        if (t.checked) {
+          if (storeFilterDraft.indexOf(name) < 0) storeFilterDraft.push(name);
+          if (allCb) allCb.checked = false;
+        } else {
+          storeFilterDraft = storeFilterDraft.filter(function (x) {
+            return x !== name;
+          });
+        }
+        syncStoreAllMasterCheckbox();
+      });
+    }
   }
 
   async function fetchKpis(extra) {
@@ -1161,7 +1483,7 @@
     const f = {
       startDate: extra.startDate != null ? extra.startDate : state.startDate,
       endDate: extra.endDate != null ? extra.endDate : state.endDate,
-      stores: state.store ? [state.store] : [],
+      stores: storesForQuery(),
     };
     const q = qs(f);
     const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/kpis?" + q;
@@ -1171,7 +1493,7 @@
 
   async function fetchRank(path, perm) {
     if (!datasetId || !hasPerm(perm)) return [];
-    const f = { startDate: state.startDate, endDate: state.endDate, stores: state.store ? [state.store] : [] };
+    const f = { startDate: state.startDate, endDate: state.endDate, stores: storesForQuery() };
     const q = qs(f) + "&limit=500&offset=0";
     const url =
       "/api/v2/datasets/" + encodeURIComponent(datasetId) + path + (q ? "?" + q : "");
@@ -1179,13 +1501,16 @@
     return data.rows || [];
   }
 
-  async function fetchTrend() {
-    if (!datasetId || !hasPerm("canViewTrendCharts")) return [];
-    const f = { startDate: state.startDate, endDate: state.endDate, stores: state.store ? [state.store] : [] };
+  async function fetchTrendSeries() {
+    if (!datasetId || !hasPerm("canViewTrendCharts")) return { daily: [], monthly: [] };
+    const f = { startDate: state.startDate, endDate: state.endDate, stores: storesForQuery() };
     const q = qs(f);
     const url = "/api/v2/datasets/" + encodeURIComponent(datasetId) + "/trends" + (q ? "?" + q : "");
     const data = await fetchJson(url);
-    return Array.isArray(data.daily) ? data.daily : [];
+    return {
+      daily: Array.isArray(data.daily) ? data.daily : [],
+      monthly: Array.isArray(data.monthly) ? data.monthly : [],
+    };
   }
 
   async function fetchTopMembersPage(filterBase, storeParam, limit, offset) {
@@ -1331,11 +1656,9 @@
       uq +
       "</b> 人。消费前列：</p><ol class=\"ol member-list-scroll\">" +
       topMembers
-        .map(function (m, i) {
+        .map(function (m) {
           return (
             "<li style=\"padding-left:4px\"><span class=\"name\">" +
-            (i + 1) +
-            ". " +
             escapeHtml(m.member_name || m.member_id || "") +
             "</span><span>" +
             fmtMoney(m.total_spend) +
@@ -1422,7 +1745,7 @@
     }
 
     const filterBase = { startDate: state.startDate, endDate: state.endDate };
-    const storeParam = state.store ? { stores: [state.store] } : {};
+    const storeParam = storeParamForRequest();
 
     let coreKpis = null;
     let todayK = null;
@@ -1432,7 +1755,7 @@
     let products = [];
     let members = [];
     let sleeping = null;
-    let trendDaily = [];
+    let trendPresentation = { rows: [], useDaily: false, daySpan: null };
 
     const today = ymd(new Date());
     const now = new Date();
@@ -1464,9 +1787,10 @@
       products = [];
     }
     try {
-      trendDaily = await fetchTrend();
+      var ts = await fetchTrendSeries();
+      trendPresentation = buildMobileTrendPresentation(ts.daily, ts.monthly);
     } catch (e) {
-      trendDaily = [];
+      trendPresentation = { rows: [], useDaily: false, daySpan: null };
     }
     try {
       if (hasPerm("canViewMemberAnalysis")) {
@@ -1508,10 +1832,10 @@
 
     const totalRows = coreKpis ? Number(coreKpis.totalRows || 0) : 0;
     debugDatasetConsistency("loadAllData", {
-      storeFilter: state.store || "",
+      storeFilter: (state.stores && state.stores.length ? state.stores.join(",") : "") || "",
       queryReturnedRows: {
         kpiTotalRows: totalRows,
-        trendDaily: Array.isArray(trendDaily) ? trendDaily.length : 0,
+        trendRows: Array.isArray(trendPresentation.rows) ? trendPresentation.rows.length : 0,
         storeRank: Array.isArray(stores) ? stores.length : 0,
         salespersonRank: Array.isArray(sales) ? sales.length : 0,
         productRank: Array.isArray(products) ? products.length : 0,
@@ -1594,19 +1918,17 @@
 
     if (hasPerm("canViewTrendCharts")) {
       setSectionVisible("trendCard", true);
-      var trendRows = (trendDaily || []).map(function (r) {
-        return {
-          day: String(r.day || ""),
-          sales: Number(r.sales_amount || 0),
-          orderCount: r.order_count == null ? null : Number(r.order_count),
-          storeCount: r.store_count == null ? null : Number(r.store_count),
-        };
-      });
+      var trendTitleEl = document.querySelector("#trendCard h2");
+      if (trendTitleEl) {
+        trendTitleEl.textContent = trendPresentation.useDaily ? "日销售趋势" : "月销售趋势";
+      }
+      var trendRows = trendPresentation.rows || [];
       trendSeriesMeta.length = 0;
       trendRows.forEach(function (r) { trendSeriesMeta.push(r); });
       renderTrendLine(
         trendRows.map(function (r) { return r.day; }),
-        trendRows.map(function (r) { return r.sales; })
+        trendRows.map(function (r) { return r.sales; }),
+        { useDaily: trendPresentation.useDaily, daySpan: trendPresentation.daySpan }
       );
     } else {
       setSectionVisible("trendCard", false);
@@ -1769,7 +2091,7 @@
       filters: {
         startDate: state.startDate,
         endDate: state.endDate,
-        stores: state.store ? [state.store] : [],
+        stores: storesForQuery(),
         salespeople: [],
         products: [],
         sleepingSalesperson: "",
@@ -2166,7 +2488,9 @@
           if (hasPerm("canUseFilters")) {
             state.startDate = document.getElementById("startDate").value || "";
             state.endDate = document.getElementById("endDate").value || "";
-            state.store = document.getElementById("storeSelect").value || "";
+            state.stores = storeFilterDraft.slice();
+            updateStoreTriggerLabel();
+            closeStoreFilterPanel();
             updateDateRangeLabel();
           }
           try {
@@ -2190,6 +2514,7 @@
       if (hasPerm("canUseFilters") && dateTrigger && datePanel && startDateInput && endDateInput && !dateTrigger.dataset.wired) {
         dateTrigger.dataset.wired = "1";
         dateTrigger.addEventListener("click", function () {
+          closeStoreFilterPanel();
           datePanel.classList.toggle("hidden");
           var open = !datePanel.classList.contains("hidden");
           dateTrigger.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2231,6 +2556,7 @@
           });
         }
       }
+      if (hasPerm("canUseFilters")) wireStoreFilterUi();
     }
 
     function wireSleepFilterUi() {
@@ -2243,7 +2569,7 @@
         showInlineLoading("正在加载沉睡会员...");
         try {
           var filterBase = { startDate: state.startDate, endDate: state.endDate };
-          var storeParam = state.store ? { stores: [state.store] } : {};
+          var storeParam = storeParamForRequest();
           var sleeping = await fetchSleepingPage(filterBase, storeParam, SLEEP_INITIAL_LIMIT, 0);
           var sleepRows = Array.isArray(sleeping && sleeping.rows)
             ? sleeping.rows
@@ -2300,11 +2626,16 @@
         appliedStartDate: state.startDate || "",
         appliedEndDate: state.endDate || "",
       });
-      populateStoreSelect((opt && opt.options && opt.options.stores) || []);
+      populateStoreOptions((opt && opt.options && opt.options.stores) || []);
     } else {
       document.getElementById("startDate").disabled = true;
       document.getElementById("endDate").disabled = true;
-      document.getElementById("storeSelect").disabled = true;
+      var sTrig = document.getElementById("storeFilterTrigger");
+      var sSea = document.getElementById("storeSearchInput");
+      var sAll = document.getElementById("storeAllCheckbox");
+      if (sTrig) sTrig.disabled = true;
+      if (sSea) sSea.disabled = true;
+      if (sAll) sAll.disabled = true;
     }
 
     await loadAllData();

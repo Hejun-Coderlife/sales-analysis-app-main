@@ -111,6 +111,37 @@ async function main() {
   const members = await analytics.getTopMembers(datasetId, { limit: 1 });
   assertClose(Number(members[0]?.total_spend || 0), 500, "top member spend");
 
+  const spStores = await analytics.getSalespersonStoreBreakdown(datasetId, {
+    filters: {},
+    limit: 20,
+    salespersonContains: "张三",
+  });
+  if (spStores.length !== 1 || String(spStores[0].store) !== "一店" || Number(spStores[0].performance) !== 500) {
+    throw new Error("salesperson-store breakdown mismatch");
+  }
+
+  const msBreak = await analytics.getMemberSalespersonBreakdown(datasetId, {
+    filters: {},
+    limit: 20,
+    memberContains: "吴莉",
+  });
+  if (!msBreak.some((r) => String(r.salesperson).trim() === "张三" && Number(r.performance) === 500)) {
+    throw new Error("member-salesperson breakdown mismatch");
+  }
+
+  const customersOf = await analytics.getMembersForSalesperson(datasetId, {
+    filters: {},
+    limit: 20,
+    salespersonContains: "张三",
+  });
+  if (
+    customersOf.length !== 1 ||
+    String(customersOf[0].member_name).trim() !== "吴莉" ||
+    Number(customersOf[0].total_spend) !== 500
+  ) {
+    throw new Error("members-for-salesperson mismatch");
+  }
+
   const leadersByDay = await analytics.getLeadersByGranularity(datasetId, {
     granularity: "day",
     limit: 10,

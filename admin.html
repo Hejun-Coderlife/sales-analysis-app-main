@@ -50,13 +50,21 @@
     .field label{font-size:12px;color:#374151}
     .field input,.field select,.field textarea{min-height:36px;border:1px solid #d1d5db;border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit}
     .field textarea{min-height:56px;resize:vertical}
-    .table-shell{border:1px solid var(--line);border-radius:10px;overflow:auto;min-height:0;flex:1;background:#fff}
-    table{width:100%;border-collapse:separate;border-spacing:0;min-width:1300px;font-size:13px}
-    th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;white-space:nowrap;background:#fff}
-    th{position:sticky;top:0;z-index:6;background:#f8fafc}
-    th.sticky-left,td.sticky-left{position:sticky;left:0;z-index:5;box-shadow:1px 0 0 var(--line)}
-    th.sticky-right,td.sticky-right{position:sticky;right:0;z-index:5;box-shadow:-1px 0 0 var(--line)}
-    th.sticky-right-2,td.sticky-right-2{position:sticky;right:86px;z-index:5;box-shadow:-1px 0 0 var(--line)}
+    .table-shell{border:1px solid var(--line);border-radius:10px;overflow:auto;min-height:0;flex:1;background:#fff;padding-left:2px}
+    table{width:100%;border-collapse:separate;border-spacing:0;min-width:1380px;font-size:13px}
+    th,td{border-bottom:1px solid var(--line);padding:8px 8px;text-align:left;white-space:nowrap;background:#fff}
+    td.cell-wrap{white-space:normal;vertical-align:top;font-size:12px;max-width:min(480px,36vw)}
+    td.cell-json{font-size:11px;color:#374151;white-space:pre-wrap;max-width:260px;vertical-align:top}
+    /* 冻结：表头整体压在表体之上；首列/末列表头角单元格再抬高，避免横向滚动时被相邻表头盖住 */
+    thead th{position:sticky;top:0;z-index:12;background:#f8fafc}
+    tbody td{position:relative;z-index:1}
+    th.sticky-left,td.sticky-left{position:sticky;left:0;box-shadow:1px 0 0 var(--line)}
+    td.sticky-left{z-index:10;background:#fff}
+    th.sticky-left{left:0;top:0;z-index:13;background:#f8fafc}
+    th.sticky-right,td.sticky-right{position:sticky;right:0;box-shadow:-1px 0 0 var(--line)}
+    th.sticky-right-2,td.sticky-right-2{position:sticky;right:86px;box-shadow:-1px 0 0 var(--line)}
+    td.sticky-right-2,td.sticky-right{z-index:10;background:#fff}
+    th.sticky-right-2,th.sticky-right{z-index:13;background:#f8fafc}
     .cell-actions{display:flex;gap:6px}
     .muted{color:var(--muted);font-size:12px}
     .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid}
@@ -85,18 +93,23 @@
     .perm-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
     .perm-toolbar input{flex:1;min-width:180px;min-height:34px;border:1px solid #d1d5db;border-radius:8px;padding:6px 10px}
     .tag-wrap{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    /* 同时设置 top + bottom，避免「上边留白 + max-height」叠在一起仍把弹窗底边挤出视口，蓝色按钮像被裁掉 */
     .modal{
-      position:fixed;left:50%;top:max(16px,10vh);transform:translateX(-50%);width:min(520px,92vw);
-      max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);
-      background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.25);
+      position:fixed;left:50%;top:max(12px, env(safe-area-inset-top, 0px));
+      bottom:max(16px, env(safe-area-inset-bottom, 0px));
+      transform:translateX(-50%);width:min(560px,94vw);max-height:none;
+      background:#fff;border:1px solid var(--line);border-radius:12px;
+      box-shadow:0 18px 40px rgba(0,0,0,.25),0 2px 0 rgba(0,0,0,.04);
       z-index:100;display:none;flex-direction:column;overflow:hidden;
     }
     .modal.show{display:flex}
     .modal-head,.modal-foot{flex-shrink:0;padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}
-    .modal-foot{border-bottom:none;border-top:1px solid var(--line)}
+    .modal-foot{border-bottom:none;border-top:1px solid var(--line);padding-bottom:14px}
     .modal-body{
-      padding:12px;display:grid;gap:10px;
-      flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+      padding:12px;display:flex;flex-direction:column;gap:10px;
+      flex:1;min-height:0;
+      overflow-y:auto;overflow-x:hidden;
+      overscroll-behavior:contain;
       -webkit-overflow-scrolling:touch;
     }
     #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:none;max-width:calc(100vw - 32px);background:#111827;color:#fff;padding:8px 12px;border-radius:10px;font-size:13px;box-shadow:0 10px 24px rgba(0,0,0,.22)}
@@ -134,6 +147,7 @@
         <div class="tabs">
           <button class="tab active" data-tab="staff">员工管理</button>
           <button class="tab" data-tab="position">岗位管理</button>
+          <button type="button" class="tab" data-tab="aiChat" id="aiChatTabBtn" hidden>AI 提问监控</button>
         </div>
 
         <section id="staffPanel" class="panel active">
@@ -152,6 +166,7 @@
               <thead>
                 <tr>
                   <th class="sticky-left">账号</th>
+                  <th>姓名</th>
                   <th>岗位</th>
                   <th>管理范围</th>
                   <th>门店权限</th>
@@ -167,7 +182,7 @@
                 </tr>
               </thead>
               <tbody id="usersTableBody">
-                <tr><td colspan="13" class="muted">加载中...</td></tr>
+                <tr><td colspan="14" class="muted">加载中...</td></tr>
               </tbody>
             </table>
           </div>
@@ -179,6 +194,34 @@
             <button id="openAddRoleBtn" type="button" class="btn btn-primary" style="flex-shrink:0;">新增岗位</button>
           </div>
           <div id="positionGrid" class="role-grid"></div>
+        </section>
+
+        <section id="aiChatPanel" class="panel">
+          <div class="row" style="justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:10px;">
+            <div class="meta" style="flex:1;min-width:0;">记录所有账号通过看板 / 移动端向<strong>内置 AI</strong>发送的问题（含页面筛选快照、调用工具、HTTP 状态与回复摘要），便于排查模型答错或未调工具等问题。数据保存在服务器 <code class="muted">backend/data/ai-chat-queries.json</code>，最多保留约 5000 条。</div>
+            <button id="refreshAiChatQueriesBtn" type="button" class="btn btn-primary" style="flex-shrink:0;">刷新</button>
+          </div>
+          <div class="table-shell">
+            <table style="min-width:1100px">
+              <thead>
+                <tr>
+                  <th class="sticky-left">时间</th>
+                  <th>账号</th>
+                  <th>提问</th>
+                  <th>筛选快照</th>
+                  <th>模型</th>
+                  <th>HTTP</th>
+                  <th>耗时</th>
+                  <th>工具</th>
+                  <th>回复摘要</th>
+                  <th class="sticky-right">错误</th>
+                </tr>
+              </thead>
+              <tbody id="aiChatQueriesBody">
+                <tr><td colspan="10" class="muted">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
 
@@ -468,10 +511,11 @@
     function renderUsersTable() {
       const rows = applyFilters(usersCache);
       const tbody = document.getElementById("usersTableBody");
-      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="13" class="muted">暂无匹配员工</td></tr>`; return; }
+      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="14" class="muted">暂无匹配员工</td></tr>`; return; }
       tbody.innerHTML = rows.map((u) => `
         <tr>
           <td class="sticky-left"><b>${escapeHtml(u.username || "-")}</b></td>
+          <td>${escapeHtml((u.displayName && String(u.displayName).trim()) || "—")}</td>
           <td>${escapeHtml(positionLabel(u.role))}</td>
           <td>${escapeHtml(summarizeScope(u))}</td>
           <td>${escapeHtml(summarizeCount(u.allowAllStores, u.allowedStores, "家"))}</td>
@@ -543,7 +587,7 @@
         return;
       }
       if (!res.ok) {
-        document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="11" class="muted">${escapeHtml(data.error || "员工列表加载失败")}</td></tr>`;
+        document.getElementById("usersTableBody").innerHTML = `<tr><td colspan="14" class="muted">${escapeHtml(data.error || "员工列表加载失败")}</td></tr>`;
         return;
       }
       usersCache = data.users || [];
@@ -1289,6 +1333,60 @@
       showToast("通知配置已保存", "success");
     }
 
+    async function loadAiChatQueries() {
+      const tbody = document.getElementById("aiChatQueriesBody");
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="10" class="muted">加载中...</td></tr>';
+      let res;
+      try {
+        res = await fetch("/api/admin/ai-chat-queries?limit=150", { credentials: "same-origin" });
+        if (res.status === 404) {
+          res = await fetch("/api/v2/admin/ai-chat-queries?limit=150", { credentials: "same-origin" });
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="10" class="meta err">${escapeHtml(err?.message || "网络请求失败")}</td></tr>`;
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = data.error || `HTTP ${res.status}${res.statusText ? " " + res.statusText : ""}`;
+        tbody.innerHTML = `<tr><td colspan="10" class="meta err">${escapeHtml(hint)}。若为 404：请在<strong>运行 server.js 的终端</strong>里停掉旧进程后执行 <code>npm start</code>，启动后终端应出现一行 <code>[routes] AI 提问监控</code>；并确认当前账号有「查看审计日志」权限。</td></tr>`;
+        return;
+      }
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="muted">暂无记录（尚无用户提问或日志文件为空）</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows
+        .map((r) => {
+          const filters =
+            r.salesContextPreview && typeof r.salesContextPreview === "object"
+              ? JSON.stringify(r.salesContextPreview).slice(0, 500)
+              : "—";
+          const tools = Array.isArray(r.toolsUsed) && r.toolsUsed.length ? r.toolsUsed.join(", ") : "—";
+          const err = r.error ? escapeHtml(r.error) : "";
+          const reply = r.replyPreview ? escapeHtml(String(r.replyPreview).slice(0, 360)) : "";
+          const dur = r.durationMs != null ? `${r.durationMs} ms` : "—";
+          const http = r.httpStatus != null ? String(r.httpStatus) : "—";
+          return `<tr>
+            <td class="sticky-left muted">${escapeHtml(r.timestamp || "")}</td>
+            <td>${escapeHtml(r.username || r.userId || "")}</td>
+            <td class="cell-wrap">${escapeHtml(r.message || "")}</td>
+            <td class="cell-json">${escapeHtml(filters)}</td>
+            <td class="muted">${escapeHtml(r.model || "")}</td>
+            <td>${http}</td>
+            <td>${dur}</td>
+            <td class="cell-wrap">${escapeHtml(tools)}</td>
+            <td class="cell-wrap">${reply || "—"}</td>
+            <td class="sticky-right cell-wrap meta err">${err || "—"}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+
+    document.getElementById("refreshAiChatQueriesBtn")?.addEventListener("click", () => void loadAiChatQueries());
+
     document.getElementById("toDashboardBtn").addEventListener("click", () => { window.location.href = "/dashboard"; });
     document.getElementById("logoutBtn").addEventListener("click", async () => { await fetch("/api/auth/logout", { method:"POST" }); window.location.href = "/login"; });
     document.querySelectorAll(".tab").forEach((tab) => {
@@ -1297,6 +1395,8 @@
         document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
         document.getElementById("staffPanel").classList.toggle("active", name === "staff");
         document.getElementById("positionPanel").classList.toggle("active", name === "position");
+        document.getElementById("aiChatPanel").classList.toggle("active", name === "aiChat");
+        if (name === "aiChat") void loadAiChatQueries();
       });
     });
     document.getElementById("queryUsersBtn").addEventListener("click", renderUsersTable);
@@ -1420,6 +1520,9 @@
       if (!meRes.ok) { window.location.href = "/login"; return; }
       const meJson = await meRes.json().catch(() => ({}));
       currentUser = meJson?.user || null;
+      if (currentUser?.permissions?.canViewAuditLogs) {
+        document.getElementById("aiChatTabBtn")?.removeAttribute("hidden");
+      }
       if (!isAdminOperator()) {
         const createBtn = document.getElementById("openCreateBtn");
         const resetBtn = document.getElementById("drawerResetPwdBtn");

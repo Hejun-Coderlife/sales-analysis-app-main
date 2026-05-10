@@ -9,14 +9,18 @@ import { env } from "./backend/src/config/env.js";
 import { AuthService, normalizeAccountName } from "./backend/src/auth/authService.js";
 import { createAuthMiddleware, safeInternalRedirectPath, safeLoginNextPath } from "./backend/src/auth/middleware.js";
 import { AuditLogStore } from "./backend/src/services/auditLogStore.js";
+import { AiChatQueryLogStore, createAiChatQueryMonitor } from "./backend/src/services/aiChatQueryLogStore.js";
 import { createAgentDatasetToolsService } from "./backend/src/services/agentDatasetToolsService.js";
 import { sendDingTalkTestWorkNotification } from "./backend/src/services/dingtalkWorkNotifyService.js";
 import { NotificationStore } from "./backend/src/services/notificationStore.js";
 import {
   applyPermissionScopeToFilters,
+  finalizeMemberRowsForAgentTools,
   getRolePermissionTemplateByDefinedId,
   hasPermission,
   maskSensitiveMemberRows,
+  deepSanitizeAgentToolPayload,
+  redactMainlandMobilesInText,
   syncCustomRolesFromCatalog,
   toPublicUser,
 } from "./backend/src/auth/permissionModel.js";
@@ -56,6 +60,7 @@ const { getCurrentUser, requireAuthApi, requireAuthPage, requirePermission, requ
   createAuthMiddleware(authService);
 const { analyticsService, jobStore, invalidateV2ResponseCache } = getV2Services();
 const auditLogStore = new AuditLogStore({ logPath: env.auditLogsPath });
+const aiChatQueryLogStore = new AiChatQueryLogStore({ logPath: env.aiChatQueriesLogPath });
 const agentDatasetToolsService = createAgentDatasetToolsService({ analyticsService });
 const notificationStore = new NotificationStore({ notificationsPath: env.notificationsPath });
 const loginAttempts = new Map();
@@ -506,8 +511,101 @@ function buildDashboardFilterHintFromSyncedContext(context) {
   return (
     "【本回合已与页面同步的筛选】" +
     parts.join("；") +
-    "。用户若未另行指定其它日期或门店，调用 getKpiFromDataset、排行类、沉睡会员类、趋势类等工具时，必须在 filters 中传入相同的 startDate/endDate，并在需要时传入相同的 stores/salespeople/products，以保证与当前打开的 /dashboard 或 /mobile 看板数字一致。"
+    "。凡查询 KPI、排行、趋势、沉睡会员，以及「销售员—门店」（getSalespersonStoreBreakdownFromDataset / getStoresForSalespersonFromDataset）、「给定会员查导购」（getMemberSalespersonBreakdownFromDataset）、「给定导购查名下会员」（getMembersForSalespersonFromDataset），必须在 filters 中传入与上述一致的 startDate/endDate，并在需要时传入相同的 stores/salespeople/products；后台为已导入明细，优先于页面摘要。"
   );
+}
+
+/** 典型「哪家店」问法中提取销售员姓名（去空格后匹配） */
+function extractSalespersonNameForStoreQuestion(text) {
+  const compact = String(text || "").replace(/\s+/g, "");
+  if (!compact || compact.length > 120) return "";
+  const patterns = [
+    /^([\u4e00-\u9fa5·]{2,16})是哪家店/,
+    /^([\u4e00-\u9fa5·]{2,16})是哪个店/,
+    /^([\u4e00-\u9fa5·]{2,16})在哪(?:个|间)店/,
+    /^([\u4e00-\u9fa5·]{2,16})在哪个门店/,
+    /^([\u4e00-\u9fa5·]{2,16})(?:是)?哪个店的(?:销售|导购|营业员)/,
+    /哪(?:家|个)(?:门)?店的(?:销售|导购|营业员)[是为]?([\u4e00-\u9fa5·]{2,16})/,
+    /(?:销售|导购|营业员)(?:员)?[是为]?([\u4e00-\u9fa5·]{2,16})(?:是)?哪家店/,
+  ];
+  for (const re of patterns) {
+    const m = compact.match(re);
+    if (m && m[1]) return String(m[1]).trim();
+  }
+  return "";
+}
+
+/**
+ * 对用户提到的销售员自动跑一次「销售员×门店」查询，把结果写进系统提示，避免模型漏调工具仍说「无映射」。
+ */
+async function maybePrequerySalespersonStoreBlocks(ctxEntry, userMessage, currentUser, accessScope) {
+  if (!userMessage || !ctxEntry?.context) return "";
+  if (!hasPermission(currentUser, "canViewSalespersonRanking")) return "";
+  if (!hasPermission(currentUser, "canViewStoreRanking")) return "";
+  const name = extractSalespersonNameForStoreQuestion(userMessage);
+  if (!name) return "";
+  const f = ctxEntry.context.filters || {};
+  const filters = {
+    startDate: String(f.startDate || ""),
+    endDate: String(f.endDate || ""),
+    stores: Array.isArray(f.stores) ? f.stores : [],
+    salespeople: Array.isArray(f.salespeople) ? f.salespeople : [],
+    products: Array.isArray(f.products) ? f.products : [],
+  };
+  try {
+    const toolResult = await agentDatasetToolsService.runToolCall({
+      currentUser,
+      accessScope,
+      toolName: "getSalespersonStoreBreakdownFromDataset",
+      toolArgs: { filters, salespersonContains: name, limit: 80 },
+    });
+    const fmt = (n) =>
+      Number.isFinite(Number(n))
+        ? Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "—";
+    if (!toolResult?.ok) {
+      return (
+        `\n\n【系统预查】已尝试按姓名「${name}」查询门店归属，未成功（${String(toolResult?.error || toolResult?.code || "未知")}）。` +
+        `请提示用户核对日期筛选是否与页面一致；不要随意说缺少映射表。`
+      );
+    }
+    const summary = toolResult.summary || {};
+    const rows = Array.isArray(toolResult.rows) ? toolResult.rows : [];
+    if (!rows.length) {
+      return (
+        `\n\n【系统预查】姓名关键字「${name}」在当前筛选日期与权限下无门店拆分记录；可能姓名与导入不一致或区间内无订单。` +
+        `不要说「系统无法关联营业员与门店」。`
+      );
+    }
+    const lines = rows
+      .slice(0, 10)
+      .map((r) => `  · ${String(r.store || "—")}：${fmt(r.performance)} 元`)
+      .join("\n");
+    return (
+      `\n\n【系统预查·回答时请优先采用以下事实】` +
+      `销售员关键字「${name}」：业绩最高的门店为「${summary.primaryStore || rows[0]?.store || "—"}」（约 ${fmt(summary.primaryPerformance)} 元）；` +
+      `共 ${summary.storeCount != null ? summary.storeCount : rows.length} 个门店有订单归属。\n门店明细（节选）：\n${lines}\n` +
+      `（以上为后台订单按门店聚合；不要说没有营业员与门店的关联。）`
+    );
+  } catch (_err) {
+    return "";
+  }
+}
+
+/** 写入 AI 提问监控时的页面筛选快照（仅 filters，避免体积过大） */
+function buildSalesContextPreviewForMonitor(context) {
+  if (!context || typeof context !== "object") return null;
+  const f = context.filters;
+  if (!f || typeof f !== "object") return null;
+  const sliceArr = (arr, max) =>
+    Array.isArray(arr) ? arr.slice(0, max).map((x) => String(x || "").trim()).filter(Boolean) : [];
+  return {
+    startDate: String(f.startDate || "").trim(),
+    endDate: String(f.endDate || "").trim(),
+    stores: sliceArr(f.stores, 40),
+    salespeople: sliceArr(f.salespeople, 40),
+    products: sliceArr(f.products, 30),
+  };
 }
 
 function getSessionMessages(conversationId) {
@@ -588,7 +686,7 @@ function normalizeAssistantReply(text) {
         .map((cell) => cell.trim())
         .filter(Boolean);
       if (cells.length) {
-        normalizedLines.push(cells.join("  "));
+        normalizedLines.push(cells.join("｜"));
         continue;
       }
     }
@@ -598,6 +696,7 @@ function normalizeAssistantReply(text) {
 
   // Clean extra whitespace introduced by replacements.
   value = value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  value = redactMainlandMobilesInText(value);
   return value;
 }
 
@@ -1565,7 +1664,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
   }
   if (toolName === "getTopMembers") {
     if (!hasPermission(currentUser, "canAskMemberQuestions")) return deny();
-    const rows = (context.memberRank || [])
+    const rowsRaw = (context.memberRank || [])
       .slice(0, limit)
       .map((m, idx) => ({
         rank: idx + 1,
@@ -1578,6 +1677,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
         latest_store: m.latest_store,
         latest_salesperson: m.latest_salesperson,
       }));
+    const rows = finalizeMemberRowsForAgentTools(rowsRaw, currentUser?.allowedMemberFields || {});
     return { ok: true, rows, total: (context.memberRank || []).length, updatedAt: context.updatedAt };
   }
   if (toolName === "findMember") {
@@ -1589,7 +1689,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
     const keyword = String(args.keyword || "").trim().toLowerCase();
     if (!keyword) return { ok: false, error: "keyword is required" };
     const memberLimit = sanitizeLimit(args.limit, 10, 100);
-    const rows = (context.memberRank || [])
+    const rowsMatched = (context.memberRank || [])
       .filter((m) => {
         const name = String(m.member_name || "").toLowerCase();
         const phone = String(m.phone || "").toLowerCase();
@@ -1597,6 +1697,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
         return name.includes(keyword) || phone.includes(keyword) || memberKey.includes(keyword);
       })
       .slice(0, memberLimit);
+    const rows = finalizeMemberRowsForAgentTools(rowsMatched, currentUser?.allowedMemberFields || {});
     return {
       ok: true,
       rows,
@@ -1612,7 +1713,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
     const matched = (context.memberRank || [])
       .filter((m) => String(m.latest_salesperson || "").trim().toLowerCase().includes(salesperson))
       .sort((a, b) => Number(b.total_spend || 0) - Number(a.total_spend || 0));
-    const rows = matched.slice(0, memberLimit).map((m, idx) => ({
+    const rowsRaw = matched.slice(0, memberLimit).map((m, idx) => ({
       rank: idx + 1,
       member_key: m.member_key,
       member_name: m.member_name,
@@ -1623,6 +1724,7 @@ async function runToolCall(contextEntry, currentUser, accessScope, toolName, too
       latest_store: m.latest_store,
       latest_salesperson: m.latest_salesperson,
     }));
+    const rows = finalizeMemberRowsForAgentTools(rowsRaw, currentUser?.allowedMemberFields || {});
     const totalSpend = matched.reduce((sum, m) => sum + Number(m.total_spend || 0), 0);
     return {
       ok: true,
@@ -1934,6 +2036,36 @@ app.get("/api/admin/users", requireAdminApi, async (_req, res) => {
   const users = await authService.listUsers();
   return res.json({ ok: true, users });
 });
+
+app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canViewAuditLogs")) return;
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const data = await auditLogStore.list({ limit, offset });
+    return res.json({ ok: true, ...data });
+  } catch (error) {
+    console.warn("[admin] audit-logs list", error?.message || error);
+    return res.status(500).json({ error: error?.message || "读取审计日志失败" });
+  }
+});
+
+/** 用户向内置 AI 提问的调试日志（需「查看审计日志」权限）；另注册 /api/v2 前缀以防代理或旧进程路径不一致 */
+async function handleAdminAiChatQueriesList(req, res) {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canViewAuditLogs")) return;
+  try {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const data = await aiChatQueryLogStore.list({ limit, offset });
+    return res.json({ ok: true, ...data });
+  } catch (error) {
+    console.warn("[admin] ai-chat-queries list", error?.message || error);
+    return res.status(500).json({ error: error?.message || "读取 AI 提问日志失败" });
+  }
+}
+
+app.get("/api/admin/ai-chat-queries", requireAdminApi, handleAdminAiChatQueriesList);
+app.get("/api/v2/admin/ai-chat-queries", requireAdminApi, handleAdminAiChatQueriesList);
 
 app.get("/api/admin/roles/catalog", requireAdminApi, async (req, res) => {
   if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return;
@@ -2287,14 +2419,6 @@ app.delete("/api/admin/import/jobs/:jobId", requireAdminApi, async (req, res) =>
   }
 });
 
-app.get("/api/admin/audit-logs", requireAdminApi, async (req, res) => {
-  if (!ensurePermissionOrDeny(res, req.currentUser, "canViewAuditLogs")) return;
-  const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
-  const data = await auditLogStore.list({ limit, offset });
-  return res.json({ ok: true, ...data });
-});
-
 app.post("/api/admin/dingtalk/test-notification", requireAdminApi, async (req, res) => {
   if (String(req.currentUser?.role || "") !== "admin") {
     return res.status(403).json({ ok: false, error: "仅管理员可发送钉钉测试通知" });
@@ -2417,25 +2541,45 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
   }
 
+  let aiChatMonitor = null;
   try {
     const ctxEntry = conversationId ? salesContexts.get(conversationId) : null;
+    aiChatMonitor = createAiChatQueryMonitor(res, aiChatQueryLogStore, {
+      userId: uidChat,
+      username: String(req.currentUser?.username || ""),
+      conversationId,
+      message: userMessage,
+      model,
+      salesContextPreview: buildSalesContextPreviewForMonitor(ctxEntry?.context || null),
+    });
     const filterHint = buildDashboardFilterHintFromSyncedContext(ctxEntry?.context || null);
     const baseSystem =
-      "You are an operations advisor for retail business users. " +
-      "Always answer in Chinese. Be concise: no filler, no repeating the user's question, no long intros/outros. Only facts and actions the user needs now; if one short paragraph is enough, stop there. " +
-      "Structure in this order: 结论 → 数据依据（只列关键数字）→ 可执行建议（每条单独一行，短句）. " +
-      "Formatting: use short sections separated by a blank line; prefer fixed mini-headings on their own line like 「📌 结论：」「📊 数据：」「💡 建议：」 so the UI can break paragraphs. Use about 3–6 common emojis per reply for section cues—never spam emojis or put one on every sentence. " +
-      "Do not use technical words such as tool, API, SQL, context, endpoint, schema. " +
-      "Numerical results from tools reflect this user's data-access scope: within that scope, totals include all orders/metrics for allowed stores/salespeople/products (管辖范围内全量，不是抽样). " +
-      "Do not invent figures outside that scope; if the user says 全公司 in conversation, treat it as their permitted overall rollup unless they are clearly asking for group-wide numbers beyond tools output. " +
-      "若工具返回 ok:true 且金额为 0，优先解释为所选日期范围内无订单或数据未导入；除非工具结果含 code OUT_OF_SCOPE，否则不要说成因是权限或管辖范围不足。 " +
-      "When data is not enough, explicitly say: 当前数据不足以判断。 " +
-      "When key fields are missing or unrecognized (for example salesperson field), state it directly and do not guess. " +
-      "If metrics like 会员注册率/复购率/订单明细 are unavailable, guide user to检查导入字段映射并联系管理员补充数据。 " +
+      "你是面向店长、导购主管和老板的零售经营助手，必须用简体中文回复。\n\n" +
+      "【后台数据优先】金额、排行、门店、销售员、会员相关结论，必须以服务端数据集工具查询后台已导入订单（DuckDB）的结果为准；例如 getKpiFromDataset、getStoreRankingFromDataset、getSalespersonRankingFromDataset、getProductRankingFromDataset、getSalespersonStoreBreakdownFromDataset（销售员在哪些门店有业绩）、getMemberSalespersonBreakdownFromDataset（输入会员名→查各导购业绩）、getMembersForSalespersonFromDataset（输入导购名→列名下会员）等。页面同步的 salesContext 只是缓存摘要，不能代替上述查询；也不要在未调用工具前断言「导入缺少某字段」。调用工具时 filters 必须与下方「本回合已与页面同步的筛选」一致。\n\n" +
+      "【问法与工具要对上】用户问「某销售员/导购手下有哪些顾客、会员」→ getMembersForSalespersonFromDataset（salespersonContains）。用户问「某某是哪个店的销售 / 哪家门店 / 谢元平是谁家的」→ 必须调用 getSalespersonStoreBreakdownFromDataset 或别名 getStoresForSalespersonFromDataset，禁止误用 getMemberSalespersonBreakdownFromDataset（后者仅用于输入会员名查导购）。\n\n" +
+      "【门店与销售员关系】后台订单明细每一行同时有门店与销售员，不存在「缺映射表就无法关联」。只有在对应工具返回 rows 为空时，才可提示核对姓名或日期筛选；禁止答复「系统无法关联营业员与门店」之类话术。\n\n" +
+      "【数字不得打架】同一条回复里，会员人数、名单必须与**同一工具、同一 filters**下的结果一致；不得把 KPI/摘要里的「消费会员人数」与另一工具返回的会员列表混在同一结论里；若只跑了名单工具，会员数以该工具返回的 distinctMemberCount 或 rows 长度为准。\n\n" +
+      "【准确性】数字与事实必须可追溯：优先采用工具返回值；若与页面摘要不一致，以工具为准。所有金额、人数、名次须与来源一致，严禁编造。若没有返回某项，就说「当前这笔数据拿不到」或「当前数据不足以判断」，一句话说明即可。\n\n" +
+      "【手机号】会员手机号一律为 11 位大陆号格式：前三位 + 中间四位掩码 + 后四位；掩码须为四个星号（工具返回为全角＊，形如 189＊＊＊＊0972）。禁止写成连续七位数字、禁止在中间插空格；禁止还原完整号码。\n\n" +
+      "【口语与人话】用短句、口语表达，像在微信里给同事解释一样；不要用公文腔、研报腔。禁止空话套话（如「综上所述」「值得一提的是」），禁止重复用户原话当铺垫，禁止长篇开场白和收场白。\n\n" +
+      "【篇幅】只回答解决问题所需的内容：能一段话讲完就不要分两页；列举时条目要少而准，每条一行，说清楚即止。\n\n" +
+      "【排版与表情】分段清晰：段与段之间空一行。可用单独成行的小标题（如 📌 结论｜📊 关键数｜💡 建议），每条回复里使用大约 2～6 个常用表情符号帮助扫读即可；不要每个句号都加表情，不要刷屏。\n\n" +
+      "【叙述顺序】优先：先一句话结论 → 再列关键数字（只写与用户问题相关的）→ 必要时再给简短可执行建议。\n\n" +
+      "English operational rules (follow internally): You are an operations advisor. Tool/query numbers reflect this user's data-access scope; within that scope, aggregates cover all permitted stores/salespeople/products（管辖范围内全量，不是抽样）. " +
+      "Do not invent figures; do not use technical words when speaking to the user（对用户不要说 tool、API、SQL、数据库、上下文、接口等）. " +
+      "If tool returns ok:true and amounts are zero, explain as 所选日期范围内可能没有订单或暂无导入数据；unless tool result has code OUT_OF_SCOPE, do not blame permissions. " +
+      "If synced salesContext omits a breakdown, prefer calling dataset tools before claiming missing mapping; salesperson-store links exist on each fact_sales row. " +
       "Never invent numbers.";
+    const prequeryBlock = await maybePrequerySalespersonStoreBlocks(
+      ctxEntry,
+      userMessage,
+      req.currentUser,
+      req.accessScope
+    );
+    const mergedSystem = baseSystem + prequeryBlock;
     const systemMessage = {
       role: "system",
-      content: filterHint ? `${baseSystem}\n\n${filterHint}` : baseSystem,
+      content: filterHint ? `${mergedSystem}\n\n${filterHint}` : mergedSystem,
     };
     const workingMessages = [systemMessage, ...getSessionMessages(conversationId), { role: "user", content: userMessage }];
     const tools = getToolDefinitions();
@@ -2451,11 +2595,12 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
           messages: workingMessages,
           tools,
           tool_choice: "auto",
-          temperature: 0.25,
+          temperature: 0.32,
         },
         CHAT_MODEL_MAX_RETRIES
       );
       if (!completion.ok) {
+        aiChatMonitor?.setError(completion?.data?.error?.message || "上游 AI 接口调用失败");
         return res.status(completion.status || 502).json({
           error: completion?.data?.error?.message || "上游 AI 接口调用失败",
         });
@@ -2465,6 +2610,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
       finalUsage = data?.usage || finalUsage;
       const assistantMessage = data?.choices?.[0]?.message;
       if (!assistantMessage) {
+        aiChatMonitor?.setError("AI 接口未返回助手消息");
         return res.status(502).json({ error: "AI 接口未返回助手消息" });
       }
 
@@ -2486,6 +2632,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
 
       for (const toolCall of toolCalls) {
         const toolName = toolCall?.function?.name || "";
+        aiChatMonitor?.addTool(toolName);
         let parsedArgs = {};
         try {
           parsedArgs = JSON.parse(toolCall?.function?.arguments || "{}");
@@ -2495,6 +2642,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
 
         const contextEntry = salesContexts.get(conversationId);
         if (contextEntry?.userId && contextEntry.userId !== String(req.currentUser?.id || "")) {
+          aiChatMonitor?.setError(OUT_OF_SCOPE_MESSAGE);
           return res.status(403).json({ error: OUT_OF_SCOPE_MESSAGE });
         }
         let toolResult = await runToolCall(contextEntry, req.currentUser, req.accessScope, toolName, parsedArgs);
@@ -2508,10 +2656,11 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
             };
           }
         }
+        const toolPayloadForModel = deepSanitizeAgentToolPayload(toolResult);
         workingMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: JSON.stringify(toolResult),
+          content: JSON.stringify(toolPayloadForModel),
         });
       }
     }
@@ -2524,7 +2673,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
           {
             model,
             messages: workingMessages,
-            temperature: 0.25,
+            temperature: 0.32,
           },
           CHAT_MODEL_MAX_RETRIES
         );
@@ -2546,8 +2695,12 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
     }
 
     if (!finalReply) {
+      aiChatMonitor?.setError("工具调用结束，但未生成最终回答");
       return res.status(502).json({ error: "工具调用结束，但未生成最终回答" });
     }
+
+    aiChatMonitor?.setReplyPreview(finalReply);
+    aiChatMonitor?.setUsage(finalUsage);
 
     setSessionMessages(conversationId, workingMessages.slice(1));
     rememberChatConversationOwner(conversationId, String(req.currentUser?.id || ""));
@@ -2559,6 +2712,7 @@ app.post("/api/chat", requireAuthApi, chatApiRateLimit, async (req, res) => {
       uiActions,
     });
   } catch (error) {
+    aiChatMonitor?.setError(error?.message || "服务器异常");
     return res.status(500).json({
       error: error?.message || "服务器异常",
     });
@@ -2654,10 +2808,14 @@ async function bootstrap() {
     initV2AnalyticsModule(),
     authService.init(),
     auditLogStore.init(),
+    aiChatQueryLogStore.init(),
     notificationStore.init(),
   ]);
   app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
+    console.log(
+      "[routes] AI 提问监控: GET /api/admin/ai-chat-queries（备用 GET /api/v2/admin/ai-chat-queries）"
+    );
     console.log(
       `[session] store=${env.sessionStore}` +
         (env.sessionStore === "memory"

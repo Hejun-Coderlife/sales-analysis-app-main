@@ -1,7 +1,7 @@
 import {
   applyPermissionScopeToFilters,
+  finalizeMemberRowsForAgentTools,
   hasPermission,
-  maskSensitiveMemberRows,
 } from "../auth/permissionModel.js";
 import { AGGREGATE_ALL_READY_DATASET_ID } from "./analyticsService.js";
 
@@ -38,6 +38,50 @@ function sanitizeFilters(rawFilters) {
     stores: normalizeStringArray(source.stores, 50),
     salespeople: normalizeStringArray(source.salespeople, 50),
     products: normalizeStringArray(source.products, 50),
+  };
+}
+
+/** 与 analyticsService.normalizeSearchNeedle 对齐，用于参数预处理 */
+function normalizeNeedleArg(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/\u3000/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+/** 从销售员×门店明细生成摘要，避免模型误答「没有门店归属」 */
+function summarizeSalespersonStoreRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  let totalPerformance = 0;
+  let primaryStore = "";
+  let maxP = -1;
+  const storeSet = new Set();
+  for (const r of list) {
+    const p = Number(r.performance || 0);
+    totalPerformance += p;
+    const st = String(r.store ?? "").trim();
+    if (st) storeSet.add(st);
+    if (p > maxP) {
+      maxP = p;
+      primaryStore = st;
+    }
+  }
+  const storeCount = storeSet.size;
+  const distinctStores = [...storeSet];
+  const fmt = (n) =>
+    Number.isFinite(Number(n))
+      ? Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : "—";
+  return {
+    storeCount,
+    distinctStores,
+    primaryStore,
+    primaryPerformance: maxP >= 0 ? maxP : 0,
+    totalPerformance,
+    hint:
+      list.length === 0
+        ? "在当前日期、权限与姓名关键字下，订单明细未匹配到「销售员×门店」拆分结果。"
+        : `业绩最高的门店为「${primaryStore}」（${fmt(maxP)} 元）；该销售员在本筛选范围内共出现在 ${storeCount} 个门店的业绩中，合计 ${fmt(totalPerformance)} 元。`,
   };
 }
 
@@ -229,6 +273,116 @@ export function createAgentDatasetToolsService({ analyticsService }) {
       {
         type: "function",
         function: {
+          name: "getSalespersonStoreBreakdownFromDataset",
+          description:
+            "【店员归属哪家门店—必用】后台订单表每一行同时包含门店(store)与销售员(salesperson)，关联来自按订单聚合，不是单独的映射表。用户问「某某是哪个店的销售」「哪家店」「在哪些门店」时必须调用；传入 salespersonContains=姓名关键字（如谢元平）。返回 rows 为各门店业绩，summary.primaryStore 为业绩最高的门店。禁止答复「系统没有销售员与门店的映射」。filters 与当前看板日期一致。",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "integer", minimum: 1, maximum: 200 },
+              salespersonContains: { type: "string", description: "可选，销售员姓名关键字，模糊匹配" },
+              filters: {
+                type: "object",
+                properties: {
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  stores: { type: "array", items: { type: "string" } },
+                  salespeople: { type: "array", items: { type: "string" } },
+                  products: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "getStoresForSalespersonFromDataset",
+          description:
+            "与 getSalespersonStoreBreakdownFromDataset 完全相同，别名入口。专用于口语「某某是哪家店的销售」「哪个门店」；参数与返回一致，优先选此工具若更符合用户问法。",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "integer", minimum: 1, maximum: 200 },
+              salespersonContains: { type: "string", description: "销售员姓名关键字，模糊匹配" },
+              filters: {
+                type: "object",
+                properties: {
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  stores: { type: "array", items: { type: "string" } },
+                  salespeople: { type: "array", items: { type: "string" } },
+                  products: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "getMemberSalespersonBreakdownFromDataset",
+          description:
+            "仅当用户说的是「某个会员/顾客」、要问他在哪位导购名下消费时使用：按会员关键字汇总各销售员业绩。memberContains=会员姓名或编号片段。**禁止**用于「某销售员有哪些顾客」类问题（那种情况必须用 getMembersForSalespersonFromDataset）。",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "integer", minimum: 1, maximum: 150 },
+              memberContains: { type: "string", description: "必填，会员姓名或会员编号片段" },
+              filters: {
+                type: "object",
+                properties: {
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  stores: { type: "array", items: { type: "string" } },
+                  salespeople: { type: "array", items: { type: "string" } },
+                  products: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+            required: ["memberContains"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "getMembersForSalespersonFromDataset",
+          description:
+            "从后台订单明细列出「某销售员/导购名下有哪些会员顾客」（按会员聚合消费）。用户问「张维手里有哪些顾客」「某导购名下会员清单」等时必须调用；salespersonContains 填销售员姓名片段。**不要**误用 getMemberSalespersonBreakdownFromDataset（那是输入会员名查导购）。filters 与当前看板日期、门店筛选一致。",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "integer", minimum: 1, maximum: 200 },
+              salespersonContains: { type: "string", description: "必填，销售员姓名关键字（模糊匹配）" },
+              filters: {
+                type: "object",
+                properties: {
+                  startDate: { type: "string" },
+                  endDate: { type: "string" },
+                  stores: { type: "array", items: { type: "string" } },
+                  salespeople: { type: "array", items: { type: "string" } },
+                  products: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+            required: ["salespersonContains"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
           name: "getSleepingMembersSummaryFromDataset",
           description: "Query sleeping members summary from dataset with permission-scoped filters.",
           parameters: {
@@ -377,6 +531,86 @@ export function createAgentDatasetToolsService({ analyticsService }) {
         };
       }
 
+      if (toolName === "getSalespersonStoreBreakdownFromDataset" || toolName === "getStoresForSalespersonFromDataset") {
+        if (!hasPermission(currentUser, "canViewSalespersonRanking")) return deny();
+        if (!hasPermission(currentUser, "canViewStoreRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const limit = sanitizeLimit(args.limit, 80, 200);
+        const spNeedle = normalizeNeedleArg(args.salespersonContains);
+        const rows = await analyticsService.getSalespersonStoreBreakdown(datasetIds, {
+          filters: scoped.scoped,
+          limit,
+          offset: 0,
+          salespersonContains: spNeedle,
+        });
+        const summary = summarizeSalespersonStoreRows(rows);
+        return {
+          ok: true,
+          datasetId,
+          rows,
+          summary,
+          total: rows.length,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
+      if (toolName === "getMemberSalespersonBreakdownFromDataset") {
+        if (!hasPermission(currentUser, "canViewMemberAnalysis")) return deny();
+        if (!hasPermission(currentUser, "canViewSalespersonRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const memberNeedle = normalizeNeedleArg(args.memberContains);
+        if (!memberNeedle) {
+          return { ok: false, error: "请提供 memberContains（会员姓名或编号片段）", code: "INVALID_ARGUMENT" };
+        }
+        const limit = sanitizeLimit(args.limit, 60, 150);
+        const rows = await analyticsService.getMemberSalespersonBreakdown(datasetIds, {
+          filters: scoped.scoped,
+          limit,
+          offset: 0,
+          memberContains: memberNeedle,
+        });
+        return {
+          ok: true,
+          datasetId,
+          rows,
+          total: rows.length,
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
+      if (toolName === "getMembersForSalespersonFromDataset") {
+        if (!hasPermission(currentUser, "canViewMemberAnalysis")) return deny();
+        if (!hasPermission(currentUser, "canViewSalespersonRanking")) return deny();
+        const scoped = buildScopedFilters(args.filters, accessScope);
+        if (!scoped.ok) return deny();
+        const spNeedle = normalizeNeedleArg(args.salespersonContains);
+        if (!spNeedle) {
+          return { ok: false, error: "请提供 salespersonContains（销售员姓名片段）", code: "INVALID_ARGUMENT" };
+        }
+        const limit = sanitizeLimit(args.limit, 80, 200);
+        const rows = await analyticsService.getMembersForSalesperson(datasetIds, {
+          filters: scoped.scoped,
+          limit,
+          offset: 0,
+          salespersonContains: spNeedle,
+        });
+        const masked = finalizeMemberRowsForAgentTools(rows || [], currentUser?.allowedMemberFields || {});
+        return {
+          ok: true,
+          datasetId,
+          rows: masked,
+          distinctMemberCount: Array.isArray(masked) ? masked.length : 0,
+          note:
+            "distinctMemberCount 与 rows 长度一致，均为当前筛选日期与权限范围内、订单归属到该销售员关键字下的去重会员数；勿与未调用本工具得到的其它口径混用。",
+          filters: scoped.scoped,
+          contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
+        };
+      }
+
       if (toolName === "getSleepingMembersSummaryFromDataset") {
         if (!hasPermission(currentUser, "canViewSleepingMembers")) return deny();
         const scoped = buildScopedFilters(args.filters, accessScope);
@@ -394,7 +628,7 @@ export function createAgentDatasetToolsService({ analyticsService }) {
           filters: scoped.scoped,
           contextMeta: buildContextMeta(currentUser, accessScope, scoped.scoped),
           sleepSummary: sleeping.sleepSummary || [],
-          rows: maskSensitiveMemberRows(sleeping.rows || [], currentUser?.allowedMemberFields || {}),
+          rows: finalizeMemberRowsForAgentTools(sleeping.rows || [], currentUser?.allowedMemberFields || {}),
         };
       }
 

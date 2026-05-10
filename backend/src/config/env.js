@@ -54,6 +54,8 @@ export const env = {
   uploadsDir: path.resolve(backendRoot, "data", "uploads"),
   jobsPath: path.resolve(backendRoot, "data", "jobs.json"),
   auditLogsPath: path.resolve(backendRoot, "data", "audit-logs.json"),
+  /** 用户向内置 AI 提问的调试日志（JSON 文件） */
+  aiChatQueriesLogPath: path.resolve(backendRoot, "data", "ai-chat-queries.json"),
   notificationsPath: path.resolve(backendRoot, "data", "notifications.json"),
   usersPath: path.resolve(backendRoot, "data", "users.json"),
   sessionDir: path.resolve(backendRoot, "data", "sessions"),
