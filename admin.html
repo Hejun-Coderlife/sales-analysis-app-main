@@ -532,6 +532,7 @@
               <button class="btn btn-light" data-action="edit" data-id="${escapeAttr(u.id)}">编辑</button>
               <button class="btn ${u.enabled ? "btn-danger":"btn-light"}" data-action="toggle" data-id="${escapeAttr(u.id)}">${u.enabled ? "停用":"启用"}</button>
               <button class="btn btn-light" data-action="reset" data-id="${escapeAttr(u.id)}">重置密码</button>
+              ${isAdminOperator() ? `<button type="button" class="btn btn-danger" data-action="delete" data-id="${escapeAttr(u.id)}">删除</button>` : ""}
             </div>
           </td>
         </tr>
@@ -1022,6 +1023,28 @@
       await loadUsers();
     }
 
+    async function deleteUserAccount(userId) {
+      if (!requireAdminAction("删除员工")) return;
+      const u = usersCache.find((x) => String(x.id) === String(userId));
+      if (!u) return;
+      const ok = confirm(
+        `确认永久删除账号「${u.username}」${u.displayName ? `（${u.displayName}）` : ""}？数据将从 users.json 移除且不可恢复。`
+      );
+      if (!ok) return;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "删除失败", "error");
+        return;
+      }
+      showToast("账号已删除", "success");
+      if (String(editingUserId) === String(userId)) closeDrawer();
+      await loadUsers();
+    }
+
     async function createUser() {
       if (!requireAdminAction("新增员工")) return;
       const msg = document.getElementById("createUserMsg");
@@ -1430,6 +1453,7 @@
       if (action === "edit") return openDrawerForUser(userId);
       if (action === "toggle") return withLoading(btn, "处理中...", async () => { await toggleUser(userId); });
       if (action === "reset") return withLoading(btn, "重置中...", async () => { await resetPassword(userId); });
+      if (action === "delete") return withLoading(btn, "删除中...", async () => { await deleteUserAccount(userId); });
     });
 
     document.getElementById("positionGrid").addEventListener("click", (event) => {

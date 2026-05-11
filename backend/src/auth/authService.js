@@ -272,6 +272,31 @@ export class AuthService {
     await this.persist();
   }
 
+  /**
+   * 从用户表永久移除账号。禁止删除当前登录者、禁止删除最后一个 `admin` 岗位账号。
+   */
+  async deleteUser(userId, options = {}) {
+    await this.init();
+    const id = String(userId || "").trim();
+    if (!id) throw new Error("用户不存在");
+    const idx = this.users.findIndex((x) => x.id === id);
+    if (idx === -1) throw new Error("用户不存在");
+    const target = this.users[idx];
+    const selfId = String(options.forbidDeleteSelfId || "").trim();
+    if (selfId && selfId === id) {
+      throw new Error("不能删除当前登录账号");
+    }
+    if (normalizeRole(target.role) === "admin") {
+      const adminCount = this.users.filter((u) => normalizeRole(u.role) === "admin").length;
+      if (adminCount <= 1) {
+        throw new Error("不能删除最后一个管理员账号");
+      }
+    }
+    this.users.splice(idx, 1);
+    await this.persist();
+    return { deletedId: id, username: target.username, displayName: String(target.displayName || "").trim() };
+  }
+
   async bindDingTalkUser(userId, dingtalkUserId) {
     await this.init();
     const user = await this.findById(userId);

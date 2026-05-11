@@ -2306,6 +2306,24 @@ app.patch("/api/admin/users/:id", requireAdminApi, async (req, res) => {
   }
 });
 
+app.delete("/api/admin/users/:id", requireAdminApi, async (req, res) => {
+  if (!ensurePermissionOrDeny(res, req.currentUser, "canManageUsers")) return;
+  try {
+    const result = await authService.deleteUser(req.params.id, { forbidDeleteSelfId: req.currentUser?.id });
+    await appendAuditLog({
+      adminUsername: req.currentUser?.username,
+      actionType: "delete_user",
+      targetType: "user",
+      targetId: result.deletedId,
+      summary: `删除用户：${result.username}`,
+      meta: { username: result.username },
+    });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(400).json({ error: error?.message || "删除用户失败" });
+  }
+});
+
 app.post("/api/admin/users/:id/reset-password", requireAdminApi, async (req, res) => {
   if (!ensurePermissionOrDeny(res, req.currentUser, "canResetPasswords")) return;
   try {
