@@ -19,9 +19,9 @@ function buildTestMessage() {
   const mobileUrl = env.publishedMobileUrl;
   const stamp = new Date().toISOString();
   return [
-    "【赫眉经营助手测试通知】",
+    "【经营管理助手测试通知】",
     `发送时间（UTC）：${stamp}`,
-    "这是一条来自赫眉经营助手的测试通知。",
+    "这是一条来自经营管理助手的测试通知。",
     `点击进入手机版看板：${mobileUrl}`,
   ].join("\n");
 }

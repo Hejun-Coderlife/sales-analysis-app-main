@@ -2030,7 +2030,7 @@ app.post("/api/admin/notifications/test", requireAdminApi, async (req, res) => {
   }
   const userId = String(req.currentUser?.id || "");
   const username = String(req.currentUser?.username || "");
-  const title = "赫眉经营助手测试提醒";
+  const title = "经营管理助手测试提醒";
   const content = "这是一条应用内测试提醒，说明消息中心已可用。";
   const created = await notificationStore.create({
     userId,

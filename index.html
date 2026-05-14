@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>赫眉经营助手</title>
+  <title>经营管理助手</title>
   <link rel="icon" type="image/png" href="./favicon.png" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -791,7 +791,7 @@ window.initGalaxyBackground({ includeEarth: false, mapAssistantButton: false });
     <div class="control-top">
       <div class="toolbar-meta">
         <div class="toolbar-meta-left">
-          <h1>赫眉经营助手</h1>
+          <h1>经营管理助手</h1>
           <div class="toolbar-subline">
             <span class="toolbar-user">
               <span class="toolbar-sub-cn">当前用户：</span><span id="dashboardCurrentUserVal"><span class="toolbar-user-value">--</span></span>
@@ -3845,7 +3845,7 @@ function renderResults(results, mappings){
 
 async function downloadWorkbook(filename, sheets){
   const wb = new ExcelJS.Workbook();
-  wb.creator = '赫眉经营助手';
+  wb.creator = '经营管理助手';
   wb.created = new Date();
 
   function columnLetter(n){
